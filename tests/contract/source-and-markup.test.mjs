@@ -276,3 +276,33 @@ describe('one relay client, not eleven copies', () => {
             'the fallback must match the column default');
     });
 });
+
+describe('alpine expressions in attributes', () => {
+    // json_encode emits double quotes, which terminate the attribute they sit
+    // in. The tag then parses as garbage and Alpine throws — and a server
+    // rendered fallback keeps the element looking correct, so it survives a
+    // screenshot review. js() escapes the quotes; json_encode stays correct
+    // inside a <script> block.
+    const MIGRATED = ['login.php', 'dashboard.php', 'partials/shell.php', 'partials/shell_end.php'];
+
+    for (const f of MIGRATED) {
+        test(`${f} does not put raw json_encode in an attribute`, () => {
+            const src = readSrc(f);
+            const withoutScripts = src.replace(/<script[\s\S]*?<\/script>/g, '');
+            const bad = [...withoutScripts.matchAll(/<\?=\s*json_encode\(t\(/g)];
+            assert.equal(bad.length, 0,
+                `${f}: use js('key') in attributes; json_encode belongs in <script>`);
+        });
+    }
+
+    test('a rendered attribute keeps its quotes escaped', async () => {
+        const html = await (await get('/login.php', null)).text();
+        const m = html.match(/x-text="([^"]*)"/g) ?? [];
+        assert.ok(m.length > 0, 'no x-text attribute rendered');
+        for (const attr of m) {
+            assert.ok(!/\?\s*$/.test(attr),
+                `attribute truncated at a quote: ${attr.slice(0, 60)}`);
+        }
+        assert.match(html, /&quot;/, 'quotes inside alpine expressions must be entities');
+    });
+});
