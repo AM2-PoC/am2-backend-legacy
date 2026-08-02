@@ -45,6 +45,63 @@ if ($password === '') {
 // the panel pages can reach it without importing a global.
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
+/** The header line the panel adds when it calls the node relay. */
+function am2_node_auth_header(): string
+{
+    $key = (string) (getenv('AM2_API_KEY') ?: '');
+    return $key === '' ? '' : "X-AM2-Api-Key: {$key}\r\n";
+}
+
+/**
+ * Authenticate a machine-to-machine caller.
+ *
+ * Accepts either a panel session (dashboard.php calls api_dashboard_chart.php
+ * from the browser) or the shared key.
+ *
+ * AM2_API_AUTH_MODE:
+ *   log     — record what would have been rejected, then continue. The default,
+ *             so that turning this on cannot take the Admin Native app down.
+ *   enforce — answer 401.
+ */
+function am2_api_auth(): void
+{
+    // Most api_*.php files never call session_start(), so a browser request
+    // carrying a valid panel session would look anonymous here. dashboard.php
+    // calls api_dashboard_chart.php that way.
+    if (session_status() === PHP_SESSION_NONE
+        && isset($_COOKIE[session_name()])
+        && !headers_sent()) {
+        session_start();
+    }
+    if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_logged_in'])) {
+        return;
+    }
+
+    $expected = (string) (getenv('AM2_API_KEY') ?: '');
+    $sent = $_SERVER['HTTP_X_AM2_API_KEY'] ?? ($_GET['api_key'] ?? ($_POST['api_key'] ?? ''));
+    $ok = $expected !== '' && is_string($sent) && $sent !== '' && hash_equals($expected, $sent);
+
+    if ($ok) {
+        return;
+    }
+
+    error_log(sprintf(
+        'AM2 api-auth REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
+        $_SERVER['REQUEST_METHOD'] ?? '?',
+        $_SERVER['REQUEST_URI'] ?? '?',
+        am2_client_ip(),
+        substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120),
+        $sent === '' ? 'absent' : 'wrong'
+    ));
+
+    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'log')) === 'enforce') {
+        http_response_code(401);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+        exit;
+    }
+}
+
 /**
  * The per-session CSRF token, created on first use.
  */

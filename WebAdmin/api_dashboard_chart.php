@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 $current_admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';

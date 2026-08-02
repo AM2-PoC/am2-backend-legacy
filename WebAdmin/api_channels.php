@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 function syncUserChannels($userId) {
     $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
