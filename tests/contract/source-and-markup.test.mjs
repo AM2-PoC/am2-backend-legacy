@@ -185,14 +185,19 @@ describe('rendered markup that the CSS and JS depend on', () => {
 });
 
 describe('untrusted text is not rendered as markup', () => {
-    test('logs.php escapes every value it interpolates', () => {
+    test('logs.php never builds markup from a log field', () => {
+        // keterangan is free text an admin typed, and a database trigger also
+        // writes it. The page renders through x-text now, which escapes, so the
+        // stronger property to hold is that no HTML is assembled from these
+        // values at all: no innerHTML, no template literal, and no manual
+        // escaper anyone can forget to call.
         const src = readSrc('logs.php');
-        assert.ok(/function esc\(/.test(src), 'the escaping helper is gone');
-        // keterangan is admin-controlled free text, also written by a database
-        // trigger, and it is inserted with innerHTML.
-        const raw = [...src.matchAll(/\$\{log\.[a-z_]+\}/g)].map((m) => m[0]);
-        assert.deepEqual(raw, [],
-            `these interpolations bypass esc(): ${raw.join(', ')}`);
+        // Assignment, not the word: a comment explaining why it is absent is not a use.
+        assert.ok(!/\binnerHTML\s*=/.test(src), 'log rows must not be assigned as HTML');
+        const interpolated = [...src.matchAll(/\$\{\s*(?:row|log)\.[a-z_]+/g)].map((m) => m[0]);
+        assert.deepEqual(interpolated, [],
+            `log fields interpolated into a string: ${interpolated.join(', ')}`);
+        assert.match(src, /x-text="row\.target"/, 'the detail column must render as text');
     });
 
     test('livetrack.php does not build a handler argument from a raw id', () => {
@@ -305,4 +310,23 @@ describe('alpine expressions in attributes', () => {
         }
         assert.match(html, /&quot;/, 'quotes inside alpine expressions must be entities');
     });
+});
+
+describe('js() and json_encode belong in different places', () => {
+    // The pair fails in both directions and each failure looks different.
+    // json_encode in an attribute terminates it at the first quote, and the
+    // element keeps rendering its fallback so it looks fine. js() inside a
+    // <script> emits &quot;, which is a syntax error that kills the block.
+    const FILES = ['login.php', 'dashboard.php', 'logs.php', 'partials/shell_end.php'];
+
+    for (const f of FILES) {
+        test(`${f} keeps js() out of script blocks`, () => {
+            const scripts = readSrc(f).match(/<script[\s\S]*?<\/script>/g) ?? [];
+            for (const block of scripts) {
+                const bad = [...block.matchAll(/<\?=\s*js\(/g)];
+                assert.equal(bad.length, 0,
+                    `${f}: js() emits &quot; which is invalid JavaScript; use json_encode here`);
+            }
+        });
+    }
 });
