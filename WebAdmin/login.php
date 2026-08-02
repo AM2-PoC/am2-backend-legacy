@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (am2_login_blocked($client)) {
             // bcrypt is deliberately slow, so an unthrottled login form is both
             // a guessing oracle and a cheap way to load the server.
-            $error = "Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit.";
+            $error = t('login.error_throttled');
             throw new RuntimeException('throttled');
         }
 
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         if ($user && password_verify($password, $user['password_hash'])) {
             if ($user['status'] !== 'active') {
-                $error = "Akun Anda sedang dinonaktifkan.";
+                $error = t('login.error_disabled');
             } else {
                 // Without this, the session id issued before authentication
                 // survives it, so an id planted beforehand becomes a valid one.
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         } else {
             am2_login_failed($client);
-            $error = "Akses Ditolak: Username atau Password salah.";
+            $error = t('login.error_credentials');
         }
     } catch (RuntimeException $e) {
         // Throttled: $error is already set, nothing else to do.
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -561,16 +561,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <label class="form-label small fw-bold text-uppercase">Username</label>
                                 <div class="input-group shadow-sm rounded-3 overflow-hidden">
                                     <span class="input-group-text border-0"><i class="fas fa-user-shield"></i></span>
-                                    <input type="text" name="username" class="form-control border-0" placeholder="Masukkan username" required autofocus>
+                                    <input type="text" name="username" class="form-control border-0" placeholder="<?= e('login.username_hint') ?>" required autofocus>
                                 </div>
                             </div>
                             
                             <div class="mb-4">
-                                <label class="form-label small fw-bold text-uppercase">Kata Sandi</label>
+                                <label class="form-label small fw-bold text-uppercase"><?= e('login.password') ?></label>
                                 <div class="input-group shadow-sm rounded-3 overflow-hidden">
                                     <span class="input-group-text border-0"><i class="fas fa-key"></i></span>
-                                    <input type="password" name="password" id="password" class="form-control border-0" placeholder="Masukkan kata sandi" required>
-                                    <button class="btn btn-toggle-pwd border-0" type="button" id="togglePassword" aria-label="Tampilkan password" aria-pressed="false">
+                                    <input type="password" name="password" id="password" class="form-control border-0" placeholder="<?= e('login.password_hint') ?>" required>
+                                    <button class="btn btn-toggle-pwd border-0" type="button" id="togglePassword" aria-label="<?= e('login.show_password') ?>" aria-pressed="false">
                                         <i class="fas fa-eye" id="eyeIcon"></i>
                                     </button>
                                 </div>
@@ -594,6 +594,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </div>
 
     <script>
+    const AM2_I18N = <?= am2_js_catalogue(['login.show_password','login.hide_password']) ?>;
         const togglePassword = document.querySelector('#togglePassword');
         const passwordInput = document.querySelector('#password');
         const eyeIcon = document.querySelector('#eyeIcon');
