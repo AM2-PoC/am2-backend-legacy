@@ -159,6 +159,12 @@ elseif ($method == 'POST') {
         }
     }
     elseif ($action == 'update_feature') {
+        $target_uid = $_POST['u_id'] ?? '';
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $target_uid)
+            && am2_api_authz_denied('feature-foreign-user')) {
+            exit;
+        }
+
         $u_id = $_POST['u_id'] ?? '';
         $feature = $_POST['feature'] ?? '';
 
@@ -201,6 +207,11 @@ elseif ($method == 'POST') {
     }
     elseif ($action == 'delete') {
         $id = $_POST['id'] ?? '';
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $id)
+            && am2_api_authz_denied('delete-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
             echo json_encode(['success' => true]);

@@ -45,6 +45,32 @@ if ($password === '') {
 // the panel pages can reach it without importing a global.
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
+/**
+ * Refuse an unauthorized machine-to-machine call — or, while the credential is
+ * still in log mode, record it and carry on.
+ *
+ * Returns true when the caller should be stopped.
+ */
+function am2_api_authz_denied(string $reason): bool
+{
+    error_log(sprintf(
+        'AM2 api-authz REJECT-CANDIDATE %s %s from %s reason=%s',
+        $_SERVER['REQUEST_METHOD'] ?? '?',
+        $_SERVER['REQUEST_URI'] ?? '?',
+        am2_client_ip(),
+        $reason
+    ));
+
+    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'log')) !== 'enforce') {
+        return false;
+    }
+
+    http_response_code(403);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+    return true;
+}
+
 /** The header line the panel adds when it calls the node relay. */
 function am2_node_auth_header(): string
 {

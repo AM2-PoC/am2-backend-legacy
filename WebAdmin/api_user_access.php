@@ -94,6 +94,11 @@ elseif ($method == 'POST') {
 
     if ($action == 'force_logout') {
         $user_id = (string)($_POST['user_id'] ?? '');
+        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+            && am2_api_authz_denied('kick-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
 
@@ -119,6 +124,11 @@ elseif ($method == 'POST') {
     }
     elseif ($action == 'update_access') {
         $user_id = (string)($_POST['user_id'] ?? '');
+        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+            && am2_api_authz_denied('access-foreign-user')) {
+            exit;
+        }
+
         $selected_channels = $_POST['channels'] ?? [];
         $default_channel_id = $_POST['default_channel'] ?? null;
         $permissions_input = json_decode($_POST['permissions'] ?? '[]', true);
