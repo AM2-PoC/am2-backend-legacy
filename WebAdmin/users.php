@@ -61,14 +61,18 @@ if (isset($_POST['save_user_channels'])) {
     }
     $channels = json_decode($_POST['channels'], true) ?: [];
     try {
-        $pdo->beginTransaction();
-        $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$u_id]);
-        if (!empty($channels)) {
-            $stmt = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, 'FULL DUPLEX')");
-            foreach ($channels as $idx => $ch_id) {
-                $stmt->execute([$u_id, $ch_id, ($idx === 0 ? 'true' : 'false')]);
-            }
+        $foreign = am2_first_foreign_channel($pdo, $current_admin_id, $admin_role, $channels);
+        if ($foreign !== null) {
+            echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
+            exit;
         }
+        $pdo->beginTransaction();
+        // This page sends a membership list and nothing else, so the
+        // permission on each surviving channel and the unit's default both
+        // stand. It used to recreate every row as FULL DUPLEX, which handed
+        // transmit rights to receive-only units, and moved the default to
+        // whichever channel happened to come first in the JSON.
+        am2_set_user_channels($pdo, (string) $u_id, $channels);
         $pdo->commit();
         syncUserChannels($u_id);
         echo json_encode(['success' => true]);

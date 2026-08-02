@@ -86,6 +86,19 @@ SELECT 'ct_channel_a', 'CT CHANNEL A', 'public', a.id
 FROM public.admin a WHERE a.username='ct_branch_a'
   AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name='ct_channel_a');
 
+-- A second channel for the same tenant: the default-channel invariants need
+-- somewhere to move the default to.
+INSERT INTO public.channels (name, display_name, category, created_by)
+SELECT 'ct_channel_a2', 'CT CHANNEL A2', 'public', a.id
+FROM public.admin a WHERE a.username='ct_branch_a'
+  AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name='ct_channel_a2');
+
+-- And one belonging to the other tenant, to have something to be refused.
+INSERT INTO public.channels (name, display_name, category, created_by)
+SELECT 'ct_channel_b', 'CT CHANNEL B', 'public', a.id
+FROM public.admin a WHERE a.username='ct_branch_b'
+  AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name='ct_channel_b');
+
 COMMIT;
 SQL
 

@@ -46,19 +46,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
         $stmt_old->execute([$ch_id]);
         $old_users = $stmt_old->fetchAll(PDO::FETCH_COLUMN);
 
-        if (strtolower($role_user) === 'superadmin') {
-            $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ?")->execute([$ch_id]);
-        } else {
-            $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ? AND user_id IN (SELECT id FROM public.users WHERE admin_id = ?)")
-                ->execute([$ch_id, $current_admin_id]);
-        }
+        // Only the units this admin owns may be added or dropped; a shared
+        // channel keeps another tenant's units on it either way.
+        $scope = null;
+        if (strtolower($role_user) !== 'superadmin') {
+            $stmtScope = $pdo->prepare("SELECT id FROM public.users WHERE admin_id = ?");
+            $stmtScope->execute([$current_admin_id]);
+            $scope = array_map('strval', array_column($stmtScope->fetchAll(), 'id'));
 
-        if (!empty($selected_users)) {
-            $stmt_ins = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, 'false', 'FULL DUPLEX')");
-            foreach ($selected_users as $u_id) {
-                $stmt_ins->execute([$u_id, $ch_id]);
+            $foreign = array_diff(array_map('strval', $selected_users), $scope);
+            if ($foreign) {
+                throw new RuntimeException('Akses ditolak');
             }
         }
+
+        // Recreating the roster used to write is_default = 'false' for every
+        // member, so editing a channel stripped the default from every unit
+        // on it while users.last_channel_id went on pointing here.
+        am2_set_channel_members($pdo, (string) $ch_id, $selected_users, $scope);
 
         $pdo->commit();
 

@@ -5,6 +5,7 @@
 // statement that today's behaviour is correct. Where it is known to be wrong,
 // the test says so and names the release that will change it.
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 const ENV_FILE = process.env.CT_ENV_FILE || '/etc/am2/contract-test.env';
@@ -112,7 +113,17 @@ export async function postForm(pathname, cookie, fields) {
             Host: HOST,
             ...(cookie ? { Cookie: cookie } : {}),
         },
-        body: new URLSearchParams(fields),
+        body: (() => {
+            const p = new URLSearchParams();
+            for (const [k, v] of Object.entries(fields)) {
+                if (Array.isArray(v)) {
+                    for (const item of v) p.append(k, item);
+                } else {
+                    p.append(k, v);
+                }
+            }
+            return p;
+        })(),
     });
 }
 
@@ -123,6 +134,32 @@ export async function json(res) {
     } catch {
         throw new Error(`expected JSON, got ${res.status}: ${text.slice(0, 200)}`);
     }
+}
+
+/**
+ * Read the staging database directly.
+ *
+ * Some invariants have no HTTP surface that reveals them -- whether a
+ * membership is RX, which row is the default, whether users.last_channel_id
+ * still names a channel the unit holds. Those are exactly the invariants the
+ * three editing surfaces used to break, so the tests go to the source.
+ *
+ * execFileSync without a shell: the queries contain quotes, and building them
+ * into a command line is how a test ends up asserting against a syntax error.
+ */
+export function sql(query, db = process.env.CT_DB || 'am2_staging') {
+    const out = execFileSync(
+        'sudo',
+        ['-u', 'postgres', 'psql', '-d', db, '-tAF', '|', '--no-align', '-c', query],
+        { encoding: 'utf8' }
+    );
+    return out.split('\n').filter((l) => l.trim() !== '').map((l) => l.split('|'));
+}
+
+/** The single row a query is expected to return, or null. */
+export function sqlOne(query, db) {
+    const rows = sql(query, db);
+    return rows.length ? rows[0] : null;
 }
 
 /** Assert an object has exactly these keys — catches additions and removals. */
