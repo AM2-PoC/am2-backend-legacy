@@ -7,6 +7,7 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'common.session_expired' => 'Sesi berakhir. Silakan masuk kembali.',
     'common.denied' => 'Akses ditolak.',
     'nav.close_menu' => 'Tutup menu',
     'rail.transmitting' => 'Sedang memancar',

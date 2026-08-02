@@ -7,6 +7,7 @@
  *
  */
 return [
+    'common.session_expired' => 'Your session has ended. Please sign in again.',
     'common.denied' => 'Access denied.',
     'nav.close_menu' => 'Close menu',
     'rail.transmitting' => 'Transmitting',
