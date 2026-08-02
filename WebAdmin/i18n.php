@@ -99,3 +99,18 @@ function am2_js_catalogue(array $keys): string
     }
     return json_encode($out, JSON_UNESCAPED_UNICODE);
 }
+
+/**
+ * A versioned URL for a static asset.
+ *
+ * Without this, a deploy leaves every browser and every CDN edge holding the
+ * previous stylesheet. Cloudflare sits in front of this panel, so a changed
+ * class simply does not arrive until the cache expires — which looks exactly
+ * like the CSS build being broken.
+ */
+function am2_asset(string $path): string
+{
+    $full = __DIR__ . '/' . ltrim($path, '/');
+    $version = is_file($full) ? filemtime($full) : 0;
+    return htmlspecialchars($path . '?v=' . $version, ENT_QUOTES, 'UTF-8');
+}
