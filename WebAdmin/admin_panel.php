@@ -1,11 +1,8 @@
 <?php
-session_start();
+require_once 'auth.php';
 require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_role'] !== 'superadmin') {
-    header("Location: dashboard.php");
-    exit;
-}
+require_superadmin();
 
 $success_msg = "";
 $error_msg = "";

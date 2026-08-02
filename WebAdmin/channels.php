@@ -1,11 +1,8 @@
 <?php
-session_start();
-include 'config.php';
+require_once 'auth.php';
+require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: login.php");
-    exit;
-}
+
 
 $success_msg = "";
 $error_msg = "";
