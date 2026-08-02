@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* Tailwind scans these for class names. The stylesheet lives two levels down. */
+@source "../../*.php";
+@source "../../lang/*.php";
+
+/*
+ * The theme is decided in PHP and written onto <html data-theme="...">, so the
+ * dark variant keys off that attribute. Tailwind's default is a `.dark` class
+ * or the OS media query, neither of which this app sets.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * AM2's palette comes from am2-ui.css, which already defines these on :root and
+ * flips them under [data-theme="dark"]. Referencing them rather than copying
+ * the hex values keeps one source of truth while pages migrate one at a time.
+ *
+ * The names here are deliberately not the same as the properties they read.
+ * `--color-surface: var(--color-surface)` would be a cycle, and Tailwind owns
+ * the --color-* namespace inside @theme.
+ */
+@theme {
+    --color-app: var(--color-bg);
+    --color-card: var(--color-surface);
+    --color-card-muted: var(--color-surface-muted);
+    --color-edge: var(--color-border);
+    --color-edge-strong: var(--color-border-strong);
+    --color-ink: var(--color-text);
+    --color-ink-muted: var(--color-text-muted);
+    --color-ink-subtle: var(--color-text-subtle);
+    --color-brand: var(--color-primary);
+    --color-brand-hover: var(--color-primary-hover);
+    --color-accent: var(--color-secondary);
+    --color-ok: var(--color-success);
+    --color-warn: var(--color-warning);
+    --color-bad: var(--color-danger);
+
+    --font-sans: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+                 "Helvetica Neue", Arial, sans-serif;
+
+    --radius-card: 0.75rem;
+}
