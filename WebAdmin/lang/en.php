@@ -7,6 +7,19 @@
  *
  */
 return [
+    'nav.close_menu' => 'Close menu',
+    'rail.transmitting' => 'Transmitting',
+    'rail.online' => 'online',
+    'rail.stale' => 'Data is not current',
+    'dash.heading' => 'Dashboard',
+    'dash.lede' => 'Radio network at a glance',
+    'dash.total_users' => 'Total users',
+    'dash.online_now' => 'Online now',
+    'dash.channels' => 'Channels',
+    'dash.traffic' => 'PTT traffic, 24 hours',
+    'dash.scope_all' => 'Whole server',
+    'dash.scope_branch' => 'Under your authority',
+    'dash.calls' => 'calls',
     // Navigation
     'nav.home'            => 'Home',
     'nav.management'      => 'Management',

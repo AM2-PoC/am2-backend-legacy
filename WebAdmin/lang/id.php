@@ -7,6 +7,19 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'nav.close_menu' => 'Tutup menu',
+    'rail.transmitting' => 'Sedang memancar',
+    'rail.online' => 'online',
+    'rail.stale' => 'Data tidak terbarui',
+    'dash.heading' => 'Dashboard',
+    'dash.lede' => 'Ringkasan jaringan radio',
+    'dash.total_users' => 'Total user',
+    'dash.online_now' => 'Online sekarang',
+    'dash.channels' => 'Channel',
+    'dash.traffic' => 'Trafik PTT 24 jam',
+    'dash.scope_all' => 'Seluruh server',
+    'dash.scope_branch' => 'Di bawah wewenang Anda',
+    'dash.calls' => 'panggilan',
     // Navigation
     'nav.home'            => 'Home',
     'nav.management'      => 'Manajemen',
