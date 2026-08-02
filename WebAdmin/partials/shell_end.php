@@ -47,6 +47,23 @@
     </div>
 </div>
 
+<script>
+    // Registered before Alpine loads, which is how a store has to be declared.
+    // The initial value comes from PHP, so the rail renders at the right width
+    // on first paint instead of snapping after hydration.
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('nav', {
+            rail: <?= am2_sidebar_collapsed() ? 'true' : 'false' ?>,
+            toggle() {
+                this.rail = !this.rail;
+                // A cookie rather than localStorage: PHP reads it on the next
+                // request and renders the correct width immediately.
+                document.cookie = 'am2_nav=' + (this.rail ? 'rail' : 'wide')
+                    + ';path=/;max-age=31536000;samesite=lax';
+            },
+        });
+    });
+</script>
 <script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
 <script>
     /**

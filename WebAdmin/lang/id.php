@@ -46,6 +46,8 @@ return [
     'dash.expiring_none' => 'Tidak ada yang mendekati habis',
     'dash.days' => 'hari',
     'dash.expired' => 'Habis',
+    'nav.collapse' => 'Ciutkan menu',
+    'nav.expand' => 'Lebarkan menu',
     // Navigation
     'nav.home'            => 'Home',
     'nav.management'      => 'Manajemen',
