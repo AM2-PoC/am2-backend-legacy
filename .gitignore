@@ -1,0 +1,77 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+
+# Codex/local workspace metadata
+.codex
+.codex/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+*.iml
+
+# Node/server dependencies and build output
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+coverage/
+
+# PHP/composer dependencies and caches
+vendor/
+.phpunit.result.cache
+
+# WebAdmin runtime/uploads/backups
+WebAdmin/.env
+WebAdmin/.env.*
+!WebAdmin/.env.example
+WebAdmin/uploads/
+WebAdmin/backups/
+WebAdmin/*.sql
+WebAdmin/backup_*.sql
+WebAdmin/FULL_BACKUP_*.sql
+WebAdmin/BACKUP_*.sql
+
+# Android/Gradle generated files
+.gradle/
+**/.gradle/
+**/build/
+**/local.properties
+**/captures/
+**/.cxx/
+**/.externalNativeBuild/
+*.apk
+*.aab
+*.ap_
+*.keystore
+*.jks
+
+# IntelliJ/Android Studio generated workspace files
+.idea/
+**/.idea/workspace.xml
+**/.idea/tasks.xml
+**/.idea/shelf/
+**/.idea/caches/
+**/.idea/libraries/
+.env
+.env.*
+*.env
+*.env.*
+WebAdmin/.env
+WebAdmin/.env.*
+WebAdmin/config.php.bak.*
+
+# Symlink runtime deployment (menunjuk /var/www/am2/shared, khusus host)
+WebAdmin/update
+server/update
