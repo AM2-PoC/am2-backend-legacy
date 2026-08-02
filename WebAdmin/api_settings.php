@@ -6,8 +6,14 @@ am2_api_auth();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if (isset($_GET['action']) && $_GET['action'] == 'export_db') {
-    $admin_id = (int)($_GET['admin_id'] ?? 0);
-    $role = $_GET['role'] ?? 'admin';
+    // Identity is resolved by the server; see am2_api_identity().
+    [$admin_id, $role] = am2_api_identity();
+    $admin_id = (int) $admin_id;
+    // A full pg_dump of every tenant. Superadmin only.
+    if (am2_api_require_super('export-db')) {
+        exit;
+    }
+
 
     $stmt = $pdo->prepare("SELECT username FROM public.admin WHERE id = ?");
     $stmt->execute([$admin_id]);
@@ -33,8 +39,9 @@ if (isset($_GET['action']) && $_GET['action'] == 'export_db') {
 
 if ($method == 'GET') {
     $action = $_GET['action'] ?? '';
-    $admin_id = (int)($_GET['admin_id'] ?? 0);
-    $role = $_GET['role'] ?? 'admin';
+    // Identity is resolved by the server; see am2_api_identity().
+    [$admin_id, $role] = am2_api_identity();
+    $admin_id = (int) $admin_id;
 
     if ($action == 'check_update') {
         $json_path = 'update/admin_version.json';
@@ -94,9 +101,18 @@ if ($method == 'GET') {
 }
 elseif ($method == 'POST') {
     $action = $_POST['action'] ?? '';
+    // Identity is resolved by the server; see am2_api_identity().
+    [$caller_id, $caller_role] = am2_api_identity();
+    // The account being changed, which need not be the caller.
     $admin_id = (int)($_POST['admin_id'] ?? 0);
 
     if ($action == 'update_password') {
+        // Without this the endpoint reset whichever admin account the
+        // request named, superadmins included.
+        if ((string) $admin_id !== (string) $caller_id
+            && am2_api_require_super('reset-foreign-admin-password')) {
+            exit;
+        }
         $new_pass = $_POST['new_password'] ?? '';
         if (strlen($new_pass) < 8) {
             echo json_encode(['success' => false, 'message' => 'Password minimal 8 karakter']);
@@ -112,6 +128,10 @@ elseif ($method == 'POST') {
         }
     }
     elseif ($action == 'import_db') {
+        // Pipes the upload straight into psql, across every tenant.
+        if (am2_api_require_super('import-db')) {
+            exit;
+        }
         if (!isset($_FILES['sql_file'])) {
             echo json_encode(['success' => false, 'message' => 'File .sql tidak ditemukan']);
             exit;

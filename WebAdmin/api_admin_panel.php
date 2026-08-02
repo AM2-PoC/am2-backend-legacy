@@ -10,6 +10,13 @@ am2_api_auth();
 // the Admin Native app.
 $method = $_SERVER['REQUEST_METHOD'];
 
+// This file manages the admin table itself: who exists, what quota they
+// hold, and who is a superadmin. Nothing below is ever a branch admin's
+// job, so the whole file is gated rather than each action.
+if (am2_api_require_super('admin-panel')) {
+    exit;
+}
+
 if ($method == 'GET') {
     try {
         $stmt_list = $pdo->prepare("
