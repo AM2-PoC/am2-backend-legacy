@@ -346,3 +346,26 @@ describe('js() and json_encode belong in different places', () => {
         });
     }
 });
+
+describe('the shell actually serves its stylesheets', () => {
+    // A mutation that deleted the stylesheet link escaped the suite: every
+    // assertion was about markup, so the app could lose all of its CSS and
+    // still be reported green.
+    test('every stylesheet the dashboard links resolves and is not empty', async () => {
+        const cookie = await asSuper();
+        const html = await (await get('/dashboard.php', cookie)).text();
+        const hrefs = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)]
+            .map((m) => m[1]);
+
+        assert.ok(hrefs.length >= 1, 'the shell must link at least one stylesheet');
+        assert.ok(hrefs.some((h) => /tailwind/.test(h)),
+            'the built Tailwind sheet is what the redesigned pages are styled with');
+
+        for (const href of hrefs) {
+            const res = await get('/' + href.replace(/^\//, ''), cookie);
+            assert.strictEqual(res.status, 200, `${href} must resolve`);
+            const body = await res.text();
+            assert.ok(body.length > 1000, `${href} came back with ${body.length} bytes`);
+        }
+    });
+});

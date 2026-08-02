@@ -76,53 +76,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
     $default_channel_id = $_POST['default_channel'] ?? null;
     $permissions_input = $_POST['permissions'] ?? [];
 
-    try {
-        $pdo->beginTransaction();
+    // The form is rendered from this admin's own units and channels, but a
+    // form is not an authorization: the ids arrive over POST and had never
+    // been checked against who is asking.
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, (string) $user_id)) {
+        $error_msg = t('common.denied');
+    } elseif (am2_first_foreign_channel($pdo, $current_admin_id, $role_user, $selected_channels) !== null) {
+        $error_msg = t('common.denied');
+    } else {
+        try {
+            $pdo->beginTransaction();
 
-        $stmtUser = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
-        $stmtUser->execute([$user_id]);
-        $target_name = $stmtUser->fetchColumn() ?: "ID: $user_id";
+            $stmtUser = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
+            $stmtUser->execute([$user_id]);
+            $target_name = $stmtUser->fetchColumn() ?: "ID: $user_id";
 
-        $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$user_id]);
+            // The one surface that states permissions and the default outright.
+            $result = am2_set_user_channels(
+                $pdo, (string) $user_id, $selected_channels, $default_channel_id, $permissions_input
+            );
 
-        $channel_names_added = [];
-
-        if (!empty($selected_channels)) {
-            if (!$default_channel_id || !in_array($default_channel_id, $selected_channels)) {
-                $default_channel_id = $selected_channels[0];
-            }
-
-            $stmtIns = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, ?)");
-            $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
-
-            foreach ($selected_channels as $ch_id) {
-                $is_default = ($ch_id == $default_channel_id);
-                $perm = (isset($permissions_input[$ch_id]) && $permissions_input[$ch_id] == 'RX') ? 'RX' : 'FULL DUPLEX';
-                $stmtIns->execute([$user_id, $ch_id, $is_default ? 'true' : 'false', $perm]);
-                
-                if ($is_default) {
-                    $pdo->prepare("UPDATE public.users SET last_channel_id = ? WHERE id = ?")->execute([$ch_id, $user_id]);
+            if ($selected_channels) {
+                $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
+                $channel_names_added = [];
+                foreach ($selected_channels as $ch_id) {
+                    $stmtChName->execute([$ch_id]);
+                    $c_name = $stmtChName->fetchColumn();
+                    $is_default = ((string) $ch_id === (string) $result['default']);
+                    $perm = $result['permissions'][(string) $ch_id] ?? 'FULL DUPLEX';
+                    $channel_names_added[] = $c_name . ($is_default ? " (Main)" : "") . " [$perm]";
                 }
-
-                $stmtChName->execute([$ch_id]);
-                $c_name = $stmtChName->fetchColumn();
-                $channel_names_added[] = $c_name . ($is_default ? " (Main)" : "") . " [$perm]";
+                $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
+            } else {
+                $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
             }
-            $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
-        } else {
-            $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$user_id]);
-            $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
+
+            $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
+            $stmtLogAccess->execute([$current_admin_id, 'UPDATE_ACCESS', $keterangan_log]);
+
+            $pdo->commit();
+            syncUserChannels($user_id);
+            $success_msg = "Otoritas akses user berhasil diperbarui.";
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
         }
-
-        $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
-        $stmtLogAccess->execute([$current_admin_id, 'UPDATE_ACCESS', $keterangan_log]);
-
-        $pdo->commit();
-        syncUserChannels($user_id);
-        $success_msg = "Otoritas akses user berhasil diperbarui.";
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
     }
 }
 
