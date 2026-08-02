@@ -25,8 +25,8 @@ function notifyNodeServerToRefresh($adminId) {
     @file_get_contents($url, false, $context);
 }
 
-if (isset($_GET['delete_id'])) {
-    $id_to_delete = (int)$_GET['delete_id'];
+if (isset($_POST['delete_admin_id'])) {
+    $id_to_delete = (int)$_POST['delete_admin_id'];
     $my_id = (int)$_SESSION['admin_id'];
 
     try {
@@ -326,12 +326,15 @@ $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER 
                                                 title="Edit Profil">
                                             <i class="fas fa-edit"></i> <span class="d-md-none">EDIT PROFIL</span>
                                         </button>
-                                        <a href="?delete_id=<?= $a['id'] ?>"
-                                           class="btn btn-outline-danger btn-danger-soft btn-action-mobile"
-                                           onclick="event.stopPropagation(); return confirm('Hapus admin ini? Seluruh anggota di bawahnya akan kehilangan akses!')"
-                                           title="Hapus">
-                                            <i class="fas fa-trash"></i> <span class="d-md-none">HAPUS</span>
-                                        </a>
+                                        <form method="POST" class="d-inline"
+                                              onclick="event.stopPropagation();"
+                                              onsubmit="return confirm('Hapus admin ini? Seluruh anggota di bawahnya akan kehilangan akses!')">
+                                            <?= am2_csrf_field() ?>
+                                            <input type="hidden" name="delete_admin_id" value="<?= (int) $a['id'] ?>">
+                                            <button type="submit" class="btn btn-outline-danger btn-danger-soft btn-action-mobile" title="Hapus">
+                                                <i class="fas fa-trash"></i> <span class="d-md-none">HAPUS</span>
+                                            </button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -349,6 +352,7 @@ $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER 
 <div class="modal fade" id="adminModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg admin-config-modal">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <h6 class="fw-bold m-0 text-navy" id="modalTitle">Konfigurasi Otoritas</h6>
                 <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal"></button>
@@ -446,6 +450,7 @@ $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER 
 <div class="modal fade" id="delegateModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered admin-delegate-modal">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <div>
                     <h6 class="fw-bold m-0 text-navy">Delegasi Channel</h6>

@@ -73,11 +73,20 @@ describe('form field names are the API', () => {
 
     test('GET dispatch parameters survive', () => {
         assert.match(readSrc('users.php'), /\$_GET\['get_user_channels'\]/);
-        assert.match(readSrc('users.php'), /\$_GET\['delete'\]/);
         assert.match(readSrc('channels.php'), /ajax_action/);
-        assert.match(readSrc('channels.php'), /\$_GET\['delete'\]/);
-        assert.match(readSrc('admin_panel.php'), /\$_GET\['delete_id'\]/);
         assert.match(readSrc('user_access.php'), /db_force_logout/);
+    });
+
+    test('deleting is a POST, not a link', () => {
+        // Moved off GET deliberately: a link that deletes can be followed by a
+        // prefetch or a crawler, and the only guard was a client-side confirm().
+        // These are panel-internal, so no external client is affected.
+        assert.match(readSrc('users.php'), /\$_POST\['delete_user'\]/);
+        assert.match(readSrc('channels.php'), /\$_POST\['delete_channel'\]/);
+        assert.match(readSrc('admin_panel.php'), /\$_POST\['delete_admin_id'\]/);
+        for (const f of ['users.php', 'channels.php', 'admin_panel.php']) {
+            assert.ok(!/href="\?delete/.test(readSrc(f)), `${f} still deletes via a link`);
+        }
     });
 });
 

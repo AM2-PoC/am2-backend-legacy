@@ -110,8 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_channel'])) {
     }
 }
 
-if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
+if (isset($_POST['delete_channel'])) {
+    $id = (int)$_POST['delete_channel'];
     try {
         $pdo->beginTransaction();
         $stmt_get = $pdo->prepare("SELECT name FROM public.channels WHERE id = ?");
@@ -261,6 +261,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
                 <div class="col-lg-7">
                     <div class="card card-table toolbar-card p-3">
                         <form method="POST" class="row g-2 align-items-end">
+                    <?= am2_csrf_field() ?>
                             <div class="col-md-9">
                                 <label class="small fw-bold text-muted">NAMA CHANNEL</label>
                                 <input type="text" name="display_name" class="form-control form-control-sm text-uppercase" placeholder="Contoh: Channel Test" required>
@@ -312,7 +313,11 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
                                 <td data-label="Aksi" class="text-center pe-4">
                                     <div class="btn-group">
                                         <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal(<?= $c['id'] ?>, '<?= htmlspecialchars($c['display_name']) ?>')"><i class="fas fa-edit"></i></button>
-                                        <a href="?delete=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger btn-danger-soft" onclick="return confirm('Hapus channel?')"><i class="fas fa-trash"></i></a>
+                                        <form method="POST" class="d-inline" onsubmit="return confirm('Hapus channel?')">
+                                            <?= am2_csrf_field() ?>
+                                            <input type="hidden" name="delete_channel" value="<?= (int) $c['id'] ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger btn-danger-soft"><i class="fas fa-trash"></i></button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -330,6 +335,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="accessModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i> Kelola Akses User</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -373,6 +379,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header border-0 pb-0">
                 <h6 class="fw-bold mb-0">Update Channel</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

@@ -84,11 +84,6 @@ describe('KNOWN BROKEN — locked here so the security release must change them 
         assert.ok('total_user' in body, 'today: full data returned to an anonymous caller');
     });
 
-    test('destructive panel actions are plain GET with no token', async () => {
-        const src = await (await get('/users.php', sup)).text();
-        assert.match(src, /href=["']\?delete=/,
-            'today: deleting a user is a GET, guarded only by a client-side confirm()');
-    });
 });
 
 describe('node relay routes', () => {
