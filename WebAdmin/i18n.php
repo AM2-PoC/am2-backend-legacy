@@ -114,3 +114,17 @@ function am2_asset(string $path): string
     $version = is_file($full) ? filemtime($full) : 0;
     return htmlspecialchars($path . '?v=' . $version, ENT_QUOTES, 'UTF-8');
 }
+
+/**
+ * A translated string, safe to drop inside an HTML attribute that JavaScript
+ * will evaluate — an Alpine x-text, :class, @click and so on.
+ *
+ * json_encode alone is not enough: it emits double quotes, and those terminate
+ * the attribute they sit in. The result parses as a broken tag and Alpine
+ * throws, which is easy to miss when the element has server-rendered fallback
+ * text that keeps looking correct.
+ */
+function js(string $key, array $replace = []): string
+{
+    return htmlspecialchars(json_encode(t($key, $replace), JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+}
