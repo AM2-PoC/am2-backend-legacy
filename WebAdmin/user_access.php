@@ -255,10 +255,19 @@ include 'partials/shell.php';
     </div>
     <?php endif; ?>
 
-    <div id="accessModal" x-cloak x-show="m.open" x-transition.opacity.duration.120ms
+    <div id="accessModal" x-cloak x-show="m.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="m.open = false" @keydown.window.escape="m.open = false" role="dialog" aria-modal="true">
-        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="m.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="user_id" id="m_user_id" :value="m.id">
             <input type="hidden" name="default_channel" id="m_default_channel" :value="m.def">
