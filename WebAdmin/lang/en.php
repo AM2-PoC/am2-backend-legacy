@@ -29,10 +29,9 @@ return [
 
     // Login
     'login.title'            => 'Login',
+    'login.subtitle'         => 'Radio Control Centre',
     'login.username'         => 'Username',
-    'login.username_hint'    => 'Enter your username',
     'login.password'         => 'Password',
-    'login.password_hint'    => 'Enter your password',
     'login.show_password'    => 'Show password',
     'login.hide_password'    => 'Hide password',
     'login.submit'           => 'Sign in',

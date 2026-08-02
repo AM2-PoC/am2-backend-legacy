@@ -29,10 +29,9 @@ return [
 
     // Login
     'login.title'            => 'Login',
+    'login.subtitle'         => 'Pusat Kendali Radio',
     'login.username'         => 'Username',
-    'login.username_hint'    => 'Masukkan username',
     'login.password'         => 'Kata Sandi',
-    'login.password_hint'    => 'Masukkan kata sandi',
     'login.show_password'    => 'Tampilkan password',
     'login.hide_password'    => 'Sembunyikan password',
     'login.submit'           => 'Masuk',

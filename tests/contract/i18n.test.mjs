@@ -37,9 +37,11 @@ describe('locale', () => {
     test('rendered strings actually change', async () => {
         const id = await (await page('/login.php', 'am2_lang=id')).text();
         const en = await (await page('/login.php', 'am2_lang=en')).text();
-        assert.match(id, /Masukkan username/);
-        assert.match(en, /Enter your username/);
-        assert.ok(!/Masukkan username/.test(en));
+        // The wordmark line, not a placeholder: the fields are labelled, so a
+        // placeholder repeating the label was removed in the redesign.
+        assert.match(id, /Pusat Kendali Radio/);
+        assert.match(en, /Radio Control Centre/);
+        assert.ok(!/Pusat Kendali Radio/.test(en));
     });
 
     test('the sidebar switches with the session', async () => {
