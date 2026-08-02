@@ -168,8 +168,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                  blank until Alpine boots, and blank for good if
                                  it never does. -->
                             <span x-text="shown
-                                ? <?= json_encode(t('login.hide_password')) ?>
-                                : <?= json_encode(t('login.show_password')) ?>"><?= e('login.show_password') ?></span>
+                                ? <?= js('login.hide_password') ?>
+                                : <?= js('login.show_password') ?>"><?= e('login.show_password') ?></span>
                         </button>
                     </div>
                     <input id="password" name="password" required
@@ -196,8 +196,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                focus-visible:outline-2 focus-visible:outline-offset-2
                                focus-visible:outline-brand">
                     <span x-text="working
-                        ? <?= json_encode(t('login.connecting')) ?>
-                        : <?= json_encode(t('login.submit')) ?>"><?= e('login.submit') ?></span>
+                        ? <?= js('login.connecting') ?>
+                        : <?= js('login.submit') ?>"><?= e('login.submit') ?></span>
                     <span aria-hidden="true"
                           class="transition-transform group-hover:translate-x-1"
                           x-text="working ? '…' : '→'">&rarr;</span>
