@@ -19,23 +19,25 @@ $rail        = am2_sidebar_collapsed();
 
 $navGroups = [
     'nav.home' => [
-        ['dashboard.php', 'nav.dashboard', 'gauge'],
+        ['dashboard.php', 'nav.dashboard', 'gauge', 0],
     ],
+    // Channel access is the same subject as users seen from another angle, so
+    // it sits under it. A fourth item is a child when it is indented.
     'nav.management' => [
-        ['users.php', 'nav.users', 'users'],
-        ['channels.php', 'nav.channels', 'radio'],
-        ['user_access.php', 'nav.channel_access', 'key'],
+        ['users.php', 'nav.users', 'users', 0],
+        ['user_access.php', 'nav.channel_access', 'key', 1],
+        ['channels.php', 'nav.channels', 'radio', 0],
     ],
     'nav.monitoring' => [
-        ['livetrack.php', 'nav.live_track', 'map'],
-        ['logs.php', 'nav.activity_log', 'list'],
+        ['livetrack.php', 'nav.live_track', 'map', 0],
+        ['logs.php', 'nav.activity_log', 'list', 0],
     ],
     'nav.system' => [
-        ['settings.php', 'nav.settings', 'sliders'],
+        ['settings.php', 'nav.settings', 'sliders', 0],
     ],
 ];
 if ($isSuper) {
-    $navGroups['nav.administrator'] = [['admin_panel.php', 'nav.admin_panel', 'shield']];
+    $navGroups['nav.administrator'] = [['admin_panel.php', 'nav.admin_panel', 'shield', 0]];
 }
 
 /** Inline SVG rather than an icon font: one fewer network dependency. */
@@ -127,13 +129,14 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <?= e($groupKey) ?>
             </p>
             <div x-show="rail" x-cloak class="mx-2 my-2 h-px bg-edge first:hidden" aria-hidden="true"></div>
-            <?php foreach ($items as [$href, $labelKey, $icon]): $active = $currentPage === $href; ?>
+            <?php foreach ($items as [$href, $labelKey, $icon, $depth]): $active = $currentPage === $href; ?>
                 <a href="<?= $href ?>"
                    <?= $active ? 'aria-current="page"' : '' ?>
                    :title="rail ? <?= js($labelKey) ?> : null"
                    aria-label="<?= e($labelKey) ?>"
                    :class="rail && 'justify-center'"
-                   class="group relative mb-0.5 flex items-center gap-3 rounded-control px-3 py-2 text-sm no-underline! transition-colors
+                   class="group relative mb-0.5 flex items-center gap-3 rounded-control py-2 text-sm no-underline! transition-colors
+                          <?= $depth ? 'pl-9 pr-3' : 'px-3' ?>
                           <?= $active
                               ? 'bg-brand/10 font-medium text-ink!'
                               : 'text-ink-muted! hover:bg-card-muted hover:text-ink!' ?>">
