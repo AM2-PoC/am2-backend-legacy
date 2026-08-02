@@ -7,20 +7,6 @@ require_superadmin();
 $success_msg = "";
 $error_msg = "";
 
-function notifyNodeServerToRefresh($adminId) {
-    $url = AM2_NODE_BASE . "/api/admin/refresh-branch-permissions";
-    $data = array('adminId' => $adminId);
-    $options = array(
-        'http' => array(
-            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
-            'method'  => 'POST',
-            'content' => json_encode($data),
-            'timeout' => 2
-        )
-    );
-    $context  = stream_context_create($options);
-    @file_get_contents($url, false, $context);
-}
 
 if (isset($_POST['delete_admin_id'])) {
     $id_to_delete = (int)$_POST['delete_admin_id'];
