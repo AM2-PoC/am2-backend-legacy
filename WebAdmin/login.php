@@ -12,8 +12,17 @@ $error = "";
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
+    // Per account and per source, not per source alone.
+    $client = am2_client_ip() . '|' . $username;
 
     try {
+        if (am2_login_blocked($client)) {
+            // bcrypt is deliberately slow, so an unthrottled login form is both
+            // a guessing oracle and a cheap way to load the server.
+            $error = "Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit.";
+            throw new RuntimeException('throttled');
+        }
+
         $stmt = $pdo->prepare("SELECT id, username, password_hash, role, status FROM public.admin WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
@@ -22,7 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($user['status'] !== 'active') {
                 $error = "Akun Anda sedang dinonaktifkan.";
             } else {
+                // Without this, the session id issued before authentication
+                // survives it, so an id planted beforehand becomes a valid one.
+                session_regenerate_id(true);
+                am2_login_succeeded($client);
+
                 $_SESSION['admin_logged_in'] = true;
+                $_SESSION['last_seen']       = time();
                 $_SESSION['admin_id']        = $user['id'];
                 $_SESSION['admin_username']  = $user['username'];
                 $_SESSION['admin_role']      = $user['role'];
@@ -31,10 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 exit;
             }
         } else {
+            am2_login_failed($client);
             $error = "Akses Ditolak: Username atau Password salah.";
         }
+    } catch (RuntimeException $e) {
+        // Throttled: $error is already set, nothing else to do.
     } catch (PDOException $e) {
-        $error = "Terjadi kesalahan sistem.";
+        $error = am2_safe_error($e, 'login');
     }
 }
 ?>
