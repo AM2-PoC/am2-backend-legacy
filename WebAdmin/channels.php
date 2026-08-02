@@ -169,281 +169,250 @@ if ($role_check === 'superadmin') {
 }
 $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 ?>
+<?php
+$pageTitle = t('ch.heading');
+$pageLede  = t('ch.lede', ['n' => count($channels)]);
 
-<!DOCTYPE html>
-<html <?= am2_html_attrs() ?>>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Manajemen Channel - am²</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="asset/css/am2-ui.css">
-    <style>
-        body { background-color: var(--color-bg); font-family: 'Segoe UI', sans-serif; }
-        .main-content { padding: 20px; }
-        .header-title { font-weight: 800; color: var(--color-text); border-bottom: 3px solid var(--color-primary); display: inline-block; padding-bottom: 5px; margin-bottom: 20px; }
-        .card-table { background: var(--color-surface); border-radius: 12px; border: 1px solid var(--color-border); box-shadow: var(--am2-shadow-sm); overflow: hidden; }
-        .stat-card { border-radius: 12px; border: 1px solid var(--color-border); padding: 15px; background: var(--color-surface); box-shadow: var(--am2-shadow-sm); }
-        .table thead { background-color: var(--color-sidebar-surface); color: var(--color-sidebar-hover-text); font-size: 0.85rem; }
-        .table td { vertical-align: middle; padding: 10px 15px; font-size: 0.9rem; }
-        .btn-am2 { background-color: var(--color-primary); color: var(--color-on-primary); border: none; font-weight: 600; transition: 0.2s; }
-        .btn-am2:hover { background-color: var(--color-primary-hover); color: var(--color-on-primary); }
-        .online-dot { height: 8px; width: 8px; background-color: var(--color-success); border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .search-box input { padding-left: 40px; border-radius: 20px; border: 1px solid var(--color-border-strong); height: 40px; }
-        .search-box i { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--color-text-subtle); }
-        .badge-compact { font-size: 0.7rem; padding: 3px 8px; }
-        .user-item { cursor: pointer; padding: 8px 12px; border-radius: 8px; transition: 0.2s; border: 1px solid transparent; }
-        .user-item:hover { background: var(--color-surface-muted); border-color: var(--color-border-strong); }
-        .user-item.selected { background: var(--color-info-surface); border-color: var(--color-secondary); }
-        .btn-manage-access {
-            background-color: var(--color-info-surface);
-            color: var(--color-secondary);
-            border: 1px solid color-mix(in srgb, var(--color-secondary) 36%, var(--color-border));
-            font-size: 0.8rem;
-            font-weight: 700;
-            padding: 5px 15px;
-            border-radius: 20px;
-            transition: 0.2s;
-        }
-        .btn-manage-access:hover {
-            background-color: var(--color-secondary);
-            color: var(--color-on-secondary);
-        }
-    </style>
-</head>
-<body>
+include 'partials/head.php';
+include 'partials/shell.php';
+?>
 
-<div class="container-fluid">
-    <div class="row">
-        <?php include 'sidebar.php'; ?>
+<?php if ($success_msg !== ''): ?>
+    <p role="status" class="mb-5 rounded-control border-l-2 border-ok bg-ok/5 py-3 pl-3 pr-3 text-sm">
+        <?= $success_msg ?>
+    </p>
+<?php endif; ?>
+<?php if ($error_msg !== ''): ?>
+    <p role="alert" class="mb-5 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm">
+        <?= htmlspecialchars($error_msg) ?>
+    </p>
+<?php endif; ?>
 
-        <main class="col-md-10 ms-sm-auto px-md-4 py-4 main-content">
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="app-toolbar am2-page-hero d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                        <h4 class="header-title m-0"><i class="fas fa-broadcast-tower me-2"></i> Manajemen Channel</h4>
-                        <div class="am2-hero-actions">
-                            <div class="am2-hero-stat">
-                                <small class="d-block" style="font-size: 0.65rem;">MILIK SAYA</small>
-                                <span class="fw-bold"><?= $count_owned ?></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<section class="rounded-card border border-edge bg-card"
+         x-data="channelPage()">
 
-            <?php if($success_msg): ?>
-                <div class="alert alert-success border-0 py-2 shadow-sm alert-dismissible fade show small"><i class="fas fa-check-circle me-2"></i><?= $success_msg ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <div class="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 lg:px-5">
+        <div class="relative min-w-0 flex-1 sm:max-w-xs">
+            <input id="searchInput" x-model="query" type="search" autocomplete="off"
+                   class="w-full rounded-control border border-edge bg-card px-3 py-1.5 text-sm text-ink
+                          transition-colors hover:border-edge-strong focus:border-brand focus:outline-none"
+                   placeholder="<?= e('ch.search') ?>">
+        </div>
+        <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <span class="tabular-nums text-ink-muted"><?= (int) $count_owned ?></span> <?= e('ch.owned') ?>
+            <?php if ($count_delegated > 0): ?>
+                · <span class="tabular-nums text-ink-muted"><?= (int) $count_delegated ?></span> <?= e('ch.delegated') ?>
             <?php endif; ?>
-            <?php if($error_msg): ?>
-                <div class="alert alert-danger border-0 py-2 shadow-sm alert-dismissible fade show small"><i class="fas fa-exclamation-triangle me-2"></i><?= $error_msg ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-            <?php endif; ?>
+        </p>
 
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-lg-7">
-                    <div class="card card-table toolbar-card p-3">
-                        <form method="POST" class="row g-2 align-items-end">
-                    <?= am2_csrf_field() ?>
-                            <div class="col-md-9">
-                                <label class="small fw-bold text-muted">NAMA CHANNEL</label>
-                                <input type="text" name="display_name" class="form-control form-control-sm text-uppercase" placeholder="Contoh: Channel Test" required>
-                            </div>
-                            <div class="col-md-3">
-                                <button type="submit" name="add_channel" class="btn btn-sm btn-am2 w-100 py-2">TAMBAH</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                <div class="col-lg-5 d-flex align-items-end justify-content-lg-end">
-                    <div class="search-box position-relative w-100" style="max-width: 350px;">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="searchInput" class="form-control shadow-sm border-0" placeholder="Cari channel...">
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="card card-table">
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0 data-table" id="channelTable">
-                        <thead>
-                            <tr>
-                                <th class="ps-4">NAMA CHANNEL</th>
-                                <th>ID CHANNEL</th>
-                                <th class="text-center">AKSES USER</th>
-                                <th>PEMBUAT</th>
-                                <th class="text-center pe-4">AKSI</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($channels as $c): ?>
-                            <tr class="channel-row">
-                                <td data-label="Nama Channel" class="ps-4 fw-bold text-dark">
-                                    <?= htmlspecialchars($c['display_name']) ?>
-                                    <?php if($c['ownership_type'] === 'DELEGATED'): ?>
-                                        <i class="fas fa-share-nodes text-warning ms-1" title="Delegasi"></i>
-                                    <?php endif; ?>
-                                </td>
-                                <td data-label="ID Channel" class="text-muted small"><?= htmlspecialchars($c['name']) ?></td>
-                                <td data-label="Akses User" class="text-center">
-                                    <button type="button" class="btn-manage-access" onclick="openAccessModal(<?= $c['id'] ?>, '<?= htmlspecialchars($c['display_name']) ?>')">
-                                        <i class="fas fa-users-cog me-1"></i> <?= $c['total_access'] ?> User
-                                    </button>
-                                </td>
-                                <td data-label="Pembuat" class="small text-muted"><?= htmlspecialchars($c['creator_name'] ?? 'System') ?></td>
-                                <td data-label="Aksi" class="text-center pe-4">
-                                    <div class="btn-group">
-                                        <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal(<?= $c['id'] ?>, '<?= htmlspecialchars($c['display_name']) ?>')"><i class="fas fa-edit"></i></button>
-                                        <form method="POST" class="d-inline" onsubmit="return confirm('Hapus channel?')">
-                                            <?= am2_csrf_field() ?>
-                                            <input type="hidden" name="delete_channel" value="<?= (int) $c['id'] ?>">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger btn-danger-soft"><i class="fas fa-trash"></i></button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
+        <form method="POST" class="ml-auto flex flex-wrap items-center gap-2">
+            <?= am2_csrf_field() ?>
+            <label for="display_name" class="sr-only"><?= e('ch.new_name') ?></label>
+            <input id="display_name" name="display_name" type="text" required
+                   class="w-44 rounded-control border border-edge bg-card px-3 py-1.5 text-sm
+                          transition-colors hover:border-edge-strong focus:border-brand focus:outline-none"
+                   placeholder="<?= e('ch.new_placeholder') ?>">
+            <button type="submit" name="add_channel" value="1"
+                    class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px]
+                           uppercase tracking-[0.15em] text-slate-950 transition-colors hover:bg-brand-hover">
+                <?= e('ch.add') ?>
+            </button>
+        </form>
     </div>
-</div>
 
-<div class="modal fade" id="accessModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
-                    <?= am2_csrf_field() ?>
-            <div class="modal-header bg-light border-0">
-                <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i> Kelola Akses User</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <?php if (empty($channels)): ?>
+        <p class="px-5 py-12 text-center text-sm text-ink-muted"><?= e('ch.empty') ?></p>
+    <?php else: ?>
+    <div class="overflow-x-auto">
+        <table class="data-table w-full text-sm">
+            <thead>
+                <tr class="border-b border-edge text-left font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <th scope="col" class="px-4 py-2.5 font-normal lg:px-5"><?= e('ch.name') ?></th>
+                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('ch.access') ?></th>
+                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('ch.owner') ?></th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-normal"><?= e('ch.actions') ?></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-edge">
+                <?php foreach ($channels as $c): ?>
+                    <tr class="channel-row transition-colors hover:bg-card-muted"
+                        data-name="<?= htmlspecialchars(strtolower($c['display_name'] . ' ' . $c['name']), ENT_QUOTES, 'UTF-8') ?>"
+                        x-show="matches($el)">
+                        <td data-label="<?= e('ch.name') ?>" class="px-4 py-2.5 align-top lg:px-5">
+                            <span class="block font-medium"><?= htmlspecialchars($c['display_name']) ?></span>
+                            <span class="block font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($c['name']) ?></span>
+                        </td>
+                        <td data-label="<?= e('ch.access') ?>" class="px-4 py-2.5 align-top">
+                            <span class="font-mono tabular-nums"><?= (int) $c['total_access'] ?></span>
+                            <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('ch.units') ?></span>
+                        </td>
+                        <td data-label="<?= e('ch.owner') ?>" class="px-4 py-2.5 align-top">
+                            <span class="text-ink-muted"><?= htmlspecialchars($c['creator_name'] ?? 'System') ?></span>
+                            <?php if (($c['ownership_type'] ?? '') !== 'OWNER'): ?>
+                                <span class="ml-1 rounded-control bg-accent/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-accent">
+                                    <?= e('ch.delegated_tag') ?>
+                                </span>
+                            <?php endif; ?>
+                        </td>
+                        <td data-label="<?= e('ch.actions') ?>" class="px-4 py-2.5 text-right align-top">
+                            <div class="inline-flex gap-1.5">
+                                <button type="button"
+                                        @click="openAccess(<?= (int) $c['id'] ?>, <?= htmlspecialchars(json_encode($c['display_name']), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                                    <?= e('ch.manage_access') ?>
+                                </button>
+                                <button type="button"
+                                        @click="openEdit(<?= (int) $c['id'] ?>, <?= htmlspecialchars(json_encode($c['display_name']), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                                    <?= e('ch.edit') ?>
+                                </button>
+                                <form method="POST" class="inline"
+                                      onsubmit="return confirm(<?= htmlspecialchars(json_encode(t('ch.delete_confirm')), ENT_QUOTES) ?>)">
+                                    <?= am2_csrf_field() ?>
+                                    <input type="hidden" name="delete_channel" value="<?= (int) $c['id'] ?>">
+                                    <button type="submit"
+                                            class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle transition-colors hover:border-bad hover:text-bad">
+                                        <?= e('ch.delete') ?>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Access modal. The user list is rendered server-side and ticked from the
+         endpoint, the same shape the page has always used. -->
+    <div id="accessModal" x-cloak x-show="access.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="access.open = false" @keydown.window.escape="access.open = false"
+         role="dialog" aria-modal="true">
+        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <?= am2_csrf_field() ?>
+            <input type="hidden" name="manage_ch_id" id="target_ch_id" :value="access.id">
+
+            <div class="border-b border-edge px-5 py-4">
+                <h2 class="text-sm font-semibold"><?= e('ch.manage_access') ?></h2>
+                <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"
+                   id="target_ch_name" x-text="access.name"></p>
             </div>
-            <div class="modal-body">
-                <div class="bg-primary-subtle p-3 rounded-3 mb-3 border border-primary-subtle">
-                    <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 10px;">Channel</small>
-                    <h5 id="target_ch_name" class="fw-bold text-navy m-0"></h5>
-                    <input type="hidden" name="manage_ch_id" id="target_ch_id">
-                </div>
 
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <label class="small fw-bold text-muted">DAFTAR USER (<?= count($managed_users) ?>)</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="selectAllUsers">
-                        <label class="form-check-label small fw-bold" for="selectAllUsers">Pilih Semua</label>
-                    </div>
-                </div>
+            <div class="flex items-center justify-between border-b border-edge px-5 py-2.5">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="selectAllUsers" @change="toggleAll($event.target.checked)"
+                           class="h-4 w-4 rounded-sm border-edge-strong accent-brand focus:ring-brand">
+                    <?= e('ch.select_all') ?>
+                </label>
+                <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <span class="tabular-nums text-ink-muted" x-text="access.checked"></span> / <?= count($managed_users) ?>
+                </span>
+            </div>
 
-                <div id="userListContainer" class="choice-list" style="max-height: 350px; overflow-y: auto; padding: 10px;">
-                    <?php foreach ($managed_users as $u): ?>
-                    <label class="user-item d-flex align-items-center mb-1">
-                        <input type="checkbox" name="users[]" value="<?= $u['id'] ?>" class="user-checkbox me-3">
-                        <div class="flex-grow-1">
-                            <span class="fw-bold d-block" style="font-size: 14px;"><?= htmlspecialchars($u['name']) ?></span>
-                            <small class="text-muted" style="font-size: 11px;">#<?= $u['id'] ?></small>
-                        </div>
+            <div class="flex-1 overflow-y-auto px-5 py-3">
+                <?php foreach ($managed_users as $u): ?>
+                    <label class="user-item flex items-center gap-3 rounded-control px-2 py-1.5 text-sm hover:bg-card-muted">
+                        <input type="checkbox" class="user-checkbox h-4 w-4 rounded-sm border-edge-strong accent-brand focus:ring-brand"
+                               name="users[]" value="<?= htmlspecialchars($u['id'], ENT_QUOTES, 'UTF-8') ?>"
+                               @change="recount()">
+                        <span class="min-w-0 flex-1 truncate"><?= htmlspecialchars($u['name']) ?></span>
+                        <span class="font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($u['id']) ?></span>
                     </label>
-                    <?php endforeach; ?>
-                </div>
+                <?php endforeach; ?>
             </div>
-            <div class="modal-footer border-0">
-                <button type="submit" name="save_channel_access" class="btn btn-navy w-100 py-3 rounded-3 fw-bold shadow">
-                    <i class="fas fa-save me-2"></i> SIMPAN PERUBAHAN AKSES
+
+            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
+                <button type="button" @click="access.open = false"
+                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink">
+                    <?= e('ch.cancel') ?>
+                </button>
+                <button type="submit" name="save_channel_access" value="1"
+                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover">
+                    <?= e('ch.save') ?>
                 </button>
             </div>
         </form>
     </div>
-</div>
 
-<div class="modal fade" id="editModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
-                    <?= am2_csrf_field() ?>
-            <div class="modal-header border-0 pb-0">
-                <h6 class="fw-bold mb-0">Update Channel</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div id="editModal" x-cloak x-show="edit.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="edit.open = false" @keydown.window.escape="edit.open = false"
+         role="dialog" aria-modal="true">
+        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <?= am2_csrf_field() ?>
+            <input type="hidden" name="edit_id" :value="edit.id">
+            <div class="border-b border-edge px-5 py-4">
+                <h2 class="text-sm font-semibold"><?= e('ch.edit_title') ?></h2>
             </div>
-            <div class="modal-body">
-                <input type="hidden" name="edit_id" id="edit_id">
-                <div class="mb-3">
-                    <label class="small fw-bold">NAMA DISPLAY</label>
-                    <input type="text" name="edit_display_name" id="edit_display_name" class="form-control text-uppercase" required>
-                </div>
+            <div class="px-5 py-4">
+                <label for="edit_display_name" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <?= e('ch.display_name') ?>
+                </label>
+                <input id="edit_display_name" name="edit_display_name" type="text" required x-model="edit.name"
+                       class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 text-sm
+                              transition-colors hover:border-edge-strong focus:border-brand focus:outline-none">
             </div>
-            <div class="modal-footer border-0 pt-0">
-                <button type="submit" name="edit_channel" class="btn btn-am2 w-100 py-2">SIMPAN PERUBAHAN</button>
+            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
+                <button type="button" @click="edit.open = false"
+                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink">
+                    <?= e('ch.cancel') ?>
+                </button>
+                <button type="submit" name="edit_channel" value="1"
+                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover">
+                    <?= e('ch.save') ?>
+                </button>
             </div>
         </form>
     </div>
-</div>
+</section>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<?php include 'partials/shell_end.php'; ?>
+
 <script>
-    const accessModal = new bootstrap.Modal(document.getElementById('accessModal'));
+    function channelPage() {
+        return {
+            query: '',
+            access: { open: false, id: null, name: '', checked: 0 },
+            edit:   { open: false, id: null, name: '' },
 
-    async function openAccessModal(id, name) {
-        document.getElementById('target_ch_id').value = id;
-        document.getElementById('target_ch_name').innerText = name;
+            // Filters on a data attribute rather than the rendered text, so
+            // adding or removing a column cannot change what a search finds.
+            matches(el) {
+                const q = this.query.trim().toLowerCase();
+                return !q || (el.dataset.name || '').includes(q);
+            },
 
-        document.querySelectorAll('.user-checkbox').forEach(cb => {
-            cb.checked = false;
-            cb.closest('.user-item').classList.remove('selected');
-        });
-        document.getElementById('selectAllUsers').checked = false;
-
-        try {
-            const resp = await fetch(`channels.php?ajax_action=get_channel_users&channel_id=${id}`);
-            const userIds = await resp.json();
-
-            userIds.forEach(uid => {
-                const cb = document.querySelector(`.user-checkbox[value="${uid}"]`);
-                if(cb) {
-                    cb.checked = true;
-                    cb.closest('.user-item').classList.add('selected');
+            async openAccess(id, name) {
+                this.access = { open: true, id, name, checked: 0 };
+                document.querySelectorAll('.user-checkbox').forEach((c) => { c.checked = false; });
+                document.getElementById('selectAllUsers').checked = false;
+                try {
+                    const res = await fetch(`channels.php?ajax_action=get_channel_users&channel_id=${id}`);
+                    const ids = await res.json();
+                    const wanted = new Set((ids ?? []).map(String));
+                    document.querySelectorAll('.user-checkbox').forEach((c) => {
+                        c.checked = wanted.has(String(c.value));
+                    });
+                } catch (err) {
+                    console.error('Could not load channel access:', err);
                 }
-            });
-            updateSelectAllState();
-        } catch (e) { console.error(e); }
+                this.recount();
+            },
 
-        accessModal.show();
+            openEdit(id, name) { this.edit = { open: true, id, name }; },
+
+            toggleAll(on) {
+                document.querySelectorAll('.user-checkbox').forEach((c) => { c.checked = on; });
+                this.recount();
+            },
+
+            recount() {
+                this.access.checked = document.querySelectorAll('.user-checkbox:checked').length;
+            },
+        };
     }
-
-    document.getElementById('selectAllUsers').addEventListener('change', function() {
-        document.querySelectorAll('.user-checkbox').forEach(cb => {
-            cb.checked = this.checked;
-            cb.closest('.user-item').classList.toggle('selected', this.checked);
-        });
-    });
-
-    document.querySelectorAll('.user-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-            this.closest('.user-item').classList.toggle('selected', this.checked);
-            updateSelectAllState();
-        });
-    });
-
-    function updateSelectAllState() {
-        const cbs = document.querySelectorAll('.user-checkbox');
-        const checked = document.querySelectorAll('.user-checkbox:checked');
-        document.getElementById('selectAllUsers').checked = (cbs.length > 0 && cbs.length === checked.length);
-    }
-
-    function openEditModal(id, name) {
-        document.getElementById('edit_id').value = id;
-        document.getElementById('edit_display_name').value = name;
-        new bootstrap.Modal(document.getElementById('editModal')).show();
-    }
-
-    document.getElementById('searchInput').addEventListener('input', function(e) {
-        let kw = e.target.value.toLowerCase();
-        document.querySelectorAll('.channel-row').forEach(row => {
-            row.style.display = row.innerText.toLowerCase().includes(kw) ? "" : "none";
-        });
-    });
 </script>
 </body>
 </html>
