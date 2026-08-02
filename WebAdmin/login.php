@@ -110,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <!-- Form side: a card on a phone, a plain column on desktop where the
          brand panel already provides the frame. -->
     <main class="grid min-h-dvh place-items-center px-4 py-10 lg:min-h-0 lg:px-12">
-        <div class="w-full max-w-sm border border-edge bg-card p-6 shadow-sm
+        <div class="w-full max-w-sm rounded-card border border-edge bg-card p-6 shadow-sm
                     lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
 
             <div class="flex items-center gap-4 lg:hidden">
@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
             <?php if ($error !== ""): ?>
                 <p role="alert"
-                   class="mt-6 flex items-start gap-2 border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm">
+                   class="mt-6 flex items-start gap-2 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm">
                     <span aria-hidden="true" class="mt-px font-mono font-bold text-bad">!</span>
                     <span><?= htmlspecialchars($error) ?></span>
                 </p>
@@ -147,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </label>
                     <input id="username" name="username" type="text" required autofocus
                            autocapitalize="none" spellcheck="false"
-                           class="mt-2 w-full rounded-none border border-edge bg-card px-3 py-2.5
+                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2.5
                                   font-mono text-base text-ink transition-colors
                                   hover:border-edge-strong focus:border-brand focus:outline-none">
                 </div>
@@ -175,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <input id="password" name="password" required
                            :type="shown ? 'text' : 'password'"
                            @keyup="caps = $event.getModifierState && $event.getModifierState('CapsLock')"
-                           class="mt-2 w-full rounded-none border border-edge bg-card px-3 py-2.5
+                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2.5
                                   font-mono text-base text-ink transition-colors
                                   hover:border-edge-strong focus:border-brand focus:outline-none">
                     <!-- Caps Lock is the commonest cause of a rejected sign-in
@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
 
                 <button type="submit" :disabled="working"
-                        class="group flex w-full items-center justify-between border border-brand
+                        class="group flex w-full items-center justify-between rounded-control border border-brand
                                bg-brand px-4 py-3 font-mono text-xs uppercase tracking-[0.2em]
                                text-slate-950 transition
                                hover:border-brand-hover hover:bg-brand-hover

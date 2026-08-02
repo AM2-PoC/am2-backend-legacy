@@ -62,7 +62,12 @@
     --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 
-    --radius-card: 0.75rem;
+    /* The app already had a radius scale; the redesign inherits it rather than
+       inventing one. --am2-radius is 8px and --am2-card-radius is 20px, and the
+       existing components sit between the two. */
+    --radius-control: var(--am2-radius);
+    --radius-card: var(--am2-card-radius);
+    --radius-panel: 14px;
 }
 
 /* Someone watching a live map for hours did not ask for movement. */
