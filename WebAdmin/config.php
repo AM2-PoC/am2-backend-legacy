@@ -45,6 +45,24 @@ if ($password === '') {
 // the panel pages can reach it without importing a global.
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
+/**
+ * Whether the signed-in admin may act on this user.
+ *
+ * Superadmins may act on anyone. A branch admin may act only on users it owns.
+ * Every mutation path used to check that someone was logged in and nothing
+ * more, so any branch admin could edit, re-channel, or disconnect another
+ * branch's users by supplying their id.
+ */
+function am2_admin_owns_user(PDO $pdo, $adminId, $adminRole, $userId): bool
+{
+    if ($adminRole === 'superadmin') {
+        return true;
+    }
+    $stmt = $pdo->prepare("SELECT 1 FROM public.users WHERE id = ? AND admin_id = ?");
+    $stmt->execute([$userId, $adminId]);
+    return (bool) $stmt->fetchColumn();
+}
+
 $dsn = "pgsql:host={$host};port={$port};dbname={$dbname}";
 
 try {

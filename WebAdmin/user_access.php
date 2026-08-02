@@ -43,6 +43,12 @@ function notifyForceLogout($userId) {
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'db_force_logout') {
     $uid_to_kick = $_POST['user_id'];
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, $uid_to_kick)) {
+        header('Content-Type: application/json');
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+        exit;
+    }
     try {
         $pdo->beginTransaction();
 

@@ -8,6 +8,13 @@ $admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';
 try {
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
 
+    if ($admin_role !== 'superadmin' && $current_admin_id === null) {
+        // Without an admin_id there is no branch to scope to. Answering with
+        // the global figure is what made this leak in the first place.
+        echo json_encode(['error' => 'admin_id is required']);
+        exit;
+    }
+
     if ($admin_role === 'superadmin') {
         $query = "
             SELECT 
@@ -32,7 +39,7 @@ try {
             ) series
             LEFT JOIN public.ptt_logs l ON TO_CHAR(l.event_time, 'HH24:00') = TO_CHAR(series.jam, 'HH24:00')
                  AND l.event_time > NOW() - INTERVAL '24 hours'
-            LEFT JOIN public.users u ON l.user_id = u.id AND u.admin_id = :admin_id
+                 AND l.user_id IN (SELECT id FROM public.users WHERE admin_id = :admin_id)
             GROUP BY series.jam
             ORDER BY series.jam ASC
         ";

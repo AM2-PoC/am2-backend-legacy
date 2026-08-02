@@ -81,6 +81,10 @@ if (isset($_GET['get_user_channels'])) {
 if (isset($_POST['save_user_channels'])) {
     header('Content-Type: application/json');
     $u_id = $_POST['u_id'];
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $u_id)) {
+        echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
+        exit;
+    }
     $channels = json_decode($_POST['channels'], true) ?: [];
     try {
         $pdo->beginTransaction();
@@ -103,6 +107,10 @@ if (isset($_POST['save_user_channels'])) {
 
 if (isset($_POST['update_feature'])) {
     header('Content-Type: application/json');
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['u_id'] ?? '')) {
+        echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
+        exit;
+    }
     $u_id = $_POST['u_id'];
     $feature = $_POST['feature'];
 
@@ -165,6 +173,12 @@ if (isset($_POST['update_feature'])) {
     echo json_encode(['success' => false, 'msg' => 'Akses ditolak']); exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])
+        && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['edit_id'] ?? '')) {
+    $error_msg = "Akses ditolak.";
+    unset($_POST['edit_user']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
     $edit_id = $_POST['edit_id'];
     $edit_name = strtoupper(trim($_POST['edit_name']));
@@ -187,6 +201,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         $error_msg = $e->getMessage();
     }
+}
+
+if (isset($_GET['delete'])
+        && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_GET['delete'])) {
+    $error_msg = "Akses ditolak.";
+    unset($_GET['delete']);
 }
 
 if (isset($_GET['delete'])) {

@@ -61,7 +61,7 @@ if ($method == 'GET') {
     }
 
     if ($search !== '') {
-        $sql .= " AND (u.name ILIKE ? u.id::text ILIKE ?)";
+        $sql .= " AND (u.name ILIKE ? OR u.id::text ILIKE ?)";
         $params[] = "%$search%";
         $params[] = "%$search%";
     }
