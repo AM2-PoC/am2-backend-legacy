@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/*
+ * Self-hosted, so the panel does not reach a third party to render itself.
+ * Variable weights: one file each instead of six.
+ */
+@font-face {
+    font-family: "Inter";
+    src: url("../font/Inter.woff2") format("woff2-variations");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("../font/JetBrainsMono.woff2") format("woff2-variations");
+    font-weight: 100 800;
+    font-style: normal;
+    font-display: swap;
+}
+
+
 /* Tailwind scans these for class names. The stylesheet lives two levels down. */
 @source "../../*.php";
 @source "../../lang/*.php";
@@ -36,8 +56,21 @@
     --color-warn: var(--color-warning);
     --color-bad: var(--color-danger);
 
-    --font-sans: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
-                 "Helvetica Neue", Arial, sans-serif;
+    /* Inter for the interface. Mono is not decoration here: unit ids, call
+       signs, timestamps and log lines are identifiers, and every real dispatch
+       system sets them monospaced so digits align and can be read aloud. */
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 
     --radius-card: 0.75rem;
+}
+
+/* Someone watching a live map for hours did not ask for movement. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
