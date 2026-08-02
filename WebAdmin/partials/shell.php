@@ -49,6 +49,8 @@ function am2_icon(string $name): string
         'power'   => '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>',
         'menu'    => '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
         'close'   => '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        'sun'     => '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
+        'moon'    => '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
     ];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"'
         . ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="h-[18px] w-[18px] shrink-0">'
@@ -156,15 +158,27 @@ function am2_icon(string $name): string
             <?php endif; ?>
         </div>
 
-        <div class="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.15em]">
-            <?php foreach (AM2_LOCALES as $loc): ?>
+        <!-- One size for every control in this row, so they read as a set
+             rather than as three unrelated things. -->
+        <div class="flex items-center gap-1.5">
+            <?php foreach (AM2_LOCALES as $loc): $on = am2_locale() === $loc; ?>
                 <a href="?lang=<?= $loc ?>"
-                   class="no-underline! <?= am2_locale() === $loc ? 'text-brand!' : 'text-ink-subtle! hover:text-ink!' ?>"
-                   <?= am2_locale() === $loc ? 'aria-current="true"' : '' ?>><?= strtoupper($loc) ?></a>
+                   <?= $on ? 'aria-current="true"' : '' ?>
+                   title="<?= e('pref.language') ?>"
+                   class="grid h-9 w-9 place-items-center rounded-control border no-underline!
+                          font-mono text-[11px] uppercase transition-colors
+                          <?= $on
+                              ? 'border-brand bg-brand/10 text-brand!'
+                              : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>"><?= strtoupper($loc) ?></a>
             <?php endforeach; ?>
             <button type="button" id="themeToggle"
-                    class="rounded-control border border-edge px-2 py-1 text-ink-subtle hover:text-ink"
-                    aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"><?= e('pref.theme') ?></button>
+                    class="grid h-9 w-9 place-items-center rounded-control border border-edge
+                           text-ink-subtle transition-colors hover:border-edge-strong hover:text-ink"
+                    aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
+                    aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
+                <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon') ?></span>
+                <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun') ?></span>
+            </button>
         </div>
     </header>
 
