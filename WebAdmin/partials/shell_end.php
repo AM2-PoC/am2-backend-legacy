@@ -54,6 +54,17 @@
     document.addEventListener('alpine:init', () => {
         Alpine.store('nav', {
             rail: <?= am2_sidebar_collapsed() ? 'true' : 'false' ?>,
+            // Which nav groups are folded. A cookie again, so the sidebar
+            // renders already folded instead of folding after paint.
+            folded: <?= json_encode(am2_folded_groups()) ?>,
+            isFolded(g) { return this.folded.includes(g); },
+            fold(g) {
+                this.folded = this.isFolded(g)
+                    ? this.folded.filter((x) => x !== g)
+                    : [...this.folded, g];
+                document.cookie = 'am2_folded=' + encodeURIComponent(this.folded.join(','))
+                    + ';path=/;max-age=31536000;samesite=lax';
+            },
             wide: window.matchMedia('(min-width: 1024px)').matches,
             init() {
                 window.matchMedia('(min-width: 1024px)')
@@ -169,7 +180,12 @@
     document.getElementById('themeToggle').addEventListener('click', function () {
         const root = document.documentElement;
         const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        // Switch, do not animate. Without this every bordered control eases to
+        // its new colour at the same time and the change reads as a sweep.
+        root.classList.add('am2-theme-switching');
         root.setAttribute('data-theme', next);
+        requestAnimationFrame(() => requestAnimationFrame(
+            () => root.classList.remove('am2-theme-switching')));
         document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
         this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
         // A moon offers dark; a sun offers light.

@@ -98,3 +98,12 @@
     100% { transform: scale(3.4); opacity: 0; }
 }
 [x-cloak] { display: none !important; }
+
+/* While the theme flips, every element carrying transition-colors animates at
+   once. On a page with a few hundred controls that reads as a sweep across the
+   screen rather than a switch. Suppressed for one frame. */
+.am2-theme-switching *,
+.am2-theme-switching *::before,
+.am2-theme-switching *::after {
+    transition: none !important;
+}

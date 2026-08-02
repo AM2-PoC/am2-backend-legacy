@@ -59,6 +59,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         'moon'     => '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
         'search'   => '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
         'collapse' => '<path d="m14 8-4 4 4 4"/><path d="M4 4v16"/>',
+        'chevron'  => '<path d="m6 9 6 6 6-6"/>',
         'expand'   => '<path d="m10 8 4 4-4 4"/><path d="M4 4v16"/>',
     ];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"'
@@ -124,16 +125,23 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 
     <nav class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
         <?php foreach ($navGroups as $groupKey => $items): ?>
-            <p x-show="!rail" x-cloak
-               class="whitespace-nowrap px-3 pb-1.5 pt-4 font-mono text-[9px] uppercase tracking-[0.2em] text-ink-subtle first:pt-1">
+            <button type="button" x-show="!rail" x-cloak
+                    @click="$store.nav.fold(<?= js($groupKey) ?>)"
+                    :aria-expanded="$store.nav.isFolded(<?= js($groupKey) ?>) ? 'false' : 'true'"
+                    class="flex w-full items-center gap-1.5 whitespace-nowrap rounded-control px-3 pb-1.5 pt-4
+                           font-mono text-[9px] uppercase tracking-[0.2em] text-ink-subtle
+                           hover:text-ink-muted">
+                <span class="transition-transform"
+                      :class="$store.nav.isFolded(<?= js($groupKey) ?>) && '-rotate-90'"><?= am2_icon('chevron', 'h-3 w-3') ?></span>
                 <?= e($groupKey) ?>
-            </p>
+            </button>
             <div x-show="rail" x-cloak class="mx-2 my-2 h-px bg-edge first:hidden" aria-hidden="true"></div>
             <?php foreach ($items as [$href, $labelKey, $icon, $depth]): $active = $currentPage === $href; ?>
                 <a href="<?= $href ?>"
                    <?= $active ? 'aria-current="page"' : '' ?>
                    :title="rail ? <?= js($labelKey) ?> : null"
                    aria-label="<?= e($labelKey) ?>"
+                   x-show="rail || !$store.nav.isFolded(<?= js($groupKey) ?>)"
                    :class="rail && 'justify-center'"
                    class="group relative mb-0.5 flex items-center gap-3 rounded-control py-2 text-sm no-underline! transition-colors
                           <?= $depth ? 'pl-9 pr-3' : 'px-3' ?>
