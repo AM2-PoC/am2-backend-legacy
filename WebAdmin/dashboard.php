@@ -91,36 +91,78 @@ try {
 
     // Where the traffic actually is: units on each channel now, and the calls
     // that channel carried today.
+    //
+    // Correlated subqueries rather than joins. Joining ptt_logs and counting
+    // DISTINCT over the result took 16 seconds against 55k rows, because the
+    // time filter could not be applied until after the join. Here it narrows
+    // first, and idx_ptt_logs_channel_time makes it an index scan.
     if ($isSuper) {
         $stmt = $pdo->query("
             SELECT c.id, c.display_name,
-                   COUNT(DISTINCT u.id) FILTER (WHERE u.status = 'online') AS online_now,
-                   COUNT(DISTINCT l.id) FILTER (
-                       WHERE l.event_type IN ('PUSH','PUSH_PRIVATE')
-                         AND l.event_time > NOW() - INTERVAL '24 hours') AS calls_24h
+              (SELECT COUNT(*) FROM public.users u
+                 WHERE u.last_channel_id = c.id AND u.status = 'online') AS online_now,
+              (SELECT COUNT(*) FROM public.ptt_logs l
+                 WHERE l.channel_id = c.id
+                   AND l.event_type IN ('PUSH','PUSH_PRIVATE')
+                   AND l.event_time > NOW() - INTERVAL '24 hours') AS calls_24h
             FROM public.channels c
-            LEFT JOIN public.users u ON u.last_channel_id = c.id
-            LEFT JOIN public.ptt_logs l ON l.channel_id = c.id
-            GROUP BY c.id, c.display_name
             ORDER BY calls_24h DESC, online_now DESC, c.display_name ASC
             LIMIT 6");
     } else {
         $stmt = $pdo->prepare("
             SELECT c.id, c.display_name,
-                   COUNT(DISTINCT u.id) FILTER (WHERE u.status = 'online') AS online_now,
-                   COUNT(DISTINCT l.id) FILTER (
-                       WHERE l.event_type IN ('PUSH','PUSH_PRIVATE')
-                         AND l.event_time > NOW() - INTERVAL '24 hours') AS calls_24h
+              (SELECT COUNT(*) FROM public.users u
+                 WHERE u.last_channel_id = c.id AND u.status = 'online'
+                   AND u.admin_id = :aid) AS online_now,
+              (SELECT COUNT(*) FROM public.ptt_logs l
+                 JOIN public.users lu ON lu.id = l.user_id
+                 WHERE l.channel_id = c.id
+                   AND l.event_type IN ('PUSH','PUSH_PRIVATE')
+                   AND l.event_time > NOW() - INTERVAL '24 hours'
+                   AND lu.admin_id = :aid) AS calls_24h
             FROM public.channels c
-            LEFT JOIN public.users u ON u.last_channel_id = c.id AND u.admin_id = :aid
-            LEFT JOIN public.ptt_logs l ON l.channel_id = c.id
-                 AND l.user_id IN (SELECT id FROM public.users WHERE admin_id = :aid)
-            GROUP BY c.id, c.display_name
             ORDER BY calls_24h DESC, online_now DESC, c.display_name ASC
             LIMIT 6");
         $stmt->execute(['aid' => $current_admin_id]);
     }
     $channel_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Units that cannot sign in at all. server.js refuses app_login unless the
+    // user has a last_channel_id AND a matching user_channels row, answering
+    // "Admin belum menentukan Channel Default". Nothing in the panel showed
+    // which users are in that state, so it surfaced only as a support call.
+    if ($isSuper) {
+        $stmt = $pdo->query("
+            SELECT u.id, u.name FROM public.users u
+            WHERE u.role = 'user'
+              AND (u.last_channel_id IS NULL
+                   OR NOT EXISTS (SELECT 1 FROM public.user_channels uc
+                                  WHERE uc.user_id = u.id AND uc.channel_id = u.last_channel_id))
+            ORDER BY u.name LIMIT 8");
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT u.id, u.name FROM public.users u
+            WHERE u.role = 'user' AND u.admin_id = ?
+              AND (u.last_channel_id IS NULL
+                   OR NOT EXISTS (SELECT 1 FROM public.user_channels uc
+                                  WHERE uc.user_id = u.id AND uc.channel_id = u.last_channel_id))
+            ORDER BY u.name LIMIT 8");
+        $stmt->execute([$current_admin_id]);
+    }
+    $stranded = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Branch admins whose access is about to lapse. When it does, server.js
+    // force-logs-out every one of their units.
+    $expiring = [];
+    if ($isSuper) {
+        $expiring = $pdo->query("
+            SELECT username, expired_at,
+                   (expired_at - CURRENT_DATE) AS days_left
+            FROM public.admin
+            WHERE role <> 'superadmin' AND expired_at IS NOT NULL
+              AND expired_at <= CURRENT_DATE + INTERVAL '30 days'
+            ORDER BY expired_at ASC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // Quota applies to branch admins only; a superadmin has none.
     $quota = null;
@@ -144,6 +186,8 @@ try {
     $calls_24h = 0;
     $channel_rows = [];
     $quota = null;
+    $stranded = [];
+    $expiring = [];
     error_log('AM2 dashboard extras failed: ' . $e->getMessage());
 }
 ?>
@@ -274,30 +318,63 @@ include 'partials/shell.php';
     </section>
 </div>
 
-<section class="mt-6 rounded-card border border-edge bg-card" x-data="activityFeed()" x-init="start()">
-    <div class="flex items-center justify-between border-b border-edge px-5 py-4">
-        <h2 class="text-sm font-semibold"><?= e('dash.recent') ?></h2>
-        <span x-show="stale" x-cloak class="font-mono text-[10px] uppercase tracking-[0.15em] text-warn">
-            <?= e('rail.stale') ?>
-        </span>
+<section class="mt-6 grid gap-6 xl:grid-cols-2">
+
+    <div class="rounded-card border border-edge bg-card">
+        <div class="flex items-baseline justify-between border-b border-edge px-5 py-4">
+            <h2 class="text-sm font-semibold"><?= e('dash.stranded') ?></h2>
+            <span class="font-mono text-xs tabular-nums <?= empty($stranded) ? 'text-ink-subtle' : 'text-warn' ?>">
+                <?= count($stranded) ?>
+            </span>
+        </div>
+        <p class="px-5 pt-3 text-xs text-ink-muted"><?= e('dash.stranded_note') ?></p>
+        <?php if (empty($stranded)): ?>
+            <p class="px-5 py-6 text-sm text-ink-muted"><?= e('dash.stranded_none') ?></p>
+        <?php else: ?>
+            <ul class="mt-2 divide-y divide-edge">
+                <?php foreach ($stranded as $u): ?>
+                    <li class="flex items-center gap-3 px-5 py-2.5">
+                        <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true"></span>
+                        <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($u['name']) ?></span>
+                        <span class="shrink-0 font-mono text-[11px] text-ink-subtle"><?= htmlspecialchars($u['id']) ?></span>
+                        <a href="user_access.php?search=<?= urlencode($u['id']) ?>"
+                           class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-brand! no-underline! hover:underline!">
+                            <?= e('dash.fix') ?>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
     </div>
-    <ul class="divide-y divide-edge">
-        <template x-for="row in rows" :key="row.key">
-            <li class="flex items-baseline gap-3 px-5 py-2.5">
-                <span class="w-16 shrink-0 font-mono text-[11px] tabular-nums text-ink-subtle" x-text="row.jam"></span>
-                <span class="w-14 shrink-0 rounded-control px-1.5 py-0.5 text-center font-mono text-[9px] uppercase tracking-[0.1em]"
-                      :class="row.kategori === 'ADM' ? 'bg-accent/10 text-accent' : 'bg-brand/10 text-brand'"
-                      x-text="row.kategori"></span>
-                <span class="min-w-0 flex-1 truncate text-sm" x-text="row.target"></span>
-                <span class="hidden shrink-0 truncate font-mono text-[11px] text-ink-subtle sm:block"
-                      x-text="row.pelaksana"></span>
-            </li>
-        </template>
-    </ul>
-    <p x-show="rows.length === 0" x-cloak class="px-5 py-8 text-center text-sm text-ink-muted">
-        <?= e('dash.no_activity') ?>
-    </p>
+
+    <?php if ($isSuper): ?>
+    <div class="rounded-card border border-edge bg-card">
+        <div class="flex items-baseline justify-between border-b border-edge px-5 py-4">
+            <h2 class="text-sm font-semibold"><?= e('dash.expiring') ?></h2>
+            <span class="font-mono text-xs tabular-nums <?= empty($expiring) ? 'text-ink-subtle' : 'text-warn' ?>">
+                <?= count($expiring) ?>
+            </span>
+        </div>
+        <p class="px-5 pt-3 text-xs text-ink-muted"><?= e('dash.expiring_note') ?></p>
+        <?php if (empty($expiring)): ?>
+            <p class="px-5 py-6 text-sm text-ink-muted"><?= e('dash.expiring_none') ?></p>
+        <?php else: ?>
+            <ul class="mt-2 divide-y divide-edge">
+                <?php foreach ($expiring as $a): $d = (int) $a['days_left']; ?>
+                    <li class="flex items-center gap-3 px-5 py-2.5">
+                        <span class="h-1.5 w-1.5 shrink-0 rounded-full <?= $d <= 7 ? 'bg-bad' : 'bg-warn' ?>" aria-hidden="true"></span>
+                        <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($a['username']) ?></span>
+                        <span class="shrink-0 font-mono text-[11px] tabular-nums <?= $d <= 7 ? 'text-bad' : 'text-ink-subtle' ?>">
+                            <?= $d < 0 ? e('dash.expired') : $d . ' ' . t('dash.days') ?>
+                        </span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 </section>
+
 <?php include "partials/shell_end.php"; ?>
 
 <script src="<?= am2_asset('asset/js/chart.umd.min.js') ?>"></script>
