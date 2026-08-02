@@ -84,44 +84,6 @@ describe('KNOWN BROKEN — locked here so the security release must change them 
         assert.ok('total_user' in body, 'today: full data returned to an anonymous caller');
     });
 
-    test('api_get_users.php drops the tenant filter when admin_id is omitted', async () => {
-        const scoped = await json(await get('/api_get_users.php?admin_id=6&role=admin', null));
-        const unscoped = await json(await get('/api_get_users.php?role=admin', null));
-        assert.ok(Array.isArray(scoped) && Array.isArray(unscoped));
-        assert.ok(unscoped.length >= scoped.length,
-            'today: omitting admin_id widens the result instead of narrowing it');
-    });
-
-    test('api_user_access.php search is a SQL syntax error', async () => {
-        // "AND (u.name ILIKE ? u.id::text ILIKE ?)" — the OR is missing.
-        const res = await get(
-            '/api_user_access.php?admin_id=1&role=superadmin&search=CT', null);
-        const text = await res.text();
-        assert.ok(/error|syntax|exception/i.test(text) || res.status >= 400,
-            'today: any search request fails');
-    });
-
-    test('a branch admin can mutate a user belonging to another branch', async () => {
-        // CT_B1 belongs to branch B; branch A is logged in.
-        const body = await json(await postForm('/users.php', branchA, {
-            update_feature: '1', u_id: 'CT_B1', feature: 'enable_maps', val: 'true',
-        }));
-        assert.equal(body.success, true, 'today: no ownership check on the mutation path');
-        await postForm('/users.php', branchA, {
-            update_feature: '1', u_id: 'CT_B1', feature: 'enable_maps', val: 'false',
-        });
-    });
-
-    test('the dashboard chart ignores the tenant filter entirely', async () => {
-        // The predicate sits in the ON clause of a LEFT JOIN, so COUNT(l.id)
-        // still counts every row. Branch admins see global traffic.
-        const branch = await json(await get('/api_dashboard_chart.php?admin_id=6&role=admin', null));
-        const global = await json(await get('/api_dashboard_chart.php?admin_id=1&role=superadmin', null));
-        const sum = (a) => a.reduce((x, y) => x + y, 0);
-        assert.equal(sum(branch.values), sum(global.values),
-            'today: a branch admin is shown the global total');
-    });
-
     test('destructive panel actions are plain GET with no token', async () => {
         const src = await (await get('/users.php', sup)).text();
         assert.match(src, /href=["']\?delete=/,
@@ -173,6 +135,56 @@ describe('node relay routes', () => {
         });
         assert.notEqual(res.status, 401, 'today: no authentication layer exists');
         assert.notEqual(res.status, 403);
+    });
+});
+
+describe('tenant scoping, corrected in the security release', () => {
+    // These four assertions replace entries that used to sit in the KNOWN
+    // BROKEN block above. They are kept, not deleted, so a regression reads as
+    // a failure rather than as silence.
+
+    test('omitting admin_id narrows the result to nothing, never widens it', async () => {
+        const scoped = await json(await get('/api_get_users.php?admin_id=6&role=admin', null));
+        const unscoped = await json(await get('/api_get_users.php?role=admin', null));
+        assert.ok(Array.isArray(scoped) && Array.isArray(unscoped));
+        assert.equal(unscoped.length, 0,
+            'a branch request with no branch must return nothing, not everything');
+    });
+
+    test('api_user_access.php search runs', async () => {
+        const res = await get('/api_user_access.php?admin_id=1&role=superadmin&search=CT', null);
+        assert.equal(res.status, 200);
+        const body = await json(res);
+        assert.ok(Array.isArray(body) || typeof body === 'object',
+            'the missing OR used to make every search a syntax error');
+    });
+
+    test('a branch admin cannot mutate another branch user', async () => {
+        const body = await json(await postForm('/users.php', branchA, {
+            update_feature: '1', u_id: 'CT_B1', feature: 'enable_maps', val: 'true',
+        }));
+        assert.equal(body.success, false, 'ownership is checked, not just login');
+        assert.ok('msg' in body);
+    });
+
+    test('a branch admin cannot force-logout another branch user', async () => {
+        const res = await postForm('/user_access.php', branchA, {
+            action: 'db_force_logout', user_id: 'CT_B1',
+        });
+        assert.equal(res.status, 403);
+    });
+
+    test('the dashboard chart scopes to the branch', async () => {
+        const branch = await json(await get('/api_dashboard_chart.php?admin_id=6&role=admin', null));
+        const global = await json(await get('/api_dashboard_chart.php?admin_id=1&role=superadmin', null));
+        const sum = (a) => a.reduce((x, y) => x + y, 0);
+        assert.ok(sum(branch.values) < sum(global.values),
+            'a branch total that equals the global total means the filter is a no-op again');
+    });
+
+    test('the chart refuses a branch request with no branch', async () => {
+        const body = await json(await get('/api_dashboard_chart.php?role=admin', null));
+        assert.ok('error' in body, 'falling back to the global figure is what leaked');
     });
 });
 
