@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+am2_api_auth();
 
 $admin_id = $_GET['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? 'admin';

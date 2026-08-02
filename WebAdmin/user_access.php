@@ -17,10 +17,11 @@ function syncUserChannels($userId) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array_filter([trim(am2_node_auth_header())]));
         @curl_exec($ch);
         curl_close($ch);
     } else {
-        $options = ['http' => ['timeout' => 2]];
+        $options = ['http' => ['timeout' => 2, 'header' => am2_node_auth_header()]];
         $context = stream_context_create($options);
         @file_get_contents($url, false, $context);
     }
@@ -31,7 +32,7 @@ function notifyForceLogout($userId) {
     $data = json_encode(['userId' => $userId]);
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => $data,
             'timeout' => 2

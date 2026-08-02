@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 function syncUserChannels($userId) {
     $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
@@ -18,7 +19,7 @@ function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'HALF DU
     ];
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => json_encode($data),
             'timeout' => 2

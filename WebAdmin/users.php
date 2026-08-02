@@ -28,7 +28,7 @@ function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'FULL DU
     ];
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => json_encode($data),
             'timeout' => 2

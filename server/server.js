@@ -50,10 +50,44 @@ const activeSpeakers = new Map();    // channelSlug -> Set of "userId:userName"
 const activeVideoRooms = new Map();  // channelSlug -> Set of "userId:userName"
 
 // --- MIDDLEWARE ---
-app.use(cors());
+// Was wildcard. The relay is called by the panel over localhost and by the
+// Admin Native app; neither is a browser making cross-origin requests.
+const CORS_ALLOWED = (process.env.AM2_CORS_ORIGINS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+app.use(cors({
+    origin: CORS_ALLOWED.length ? CORS_ALLOWED : false,
+    credentials: false,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Credential for the admin surface.
+//
+// Ten /api/admin/* routes had no authentication at all, and nginx forwards
+// every path, so they were reachable from the internet. Four are now denied at
+// the edge; the rest are used by the Admin Native app, which cannot present a
+// key until it is updated. So this records rather than rejects until
+// AM2_API_AUTH_MODE is set to "enforce".
+const API_KEY = process.env.AM2_API_KEY || '';
+const API_AUTH_MODE = (process.env.AM2_API_AUTH_MODE || 'log').toLowerCase();
+
+app.use('/api/admin', (req, res, next) => {
+    const sent = req.get('X-AM2-Api-Key') || req.query.api_key || '';
+    if (API_KEY && sent && sent === API_KEY) return next();
+
+    console.warn('[api-auth] REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
+        req.method, req.originalUrl,
+        req.get('X-Real-IP') || req.socket.remoteAddress,
+        (req.get('User-Agent') || '-').slice(0, 120),
+        sent ? 'wrong' : 'absent');
+
+    if (API_AUTH_MODE === 'enforce') {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    return next();
+});
+
 
 // --- AUTO UPDATE ROUTE ---
 app.use('/update', express.static(UPDATE_DIR, {

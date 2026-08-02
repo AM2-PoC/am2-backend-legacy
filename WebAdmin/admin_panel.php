@@ -15,7 +15,7 @@ function notifyNodeServerToRefresh($adminId) {
     $data = array('adminId' => $adminId);
     $options = array(
         'http' => array(
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => json_encode($data),
             'timeout' => 2
