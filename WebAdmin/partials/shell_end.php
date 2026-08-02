@@ -40,5 +40,8 @@
         root.setAttribute('data-theme', next);
         document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
         this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
+        // Swap which icon is shown: a moon offers dark, a sun offers light.
+        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
+        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
     });
 </script>
