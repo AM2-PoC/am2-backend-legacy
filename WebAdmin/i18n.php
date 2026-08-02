@@ -134,3 +134,10 @@ function am2_sidebar_collapsed(): bool
 {
     return ($_COOKIE['am2_nav'] ?? 'wide') === 'rail';
 }
+
+/** Nav groups the operator has folded away, from a cookie. */
+function am2_folded_groups(): array
+{
+    $raw = $_COOKIE['am2_folded'] ?? '';
+    return $raw === '' ? [] : array_values(array_filter(explode(',', $raw)));
+}
