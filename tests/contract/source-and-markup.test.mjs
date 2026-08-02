@@ -6,7 +6,7 @@
 // assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, get, readSrc, SERVER_JS } from './helpers.mjs';
+import { asSuper, get, readSrc, SRC, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
 
 let sup;
@@ -48,8 +48,14 @@ describe('form field names are the API', () => {
             for (const n of names) {
                 assert.ok(src.includes(`'${n}'`),
                     `${file}: PHP no longer reads the field ${n}`);
-                assert.ok(new RegExp(`append\\(\\s*['"\`]${n}['"\`]`).test(src),
-                    `${file}: nothing appends ${n} to a FormData — the branch is now unreachable`);
+                // Either an explicit append or an object key handed to a
+                // helper that appends. What matters is that the literal field
+                // name still appears in the code that builds the request, so
+                // renaming one side of the pair breaks this.
+                const built = new RegExp(
+                    `append\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
+                assert.ok(built,
+                    `${file}: nothing posts ${n} — the branch is now unreachable`);
             }
         });
     }
@@ -288,7 +294,13 @@ describe('alpine expressions in attributes', () => {
     // rendered fallback keeps the element looking correct, so it survives a
     // screenshot review. js() escapes the quotes; json_encode stays correct
     // inside a <script> block.
-    const MIGRATED = ['login.php', 'dashboard.php', 'partials/shell.php', 'partials/shell_end.php'];
+    // Detected, not listed: a hand-written list silently stops covering the
+    // next page that migrates, which is exactly how this slipped through once.
+    const MIGRATED = ['login.php', 'partials/shell.php', 'partials/shell_end.php'].concat(
+        fs.readdirSync(SRC)
+          .filter((f) => f.endsWith('.php'))
+          .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+    );
 
     for (const f of MIGRATED) {
         test(`${f} does not put raw json_encode in an attribute`, () => {
@@ -317,7 +329,11 @@ describe('js() and json_encode belong in different places', () => {
     // json_encode in an attribute terminates it at the first quote, and the
     // element keeps rendering its fallback so it looks fine. js() inside a
     // <script> emits &quot;, which is a syntax error that kills the block.
-    const FILES = ['login.php', 'dashboard.php', 'logs.php', 'partials/shell_end.php'];
+    const FILES = ['login.php', 'partials/shell_end.php'].concat(
+        fs.readdirSync(SRC)
+          .filter((f) => f.endsWith('.php'))
+          .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+    );
 
     for (const f of FILES) {
         test(`${f} keeps js() out of script blocks`, () => {
