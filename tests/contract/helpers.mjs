@@ -54,7 +54,11 @@ export async function login(user, pass) {
         body: new URLSearchParams({ username: user, password: pass }),
     });
     const raw = res.headers.getSetCookie?.() ?? [];
-    const sid = raw.map((c) => c.split(';')[0]).find((c) => c.startsWith('PHPSESSID='));
+    // session_regenerate_id(true) emits two PHPSESSID cookies: one expiring the
+    // old id, then the new one. The last wins, which is what a browser stores.
+    const sid = raw.map((c) => c.split(';')[0])
+                   .filter((c) => c.startsWith('PHPSESSID='))
+                   .pop();
     if (!sid) {
         throw new Error(`login failed for ${user}: status ${res.status}, no session cookie`);
     }
