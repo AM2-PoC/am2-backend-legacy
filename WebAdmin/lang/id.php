@@ -7,6 +7,11 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'common.retry' => 'Coba lagi',
+    'state.error_title' => 'Gagal memuat data',
+    'state.error_body' => 'Sambungan ke server terputus. Data di layar mungkin sudah tidak berlaku.',
+    'state.stale_title' => 'Data tidak terbarui',
+    'state.stale_body' => 'Pembaruan terakhir gagal, jadi angka di bawah ini belum tentu yang terbaru.',
     'common.session_expired' => 'Sesi berakhir. Silakan masuk kembali.',
     'common.denied' => 'Akses ditolak.',
     'nav.close_menu' => 'Tutup menu',

@@ -317,11 +317,20 @@ include 'partials/shell.php';
 
     <!-- Access modal. The user list is rendered server-side and ticked from the
          endpoint, the same shape the page has always used. -->
-    <div id="accessModal" x-cloak x-show="access.open" x-transition.opacity.duration.120ms
+    <div id="accessModal" x-cloak x-show="access.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="access.open = false" @keydown.window.escape="access.open = false"
          role="dialog" aria-modal="true">
-        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="access.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="manage_ch_id" id="target_ch_id" :value="access.id">
 
@@ -367,11 +376,20 @@ include 'partials/shell.php';
         </form>
     </div>
 
-    <div id="editModal" x-cloak x-show="edit.open" x-transition.opacity.duration.120ms
+    <div id="editModal" x-cloak x-show="edit.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="edit.open = false" @keydown.window.escape="edit.open = false"
          role="dialog" aria-modal="true">
-        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="edit.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="edit_id" :value="edit.id">
             <div class="border-b border-edge px-5 py-4">
