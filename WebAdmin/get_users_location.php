@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+am2_api_auth();
 
 if (ob_get_length()) ob_clean();
 
