@@ -203,14 +203,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
     }
 }
 
-if (isset($_GET['delete'])
-        && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_GET['delete'])) {
+if (isset($_POST['delete_user'])
+        && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['delete_user'])) {
     $error_msg = "Akses ditolak.";
-    unset($_GET['delete']);
+    unset($_POST['delete_user']);
 }
 
-if (isset($_GET['delete'])) {
-    $del_id = $_GET['delete'];
+if (isset($_POST['delete_user'])) {
+    $del_id = $_POST['delete_user'];
     try {
         $pdo->beginTransaction();
         $stmtN = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
@@ -323,6 +323,7 @@ if ($admin_role === 'superadmin') {
                 <div class="col-12">
                     <div class="card card-custom toolbar-card p-3 p-md-4">
                         <form method="POST" class="row g-2 g-md-3">
+                    <?= am2_csrf_field() ?>
                             <div class="col-md-3">
                                 <label class="small fw-bold text-muted">ID / USERNAME</label>
                                 <input type="text" name="id" class="form-control form-control-sm" placeholder="Contoh: 12345" required>
@@ -416,9 +417,13 @@ if ($admin_role === 'superadmin') {
                                             <button type="button" class="btn btn-sm btn-light border btn-action-mobile" onclick="event.stopPropagation(); openEditModal(<?= htmlspecialchars(json_encode((string)$u['id']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode((string)$u['name']), ENT_QUOTES, 'UTF-8') ?>)">
                                                 <i class="fas fa-edit text-primary"></i> <span class="d-md-none">EDIT</span>
                                             </button>
-                                            <a href="?delete=<?= $u['id'] ?>" class="btn btn-sm btn-light border btn-danger-soft" onclick="return confirm('Hapus user ini?')">
-                                                <i class="fas fa-trash text-danger"></i> <span class="d-md-none">HAPUS</span>
-                                            </a>
+                                            <form method="POST" class="d-inline" onsubmit="return confirm('Hapus user ini?')">
+                                                <?= am2_csrf_field() ?>
+                                                <input type="hidden" name="delete_user" value="<?= htmlspecialchars($u['id'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <button type="submit" class="btn btn-sm btn-light border btn-danger-soft">
+                                                    <i class="fas fa-trash text-danger"></i> <span class="d-md-none">HAPUS</span>
+                                                </button>
+                                            </form>
                                         </div>
                                     </td>
                                 </tr>
@@ -439,6 +444,7 @@ if ($admin_role === 'superadmin') {
 <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header border-0 pb-0">
                  <h6 class="fw-bold mb-0">Update Data User</h6>
                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -509,6 +515,7 @@ if ($admin_role === 'superadmin') {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    const AM2_CSRF = <?= json_encode(am2_csrf_token()) ?>;
     const toastObj = new bootstrap.Toast(document.getElementById('liveToast'));
     const channelModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('channelModal'));
 
@@ -532,6 +539,7 @@ if ($admin_role === 'superadmin') {
     function updateFeature(uId, feature, val) {
         const fd = new FormData();
         fd.append('update_feature', '1');
+        fd.append('_csrf', AM2_CSRF);
         fd.append('u_id', uId);
         fd.append('feature', feature);
         fd.append('val', val);
@@ -552,6 +560,7 @@ if ($admin_role === 'superadmin') {
         const mode = isFull ? 'FULL DUPLEX' : 'HALF DUPLEX';
         const fd = new FormData();
         fd.append('update_feature', '1');
+        fd.append('_csrf', AM2_CSRF);
         fd.append('u_id', uId);
         fd.append('feature', 'duplex_mode');
         fd.append('val', mode);
@@ -615,6 +624,7 @@ if ($admin_role === 'superadmin') {
 
         const fd = new FormData();
         fd.append('save_user_channels', '1');
+        fd.append('_csrf', AM2_CSRF);
         fd.append('u_id', userId);
         fd.append('channels', JSON.stringify(selected));
 

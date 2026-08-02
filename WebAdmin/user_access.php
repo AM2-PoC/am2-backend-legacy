@@ -341,6 +341,7 @@ $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="accessModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content shadow-lg border-0" style="border-radius:15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i>Edit Izin Akses</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -465,6 +466,7 @@ $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
         if (!confirm(`Putuskan koneksi perangkat ${userName}?`)) return;
         let fd = new FormData();
         fd.append('action', 'db_force_logout');
+        fd.append('_csrf', <?= json_encode(am2_csrf_token()) ?>);
         fd.append('user_id', userId);
 
         try {

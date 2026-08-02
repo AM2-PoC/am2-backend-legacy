@@ -46,6 +46,61 @@ if ($password === '') {
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
 /**
+ * The per-session CSRF token, created on first use.
+ */
+function am2_csrf_token(): string
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return '';
+    }
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/** A hidden input carrying the token, for pasting into a form. */
+function am2_csrf_field(): string
+{
+    return '<input type="hidden" name="_csrf" value="'
+        . htmlspecialchars(am2_csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+}
+
+/**
+ * Reject a state-changing request that did not carry the token.
+ *
+ * Applied only to requests that already carry a panel session. The api_*.php
+ * files are called by the Admin Native app, which has no session and no token;
+ * enforcing here would break it. Those get their own credential separately.
+ */
+function am2_csrf_require(): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        return;
+    }
+    if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION['admin_logged_in'])) {
+        return;
+    }
+    $expected = (string) ($_SESSION['csrf_token'] ?? '');
+    $sent = $_POST['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+    // A session that has not rendered a form yet has no stored token. Comparing
+    // two empty strings succeeds, so without this an authenticated POST would
+    // sail through on a session that never saw a form.
+    if ($expected === '' || !is_string($sent) || !hash_equals($expected, $sent)) {
+        error_log('AM2 CSRF rejected for ' . ($_SERVER['REQUEST_URI'] ?? '?'));
+        http_response_code(403);
+        if (str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'json')
+            || str_contains($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '', 'XMLHttpRequest')) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'msg' => 'Sesi tidak valid. Muat ulang halaman.']);
+        } else {
+            echo 'Sesi tidak valid. Muat ulang halaman.';
+        }
+        exit;
+    }
+}
+
+/**
  * Expire an idle session.
  *
  * Runs on every request because config.php is included by every page, and by
@@ -197,6 +252,7 @@ try {
     ]);
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
     am2_expire_idle_session();
+    am2_csrf_require();
 } catch (PDOException $e) {
     error_log('AM2 DB connection failed: ' . $e->getMessage());
     http_response_code(500);
