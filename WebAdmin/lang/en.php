@@ -46,6 +46,8 @@ return [
     'dash.expiring_none' => 'None expiring soon',
     'dash.days' => 'days',
     'dash.expired' => 'Expired',
+    'nav.collapse' => 'Collapse menu',
+    'nav.expand' => 'Expand menu',
     // Navigation
     'nav.home'            => 'Home',
     'nav.management'      => 'Management',

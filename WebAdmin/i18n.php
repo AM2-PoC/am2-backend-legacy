@@ -128,3 +128,9 @@ function js(string $key, array $replace = []): string
 {
     return htmlspecialchars(json_encode(t($key, $replace), JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
 }
+
+/** Whether the sidebar is collapsed to an icon rail. */
+function am2_sidebar_collapsed(): bool
+{
+    return ($_COOKIE['am2_nav'] ?? 'wide') === 'rail';
+}
