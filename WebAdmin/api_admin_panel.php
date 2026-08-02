@@ -3,6 +3,11 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
+// SECURITY: this endpoint carries no caller identity, so it cannot distinguish
+// one admin from another. Its only control is the shared key checked by
+// am2_api_auth(). Anyone holding that key can create or delete an admin,
+// including a superadmin. Giving it a real actor requires a contract change to
+// the Admin Native app.
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method == 'GET') {
