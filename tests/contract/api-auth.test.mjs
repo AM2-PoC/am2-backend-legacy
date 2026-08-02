@@ -109,3 +109,27 @@ describe('sql injection via a column name', () => {
         }
     });
 });
+
+describe('authorization on the api twins', () => {
+    test('a cross-branch mutation is at least recorded', async () => {
+        const { postForm } = await import('./helpers.mjs');
+        const before = fs.statSync('/var/log/apache2/am2_staging_error.log').size;
+        // Branch A's id, asking to delete a user that belongs to branch B.
+        await postForm('/api_users.php?admin_id=6&role=admin', null,
+            { action: 'delete', id: 'CT_B1_DOES_NOT_EXIST' });
+        await new Promise((r) => setTimeout(r, 300));
+        const after = fs.readFileSync('/var/log/apache2/am2_staging_error.log', 'utf8').slice(before);
+        assert.match(after, /api-authz REJECT-CANDIDATE.*delete-foreign-user/);
+    });
+
+    test('every api mutation path consults the ownership helper', async () => {
+        const { readSrc } = await import('./helpers.mjs');
+        for (const f of ['api_users.php', 'api_user_access.php']) {
+            assert.match(readSrc(f), /am2_admin_owns_user/,
+                `${f} mutates without checking who owns the target`);
+        }
+        // api_admin_panel.php is the documented exception: it transmits no
+        // caller identity, so the shared key is its only control.
+        assert.match(readSrc('api_admin_panel.php'), /SECURITY: this endpoint carries no caller identity/);
+    });
+});
