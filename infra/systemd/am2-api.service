@@ -1,0 +1,30 @@
+[Unit]
+Description=AM2 Node API and WebSocket service
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=am2deploy
+Group=www-data
+WorkingDirectory=/var/www/am2/current/server
+EnvironmentFile=/etc/am2/api.env
+ExecStart=/usr/bin/node /var/www/am2/current/server/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+# Safe hardening: does not change API routes or payloads.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/www/am2/shared/server-update /var/www/am2/current/server/update /var/log/am2
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+[Install]
+WantedBy=multi-user.target
