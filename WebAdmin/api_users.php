@@ -5,8 +5,8 @@ am2_api_auth();
 
 
 
-$admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
-$admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';
+// Identity is resolved by the server; see am2_api_identity().
+[$admin_id, $admin_role] = am2_api_identity();
 
 $method = $_SERVER['REQUEST_METHOD'];
 
