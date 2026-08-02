@@ -7,6 +7,7 @@
  *
  */
 return [
+    'common.denied' => 'Access denied.',
     'nav.close_menu' => 'Close menu',
     'rail.transmitting' => 'Transmitting',
     'rail.online' => 'online',

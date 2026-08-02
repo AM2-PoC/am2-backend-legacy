@@ -5,9 +5,16 @@
 // a perfectly ordinary panel session could append `&role=superadmin` and act
 // as one. These tests pin the rule that closed it: a session states nothing
 // about itself, only a key-bearing caller may.
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
-import { BASE, HOST, asSuper, asBranchA, get, postForm, json } from './helpers.mjs';
+import { BASE, HOST, asSuper, asBranchA, get, postForm, json, sql } from './helpers.mjs';
+
+// Run this file against a build where the hole is still open and the escalation
+// probe succeeds -- an actual superadmin account, with a password written in
+// this file, left behind on the host. It happened once. Never leave it there.
+after(() => {
+    sql("DELETE FROM public.admin WHERE username = 'ct_escalation_probe'");
+});
 
 /** A branch session, with an escalation attempt bolted on. */
 const CLAIM = 'admin_id=1&role=superadmin';
@@ -47,13 +54,22 @@ describe('identity is the server\'s to decide', () => {
         assert.strictEqual(res.status, 403);
     });
 
-    test('the chart ignores a claimed identity and answers for the session', async () => {
+    // Sandwiched between two honest calls: other files in the suite edit this
+    // tenant's memberships while this runs, so a plain before/after comparison
+    // fails on a data change rather than on the thing being tested.
+    async function chartUnaffectedBy(query) {
         const cookie = await asBranchA();
-        const honest = await json(await get('/api_dashboard_chart.php', cookie));
-        const claimed = await json(await get(`/api_dashboard_chart.php?${CLAIM}`, cookie));
+        const before = await json(await get('/api_dashboard_chart.php', cookie));
+        const claimed = await json(await get(`/api_dashboard_chart.php?${query}`, cookie));
+        const after = await json(await get('/api_dashboard_chart.php', cookie));
 
-        assert.deepStrictEqual(claimed, honest,
-            'appending admin_id/role must make no difference to a session caller');
+        const c = JSON.stringify(claimed);
+        assert.ok(c === JSON.stringify(before) || c === JSON.stringify(after),
+            `appending ${query} must make no difference to a session caller`);
+    }
+
+    test('the chart ignores a claimed identity and answers for the session', async () => {
+        await chartUnaffectedBy(CLAIM);
     });
 
     test('a superadmin session still reaches the admin panel', async () => {
@@ -65,12 +81,16 @@ describe('identity is the server\'s to decide', () => {
     });
 
     test('a superadmin session keeps its own identity, not a claimed one', async () => {
+        // The fields are ignored in both directions: claiming to be a branch
+        // admin must not narrow a superadmin's view either.
         const cookie = await asSuper();
-        // Claiming to be a branch admin must not narrow a superadmin's view
-        // either: the request fields are ignored in both directions.
-        const honest = await json(await get('/api_dashboard_chart.php', cookie));
-        const claimed = await json(await get('/api_dashboard_chart.php?admin_id=99999&role=admin', cookie));
-        assert.deepStrictEqual(claimed, honest);
+        const before = await json(await get('/api_dashboard_chart.php', cookie));
+        const claimed = await json(
+            await get('/api_dashboard_chart.php?admin_id=99999&role=admin', cookie));
+        const after = await json(await get('/api_dashboard_chart.php', cookie));
+
+        const c = JSON.stringify(claimed);
+        assert.ok(c === JSON.stringify(before) || c === JSON.stringify(after));
     });
 });
 
