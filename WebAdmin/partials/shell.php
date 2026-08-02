@@ -74,10 +74,10 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
     alone tells a sighted power user what it is and tells a screen reader
     nothing.
 -->
-<aside x-data="{ get rail() { return $store.nav.rail; } }"
-       :class="{ 'w-16': rail, 'w-64': !rail,
+<aside x-data="{ get rail() { return $store.nav.collapsed; } }"
+       :class="{ 'lg:w-16': rail, 'lg:w-64': !rail,
                  'translate-x-0': nav, '-translate-x-full': !nav, 'lg:translate-x-0': true }"
-       class="<?= $rail ? 'w-16' : 'w-64' ?> -translate-x-full lg:translate-x-0
+       class="w-64 <?= $rail ? 'lg:w-16' : 'lg:w-64' ?> -translate-x-full lg:translate-x-0
               fixed inset-y-0 left-0 z-50 flex flex-col border-r border-edge bg-card
               transition-[width,transform] duration-200 ease-out">
 
@@ -182,7 +182,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
     </div>
 </aside>
 
-<div x-data="{ get rail() { return $store.nav.rail; } }"
+<div x-data="{ get rail() { return $store.nav.collapsed; } }"
      :class="{ 'lg:pl-16': rail, 'lg:pl-64': !rail }"
      class="<?= $rail ? 'lg:pl-16' : 'lg:pl-64' ?> transition-[padding] duration-200 ease-out">
     <header class="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-edge bg-card/85 px-4 backdrop-blur-md lg:px-6">
