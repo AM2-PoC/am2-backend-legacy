@@ -54,6 +54,14 @@
     document.addEventListener('alpine:init', () => {
         Alpine.store('nav', {
             rail: <?= am2_sidebar_collapsed() ? 'true' : 'false' ?>,
+            wide: window.matchMedia('(min-width: 1024px)').matches,
+            init() {
+                window.matchMedia('(min-width: 1024px)')
+                      .addEventListener('change', (e) => { this.wide = e.matches; });
+            },
+            // The rail is a desktop affordance. Below lg the sidebar is an
+            // off-canvas drawer, and it opens with its labels.
+            get collapsed() { return this.rail && this.wide; },
             toggle() {
                 this.rail = !this.rail;
                 // A cookie rather than localStorage: PHP reads it on the next
