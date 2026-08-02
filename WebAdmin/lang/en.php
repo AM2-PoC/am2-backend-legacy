@@ -29,6 +29,7 @@ return [
 
     // Login
     'login.title'            => 'Login',
+    'login.status_ready'     => 'Ready',
     'login.subtitle'         => 'Radio Control Centre',
     'login.username'         => 'Username',
     'login.password'         => 'Password',

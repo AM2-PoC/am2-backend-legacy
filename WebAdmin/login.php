@@ -64,35 +64,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="robots" content="noindex, nofollow">
     <title><?= e('login.title') ?> — AM²</title>
     <link rel="preload" as="font" type="font/woff2" href="asset/font/Inter.woff2" crossorigin>
-    <link rel="stylesheet" href="asset/css/am2-ui.css">
-    <link rel="stylesheet" href="asset/css/am2-tailwind.css">
+    <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
+    <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-tailwind.css') ?>">
 </head>
 <body class="min-h-dvh bg-app font-sans text-ink antialiased">
 
-<main class="min-h-dvh grid place-items-center px-6 py-12">
-    <div class="w-full max-w-sm">
+<main class="min-h-dvh grid place-items-center px-4 py-10">
+    <!-- Shaped like the faceplate of a radio unit rather than a SaaS card: a
+         header strip carrying the mark and a lit indicator, the controls
+         inside, a footer strip for settings. -->
+    <div class="w-full max-w-md border border-edge bg-card shadow-sm">
 
-        <!-- The lamp is the only colour on the page until a field is focused.
-             On a radio console a lit indicator means the system is live; here
-             it means the same thing and nothing more. -->
-        <div class="flex items-baseline gap-3">
-            <h1 class="text-4xl font-semibold tracking-tight">AM<sup class="text-xl">2</sup></h1>
-            <span class="size-2 rounded-full bg-brand" aria-hidden="true"></span>
+        <div class="flex items-center justify-between border-b border-edge px-6 py-4">
+            <div>
+                <h1 class="text-2xl font-semibold leading-none tracking-tight">AM<sup class="text-sm">2</sup></h1>
+                <p class="mt-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-subtle">
+                    <?= e('login.subtitle') ?>
+                </p>
+            </div>
+            <!-- Labelled, so it reads as an indicator and not as a stray dot. -->
+            <p class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-subtle">
+                <span class="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true"></span>
+                <?= e('login.status_ready') ?>
+            </p>
         </div>
-        <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-subtle">
-            <?= e('login.subtitle') ?>
-        </p>
+
+        <div class="px-6 py-8">
 
         <?php if ($error !== ""): ?>
             <p role="alert"
-               class="mt-8 border-l-2 border-bad bg-bad/5 py-3 pl-4 pr-3 text-sm text-ink">
+               class="mt-6 border-l-2 border-bad bg-bad/5 py-3 pl-4 pr-3 text-sm text-ink">
                 <?= htmlspecialchars($error) ?>
             </p>
         <?php endif; ?>
 
         <!-- Ruled fields rather than boxes: a dispatch log is typed onto ruled
              lines, and the form is read far more often than it is filled in. -->
-        <form method="POST" autocomplete="off" class="mt-10 space-y-8">
+        <form method="POST" autocomplete="off" class="space-y-7">
             <div class="group">
                 <label for="username"
                        class="block font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
@@ -117,9 +125,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                    text-ink-subtle hover:text-brand
                                    focus-visible:outline-2 focus-visible:outline-offset-2
                                    focus-visible:outline-brand">
+                        <!-- Rendered server-side too: x-text leaves the button
+                             empty until Alpine boots, and blank if it never does. -->
                         <span x-text="shown
                             ? <?= json_encode(t('login.hide_password')) ?>
-                            : <?= json_encode(t('login.show_password')) ?>"></span>
+                            : <?= json_encode(t('login.show_password')) ?>"><?= e('login.show_password') ?></span>
                     </button>
                 </div>
                 <input id="password" name="password" required
@@ -140,17 +150,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </button>
         </form>
 
-        <div class="mt-12 flex items-center justify-between border-t border-edge pt-4">
-            <div class="flex gap-3 font-mono text-[11px] uppercase tracking-[0.15em]">
+        </div>
+
+        <div class="flex items-center justify-between border-t border-edge bg-card-muted px-6 py-3">
+            <div class="flex gap-4 font-mono text-[10px] uppercase tracking-[0.15em]">
                 <?php foreach (AM2_LOCALES as $loc): ?>
+                    <!-- no-underline: am2-ui.css still styles bare links while
+                         both stylesheets are loaded during the migration. -->
                     <a href="?lang=<?= $loc ?>"
-                       class="<?= am2_locale() === $loc
-                           ? 'text-brand' : 'text-ink-subtle hover:text-ink' ?>"
+                       class="no-underline! <?= am2_locale() === $loc
+                           ? 'text-brand!' : 'text-ink-subtle! hover:text-ink!' ?>"
                        <?= am2_locale() === $loc ? 'aria-current="true"' : '' ?>><?= strtoupper($loc) ?></a>
                 <?php endforeach; ?>
             </div>
             <button type="button" id="themeToggle"
-                    class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle hover:text-ink"
+                    class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle hover:text-ink"
                     aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>">
                 <?= e('pref.theme') ?>
             </button>
@@ -158,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </div>
 </main>
 
-<script src="asset/js/alpine.min.js" defer></script>
+<script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
 <script>
     // Kept out of Alpine: it has to work whether or not that script loaded.
     document.getElementById('themeToggle').addEventListener('click', function () {

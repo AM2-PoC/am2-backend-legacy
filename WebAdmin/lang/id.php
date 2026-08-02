@@ -29,6 +29,7 @@ return [
 
     // Login
     'login.title'            => 'Login',
+    'login.status_ready'     => 'Siap',
     'login.subtitle'         => 'Pusat Kendali Radio',
     'login.username'         => 'Username',
     'login.password'         => 'Kata Sandi',
