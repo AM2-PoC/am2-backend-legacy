@@ -174,3 +174,34 @@ describe('rendered markup that the CSS and JS depend on', () => {
         }
     });
 });
+
+describe('untrusted text is not rendered as markup', () => {
+    test('logs.php escapes every value it interpolates', () => {
+        const src = readSrc('logs.php');
+        assert.ok(/function esc\(/.test(src), 'the escaping helper is gone');
+        // keterangan is admin-controlled free text, also written by a database
+        // trigger, and it is inserted with innerHTML.
+        const raw = [...src.matchAll(/\$\{log\.[a-z_]+\}/g)].map((m) => m[0]);
+        assert.deepEqual(raw, [],
+            `these interpolations bypass esc(): ${raw.join(', ')}`);
+    });
+
+    test('livetrack.php does not build a handler argument from a raw id', () => {
+        const src = readSrc('livetrack.php');
+        assert.ok(!/gotoUnit\(\$\{u\.lat\}, \$\{u\.lng\}, '\$\{u\.id\}'\)/.test(src),
+            "an id containing a quote used to break out of the onclick attribute");
+    });
+
+    test('no page echoes exception text', () => {
+        for (const f of ['users.php', 'channels.php', 'settings.php', 'admin_panel.php',
+                         'user_access.php', 'dashboard.php', 'api_users.php',
+                         'api_channels.php', 'api_settings.php', 'api_login.php']) {
+            const src = readSrc(f);
+            for (const line of src.split('\n')) {
+                if (line.includes('error_log')) continue;
+                assert.ok(!line.includes('$e->getMessage()'),
+                    `${f} still echoes PDO exception text, which carries the failing SQL`);
+            }
+        }
+    });
+});

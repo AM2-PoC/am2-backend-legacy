@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         $success_msg = "User $name (User: $id) berhasil didaftarkan.";
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = ($e->getCode() == '23505') ? "ID $id sudah terdaftar." : "Database Error: " . $e->getMessage();
+        $error_msg = ($e->getCode() == '23505') ? "ID $id sudah terdaftar." : "Database Error: " . am2_safe_error($e, 'users');
     }
 }
 
@@ -100,7 +100,7 @@ if (isset($_POST['save_user_channels'])) {
         echo json_encode(['success' => true]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        echo json_encode(['success' => false, 'msg' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
     exit;
 }
@@ -166,7 +166,7 @@ if (isset($_POST['update_feature'])) {
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'msg' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
         }
         exit;
     }
@@ -199,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         $success_msg = "Data $edit_id diperbarui.";
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = $e->getMessage();
+        $error_msg = am2_safe_error($e, 'users');
     }
 }
 

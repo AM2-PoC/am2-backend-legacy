@@ -52,7 +52,7 @@ try {
     $ptt_activity = $stmt_ptt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
-    die("Kesalahan Database: " . $e->getMessage());
+    die("Kesalahan Database: " . am2_safe_error($e, 'dashboard'));
 }
 
 if (empty($ptt_activity)) {

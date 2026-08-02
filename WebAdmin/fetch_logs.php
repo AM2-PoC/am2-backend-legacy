@@ -52,6 +52,6 @@ try {
 
 } catch (Exception $e) {
     header('Content-Type: application/json');
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => am2_safe_error($e, 'fetch_logs')]);
 }
 ?>

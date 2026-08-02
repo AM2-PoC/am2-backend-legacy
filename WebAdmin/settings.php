@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_password'])) {
             $stmt->execute([$hashed_password, $admin_id]);
             $msg = "Password profil berhasil diperbarui.";
         } catch (PDOException $e) {
-            $error = "Gagal memperbarui database: " . $e->getMessage();
+            $error = "Gagal memperbarui database: " . am2_safe_error($e, 'settings');
         }
     } else {
         $error = "Konfirmasi password tidak cocok.";
@@ -91,7 +91,7 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
 
             $msg = "Proses pemulihan data berhasil dijalankan.";
         } catch (Exception $e) {
-            $error = "Gagal memulihkan database: " . $e->getMessage();
+            $error = "Gagal memulihkan database: " . am2_safe_error($e, 'settings');
         }
     }
 }
@@ -121,7 +121,7 @@ try {
         $sisa_channel = max(0, (int)$settings['channel_quota'] - (int)$total_channels);
     }
 } catch (PDOException $e) {
-    die("Kesalahan database: " . $e->getMessage());
+    die("Kesalahan database: " . am2_safe_error($e, 'settings'));
 }
 ?>
 

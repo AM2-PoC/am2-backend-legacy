@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_channel'])) {
         $stmt->execute([$name, $display_name, $category, $current_admin_id]);
         $success_msg = "Channel <strong>$display_name</strong> berhasil dibuat.";
     } catch (PDOException $e) {
-        $error_msg = ($e->getCode() == 23505) ? "Gagal: Nama channel sudah terdaftar." : "Error: " . $e->getMessage();
+        $error_msg = ($e->getCode() == 23505) ? "Gagal: Nama channel sudah terdaftar." : "Error: " . am2_safe_error($e, 'channels');
     }
 }
 
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
         $success_msg = "Izin akses channel berhasil diperbarui.";
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal menyimpan akses: " . $e->getMessage();
+        $error_msg = "Gagal menyimpan akses: " . am2_safe_error($e, 'channels');
     }
 }
 
@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_channel'])) {
         }
         $success_msg = "Perubahan channel berhasil disimpan.";
     } catch (PDOException $e) {
-        $error_msg = "Gagal memperbarui channel: " . $e->getMessage();
+        $error_msg = "Gagal memperbarui channel: " . am2_safe_error($e, 'channels');
     }
 }
 
@@ -140,7 +140,7 @@ if (isset($_GET['delete'])) {
         $pdo->rollBack();
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal menghapus: " . $e->getMessage();
+        $error_msg = "Gagal menghapus: " . am2_safe_error($e, 'channels');
     }
 }
 

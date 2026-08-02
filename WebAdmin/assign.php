@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign'])) {
                                ON CONFLICT (user_id, channel_id) DO UPDATE SET is_rx_only = EXCLUDED.is_rx_only");
         $stmt->execute([$user_id, $channel_id, $is_rx]);
         $msg = "<div class='alert alert-success'>Akses Berhasil Diperbarui!</div>";
-    } catch (Exception $e) { $msg = "<div class='alert alert-danger'>Error: " . $e->getMessage() . "</div>"; }
+    } catch (Exception $e) { $msg = "<div class='alert alert-danger'>Error: " . am2_safe_error($e, 'assign') . "</div>"; }
 }
 
 $users = $pdo->query("SELECT id, name FROM users ORDER BY name ASC")->fetchAll();
