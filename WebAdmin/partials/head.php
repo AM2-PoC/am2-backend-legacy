@@ -1,0 +1,25 @@
+<?php
+/**
+ * Document head and the opening of the page shell.
+ *
+ * Pages set $pageTitle before including this. Everything else — locale, theme,
+ * asset versions — is resolved here so no page repeats it.
+ */
+$pageTitle = $pageTitle ?? '';
+?>
+<!DOCTYPE html>
+<html <?= am2_html_attrs() ?>>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title><?= $pageTitle !== '' ? htmlspecialchars($pageTitle) . ' — ' : '' ?>AM²</title>
+    <link rel="icon" href="<?= am2_asset('asset/image/logo.jpeg') ?>">
+    <link rel="preload" as="font" type="font/woff2" href="asset/font/Inter.woff2" crossorigin>
+    <!-- Still loaded while pages migrate one at a time: the un-migrated ones
+         depend on it, and it owns the tokens Tailwind reads. -->
+    <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
+    <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-tailwind.css') ?>">
+</head>
+<body class="min-h-dvh bg-app font-sans text-ink antialiased"
+      x-data="{ nav: false }" @keydown.escape.window="nav = false">

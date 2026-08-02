@@ -47,8 +47,11 @@ describe('locale', () => {
     test('the sidebar switches with the session', async () => {
         const id = await (await page('/dashboard.php', `${sup};am2_lang=id`)).text();
         const en = await (await page('/dashboard.php', `${sup};am2_lang=en`)).text();
-        assert.match(id, /sidebar-heading">Manajemen/);
-        assert.match(en, /sidebar-heading">Management/);
+        // Asserts the translated label, not the markup around it: pages move
+        // to the new shell one at a time and the class changes with them.
+        assert.match(id, /Manajemen/);
+        assert.match(en, /Management/);
+        assert.ok(!/Manajemen/.test(en));
     });
 
     test('?lang= persists the choice in a cookie', async () => {
