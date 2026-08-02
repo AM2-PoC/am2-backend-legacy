@@ -172,6 +172,15 @@ elseif ($method == 'POST') {
 
         try {
             $pdo->beginTransaction();
+            // $feature is interpolated as a column name below. users.php has
+            // always validated it against an allow-list; this copy never did,
+            // and this file takes its caller's word for who they are.
+            $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video'];
+            if (!in_array($feature, $allowed, true)) {
+                echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
+                exit;
+            }
+
             $sql = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
                     VALUES (?, $sql_val, NOW())
                     ON CONFLICT (user_id)

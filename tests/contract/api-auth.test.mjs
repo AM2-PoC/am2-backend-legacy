@@ -88,3 +88,24 @@ describe('api credential', () => {
         assert.match(src, /AM2_CORS_ORIGINS/);
     });
 });
+
+describe('sql injection via a column name', () => {
+    test('api_users.php validates the feature name before interpolating it', async () => {
+        const { postForm, json } = await import('./helpers.mjs');
+        const body = await json(await postForm(
+            '/api_users.php?admin_id=1&role=superadmin', null,
+            { action: 'update_feature', u_id: 'CT_A1',
+              feature: 'enable_maps, updated_at) VALUES (1,1,NOW()) --', val: 'true' }));
+        assert.equal(body.success, false, 'the column name reaches the SQL text directly');
+    });
+
+    test('both copies of the feature toggle validate identically', async () => {
+        const { readSrc } = await import('./helpers.mjs');
+        for (const f of ['users.php', 'api_users.php']) {
+            const src = readSrc(f);
+            assert.ok(/enable_ptt_video/.test(src) &&
+                      /(array_key_exists|in_array)/.test(src),
+                `${f} interpolates the feature name without checking it`);
+        }
+    });
+});
