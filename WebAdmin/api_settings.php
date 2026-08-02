@@ -145,7 +145,7 @@ if ($method == 'GET') {
         }
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_settings')]);
     }
 }
 elseif ($method == 'POST') {
@@ -169,7 +169,7 @@ elseif ($method == 'POST') {
             $stmt->execute([$hash, $admin_id]);
             echo json_encode(['success' => true, 'message' => 'Password diperbarui']);
         } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_settings')]);
         }
     }
     elseif ($action == 'import_db') {
@@ -218,7 +218,7 @@ elseif ($method == 'POST') {
             }
             echo json_encode(['success' => true, 'message' => 'Database berhasil dipulihkan']);
         } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Restore gagal: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Restore gagal: ' . am2_safe_error($e, 'api_settings')]);
         }
     }
 }

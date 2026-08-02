@@ -80,7 +80,7 @@ try {
     header('Content-Type: application/json', true, 500);
     echo json_encode([
         'error' => 'Database Sync Failed',
-        'details' => $e->getMessage()
+        'details' => am2_safe_error($e, 'get-users-ajax')
     ]);
 }
 ?>

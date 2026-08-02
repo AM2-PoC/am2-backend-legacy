@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         header('Content-Type: application/json', true, 500);
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'user_access')]);
         exit;
     }
 }
@@ -134,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
         $success_msg = "Otoritas akses user berhasil diperbarui.";
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal memperbarui database: " . $e->getMessage();
+        $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
     }
 }
 

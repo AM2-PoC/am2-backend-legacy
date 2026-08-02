@@ -83,7 +83,7 @@ if ($method == 'GET') {
         echo json_encode($result);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_user_access')]);
     }
 }
 elseif ($method == 'POST') {
@@ -112,7 +112,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'User berhasil dikeluarkan.']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }
     elseif ($action == 'update_access') {
@@ -172,7 +172,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'Otoritas akses user berhasil diperbarui.']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }
 }

@@ -46,7 +46,7 @@ if (isset($_GET['delete_id'])) {
             $success_msg = "Akun admin cabang berhasil dihapus.";
         }
     } catch (PDOException $e) {
-        $error_msg = "Gagal menghapus: " . $e->getMessage();
+        $error_msg = "Gagal menghapus: " . am2_safe_error($e, 'admin_panel');
     }
 }
 
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_admin'])) {
         }
         $success_msg = "Konfigurasi admin berhasil disimpan.";
     } catch (PDOException $e) {
-        $error_msg = "Gagal menyimpan: " . $e->getMessage();
+        $error_msg = "Gagal menyimpan: " . am2_safe_error($e, 'admin_panel');
     }
 }
 
@@ -107,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_delegation'])) 
         $success_msg = "Delegasi channel berhasil diperbarui.";
     } catch (PDOException $e) {
         $pdo->rollBack();
-        $error_msg = "Gagal delegasi: " . $e->getMessage();
+        $error_msg = "Gagal delegasi: " . am2_safe_error($e, 'admin_panel');
     }
 }
 
