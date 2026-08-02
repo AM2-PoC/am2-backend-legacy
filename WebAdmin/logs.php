@@ -107,6 +107,14 @@ if (!isset($_SESSION['admin_logged_in'])) {
     let cachedAdminData = [];
     let cachedPttData = [];
 
+    // keterangan is free text written by admins and by a database trigger.
+    // It was interpolated into a template literal and inserted with innerHTML.
+    function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
     function renderLogHTML(log) {
         const type = log.aksi.toUpperCase();
         const isAdm = log.kategori === 'ADM';
@@ -126,17 +134,17 @@ if (!isset($_SESSION['admin_logged_in'])) {
 
         return `<tr class="${rowClass}">
             <td data-label="Waktu">
-                <div class="fw-bold text-dark log-time">${log.jam}</div>
-                <div class="text-muted log-meta">${log.tanggal}</div>
+                <div class="fw-bold text-dark log-time">${esc(log.jam)}</div>
+                <div class="text-muted log-meta">${esc(log.tanggal)}</div>
             </td>
             <td data-label="Pelaksana">
-                <div class="fw-bold text-uppercase log-actor"><i class="fas ${icon} me-1"></i>${log.pelaksana}</div>
-                <code class="text-muted log-meta">ID: ${log.pelaksana_id}</code>
+                <div class="fw-bold text-uppercase log-actor"><i class="fas ${icon} me-1"></i>${esc(log.pelaksana)}</div>
+                <code class="text-muted log-meta">ID: ${esc(log.pelaksana_id)}</code>
             </td>
             <td data-label="Aktivitas">
                 <div class="text-dark fw-medium log-detail">
                     ${isAdm ? '<i class="fas fa-info-circle me-1 text-primary"></i>' : '<i class="fas fa-satellite-dish me-1 text-muted"></i>'}
-                    ${log.target}
+                    ${esc(log.target)}
                 </div>
             </td>
             <td data-label="Status" class="text-end pe-4">

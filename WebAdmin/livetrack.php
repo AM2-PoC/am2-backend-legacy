@@ -267,7 +267,8 @@ $pageTitle = "LIVE TRACKING UNIT";
         filtered.forEach(u => {
             const isSpeaking = parseInt(u.is_speaking) === 1;
             html += `
-                <div class="unit-item ${isSpeaking ? 'speaking-active' : ''}" onclick="gotoUnit(${u.lat}, ${u.lng}, '${u.id}')">
+                <div class="unit-item ${isSpeaking ? 'speaking-active' : ''}" data-lat="${u.lat}" data-lng="${u.lng}" data-uid="${String(u.id).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}"
+                     onclick="gotoUnit(this.dataset.lat, this.dataset.lng, this.dataset.uid)">
                     <div class="position-relative me-3">
                         <div style="width:12px; height:12px; border-radius:50%; background:${isSpeaking ? 'var(--color-danger)' : 'var(--color-success)'};"></div>
                         ${isSpeaking ? '<div class="spinner-grow text-danger position-absolute" style="width:12px; height:12px; top:0; left:0; opacity:0.4;"></div>' : ''}

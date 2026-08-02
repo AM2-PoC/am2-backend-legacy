@@ -46,6 +46,19 @@ if ($password === '') {
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
 /**
+ * Log the real error, return something safe to show.
+ *
+ * Exception text from PDO carries the failing SQL, which used to be echoed
+ * into the page and into JSON responses — including to callers that never
+ * authenticated.
+ */
+function am2_safe_error(Throwable $e, string $context = 'query'): string
+{
+    error_log('AM2 ' . $context . ' failed: ' . $e->getMessage());
+    return 'Terjadi kesalahan sistem.';
+}
+
+/**
  * Whether the signed-in admin may act on this user.
  *
  * Superadmins may act on anyone. A branch admin may act only on users it owns.

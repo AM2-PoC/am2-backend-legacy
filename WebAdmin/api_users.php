@@ -42,7 +42,7 @@ if ($method == 'GET') {
             $stmt->execute([$u_id]);
             echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
         } catch (PDOException $e) {
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => am2_safe_error($e, 'api_users')]);
         }
         exit;
     }
@@ -85,7 +85,7 @@ if ($method == 'GET') {
         echo json_encode($users);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_users')]);
     }
 }
 elseif ($method == 'POST') {
@@ -124,7 +124,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'User berhasil ' . ($action == 'add' ? 'ditambahkan' : 'diperbarui')]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Gagal: ' . am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'save_user_channels') {
@@ -154,7 +154,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'update_feature') {
@@ -186,7 +186,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'delete') {
@@ -194,7 +194,7 @@ elseif ($method == 'POST') {
         try {
             $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
             echo json_encode(['success' => true]);
-        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => $e->getMessage()]); }
+        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]); }
     }
 }
 ?>

@@ -72,6 +72,6 @@ try {
 
 } catch (PDOException $e) {
     header('Content-Type: application/json', true, 500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => am2_safe_error($e, 'api_get_users')]);
 }
 ?>

@@ -35,6 +35,6 @@ try {
         'total_channel' => (int)$total_channel
     ]);
 } catch (PDOException $e) {
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => am2_safe_error($e, 'api_dashboard_stats')]);
 }
 ?>

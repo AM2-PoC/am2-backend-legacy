@@ -48,6 +48,6 @@ try {
 
 } catch (PDOException $e) {
     header('HTTP/1.1 500 Internal Server Error');
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => am2_safe_error($e, 'update_location')]);
 }
 ?>

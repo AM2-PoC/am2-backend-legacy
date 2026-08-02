@@ -22,7 +22,7 @@ if ($method == 'GET') {
             $stmt->execute([$ch_id]);
             echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
         } catch (PDOException $e) {
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => am2_safe_error($e, 'api_channels')]);
         }
         exit;
     }
@@ -56,7 +56,7 @@ if ($method == 'GET') {
         echo json_encode($channels);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_channels')]);
     }
 }
 elseif ($method == 'POST') {
@@ -72,7 +72,7 @@ elseif ($method == 'POST') {
             $stmt->execute([$name, $display_name, $category, $admin_id]);
             echo json_encode(['success' => true]);
         } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_channels')]);
         }
     }
     elseif ($action == 'delete') {
@@ -109,7 +109,7 @@ elseif ($method == 'POST') {
             }
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_channels')]);
         }
     }
     elseif ($action == 'save_access') {
@@ -131,7 +131,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_channels')]);
         }
     }
 }
