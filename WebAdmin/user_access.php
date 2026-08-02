@@ -9,36 +9,7 @@ $error_msg = "";
 $current_admin_id = $_SESSION['admin_id'];
 $role_user = $_SESSION['admin_role'];
 
-function syncUserChannels($userId) {
-    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array_filter([trim(am2_node_auth_header())]));
-        @curl_exec($ch);
-        curl_close($ch);
-    } else {
-        $options = ['http' => ['timeout' => 2, 'header' => am2_node_auth_header()]];
-        $context = stream_context_create($options);
-        @file_get_contents($url, false, $context);
-    }
-}
 
-function notifyForceLogout($userId) {
-    $url = AM2_NODE_BASE . "/api/admin/force-logout";
-    $data = json_encode(['userId' => $userId]);
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
-            'method'  => 'POST',
-            'content' => $data,
-            'timeout' => 2
-        ]
-    ];
-    $context  = stream_context_create($options);
-    @file_get_contents($url, false, $context);
-}
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'db_force_logout') {
     $uid_to_kick = $_POST['user_id'];
