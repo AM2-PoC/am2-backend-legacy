@@ -275,6 +275,12 @@ function am2_csrf_require(): void
  * redirect, AJAX endpoints answer JSON — so destroying the session and letting
  * the existing guard fire keeps that behaviour intact.
  */
+/** True when this request arrived on a session that had gone idle. */
+function am2_session_timed_out(): bool
+{
+    return !empty($GLOBALS['am2_session_timed_out']);
+}
+
 function am2_expire_idle_session(int $maxIdleSeconds = 28800): void
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -286,6 +292,7 @@ function am2_expire_idle_session(int $maxIdleSeconds = 28800): void
     if (isset($_SESSION['last_seen']) && (time() - $_SESSION['last_seen']) > $maxIdleSeconds) {
         $_SESSION = [];
         session_destroy();
+        $GLOBALS['am2_session_timed_out'] = true;
         return;
     }
     $_SESSION['last_seen'] = time();
@@ -417,6 +424,14 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
+    // Start the session here, before expiry and before any guard runs.
+    // Cookie-guarded so a keyless API caller is not handed a session it
+    // never asked for, which would change the headers Admin Native sees.
+    if (session_status() === PHP_SESSION_NONE
+        && isset($_COOKIE[session_name()])
+        && !headers_sent()) {
+        session_start();
+    }
     am2_expire_idle_session();
     am2_csrf_require();
 } catch (PDOException $e) {
