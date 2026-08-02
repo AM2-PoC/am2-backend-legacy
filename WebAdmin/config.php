@@ -46,6 +46,118 @@ if ($password === '') {
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
 /**
+ * Expire an idle session.
+ *
+ * Runs on every request because config.php is included by every page, and by
+ * then session_start() has already been called. It deliberately does not
+ * redirect: each caller has its own idea of what to do with no session — pages
+ * redirect, AJAX endpoints answer JSON — so destroying the session and letting
+ * the existing guard fire keeps that behaviour intact.
+ */
+function am2_expire_idle_session(int $maxIdleSeconds = 28800): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    if (!isset($_SESSION['admin_logged_in'])) {
+        return;
+    }
+    if (isset($_SESSION['last_seen']) && (time() - $_SESSION['last_seen']) > $maxIdleSeconds) {
+        $_SESSION = [];
+        session_destroy();
+        return;
+    }
+    $_SESSION['last_seen'] = time();
+}
+
+/**
+ * Count failed sign-ins per client so a password can not be guessed at speed.
+ *
+ * File-backed: this PHP has neither redis nor apcu, and a database table would
+ * need a migration. Fails open if the directory is unusable — locking every
+ * admin out because a directory is missing is worse than the thing being
+ * prevented.
+ */
+function am2_throttle_dir(): ?string
+{
+    $dir = getenv('AM2_THROTTLE_DIR') ?: '/var/lib/am2/login-throttle';
+    if (!is_dir($dir) || !is_writable($dir)) {
+        error_log('AM2 login throttle disabled: ' . $dir . ' is not writable');
+        return null;
+    }
+    return $dir;
+}
+
+function am2_login_blocked(string $client, int $max = 10, int $window = 900): bool
+{
+    $dir = am2_throttle_dir();
+    if ($dir === null) {
+        return false;
+    }
+    $file = $dir . '/' . hash('sha256', $client);
+    if (!is_file($file)) {
+        return false;
+    }
+    [$count, $first] = array_pad(explode('|', (string) @file_get_contents($file), 2), 2, 0);
+    if ((time() - (int) $first) > $window) {
+        @unlink($file);
+        return false;
+    }
+    return (int) $count >= $max;
+}
+
+function am2_login_failed(string $client, int $window = 900): void
+{
+    $dir = am2_throttle_dir();
+    if ($dir === null) {
+        return;
+    }
+    $file = $dir . '/' . hash('sha256', $client);
+    $count = 0;
+    $first = time();
+    if (is_file($file)) {
+        [$c, $f] = array_pad(explode('|', (string) @file_get_contents($file), 2), 2, 0);
+        if ((time() - (int) $f) <= $window) {
+            $count = (int) $c;
+            $first = (int) $f;
+        }
+    }
+    @file_put_contents($file, ($count + 1) . '|' . $first, LOCK_EX);
+    // A dedicated line so fail2ban can pick this up later without parsing HTML.
+    error_log('AM2 login failure from ' . $client);
+}
+
+function am2_login_succeeded(string $client): void
+{
+    $dir = am2_throttle_dir();
+    if ($dir !== null) {
+        @unlink($dir . '/' . hash('sha256', $client));
+    }
+}
+
+/**
+ * The source of the request, for throttling.
+ *
+ * Deliberately NOT X-Forwarded-For. nginx builds that header with
+ * $proxy_add_x_forwarded_for, which appends the real address to whatever the
+ * client sent, so its first entry is attacker-controlled — reading it would let
+ * anyone reset their own counter by rotating a header.
+ *
+ * X-Real-IP is set unconditionally by nginx from $remote_addr and cannot be
+ * forged. Behind Cloudflare that is an edge address rather than the end user,
+ * which is why the throttle key also carries the username: one account being
+ * guessed gets blocked without taking down every other admin behind that edge.
+ */
+function am2_client_ip(): string
+{
+    $real = $_SERVER['HTTP_X_REAL_IP'] ?? '';
+    if ($real !== '' && filter_var($real, FILTER_VALIDATE_IP)) {
+        return $real;
+    }
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+/**
  * Log the real error, return something safe to show.
  *
  * Exception text from PDO carries the failing SQL, which used to be echoed
@@ -84,6 +196,7 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
+    am2_expire_idle_session();
 } catch (PDOException $e) {
     error_log('AM2 DB connection failed: ' . $e->getMessage());
     http_response_code(500);
