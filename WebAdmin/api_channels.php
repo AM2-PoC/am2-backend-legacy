@@ -3,10 +3,6 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-function syncUserChannels($userId) {
-    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
-    @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 2]]));
-}
 
 $admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';

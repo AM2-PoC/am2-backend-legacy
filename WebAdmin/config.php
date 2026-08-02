@@ -341,4 +341,8 @@ try {
     http_response_code(500);
     die('Koneksi database gagal.');
 }
+
+// The relay client. Loaded last: it needs AM2_NODE_BASE and the auth header
+// helper defined above.
+require_once __DIR__ . '/node_client.php';
 ?>

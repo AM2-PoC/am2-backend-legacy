@@ -3,30 +3,7 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-function syncUserChannels($userId) {
-    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
-    @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 2]]));
-}
 
-function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'HALF DUPLEX') {
-    $url = AM2_NODE_BASE . "/api/admin/update-permissions";
-    $data = [
-        'userId' => $userId,
-        'enable_maps' => (bool)$maps,
-        'enable_p2p' => (bool)$p2p,
-        'enable_ptt_video' => (bool)$video,
-        'duplex_mode' => $duplex
-    ];
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
-            'method'  => 'POST',
-            'content' => json_encode($data),
-            'timeout' => 2
-        ]
-    ];
-    @file_get_contents($url, false, stream_context_create($options));
-}
 
 $admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';
