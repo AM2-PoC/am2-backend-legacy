@@ -195,8 +195,11 @@ describe('a form is not an authorization', () => {
             'channels[]': [CH_A, CH_B],
             default_channel: CH_A,
         });
-        assert.deepStrictEqual(membership(UNIT), before,
-            'a channel belonging to another tenant must not be grantable');
+        const after = membership(UNIT);
+        assert.deepStrictEqual(after, before,
+            `a channel belonging to another tenant must not be grantable. `
+            + `CH_A=${CH_A} CH_A2=${CH_A2} CH_B=${CH_B} `
+            + `before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
     });
 
     test('a branch admin cannot add another tenant\'s unit to a roster', async () => {
