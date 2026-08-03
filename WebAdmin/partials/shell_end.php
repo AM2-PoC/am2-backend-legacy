@@ -131,7 +131,9 @@
     setInterval(pollStatus, 10000);
 
     /* ---- Command palette --------------------------------------------- */
-    const COMMANDS = <?= json_encode(array_values(array_filter([
+    // A page may add its own sections; the shell owns the search, so this
+    // stays one list rather than a second one appearing per page.
+    const COMMANDS = <?= json_encode(array_merge(array_values(array_filter([
         ['id' => 'p-dash',     'group' => t('nav.home'),       'label' => t('nav.dashboard'),      'href' => 'dashboard.php'],
         ['id' => 'p-users',    'group' => t('nav.management'), 'label' => t('nav.users'),          'href' => 'users.php'],
         ['id' => 'p-chan',     'group' => t('nav.management'), 'label' => t('nav.channels'),       'href' => 'channels.php'],
@@ -145,7 +147,7 @@
         ['id' => 'a-theme', 'group' => t('search.action'), 'label' => t('pref.theme'),    'action' => 'theme'],
         ['id' => 'a-lang',  'group' => t('search.action'), 'label' => t('pref.language'), 'action' => 'lang'],
         ['id' => 'a-out',   'group' => t('search.action'), 'label' => t('nav.logout'),    'href'   => 'logout.php'],
-    ]))) ?>;
+    ])), array_values(is_array($pageCommands ?? null) ? $pageCommands : []))) ?>;
     const UNITS_LABEL = <?= json_encode(t('search.units')) ?>;
     const NO_RESULTS = <?= json_encode(t('search.no_results')) ?>;
 
@@ -202,6 +204,25 @@
         const item = results[i ?? cursor];
         if (!item) return;
         if (item.href) { window.location.href = item.href; return; }
+        if (item.target) {
+            /*
+             * A section of the page that is already open. Closing the overlay
+             * while the Enter key was still travelling had Preline re-open it
+             * 53ms later, with no click on any trigger -- traced, not guessed.
+             * The fix is in the keydown handler below, which lets the key event
+             * finish first; this only has to avoid fighting the focus restore.
+             */
+            const el = document.querySelector(item.target);
+            window.HSOverlay?.close(document.getElementById('am2-palette'));
+            // Preline restores focus as part of closing; landing after it has
+            // settled means the two are not competing for the same element.
+            setTimeout(() => {
+                el?.setAttribute('tabindex', '-1');
+                el?.focus({ preventScroll: true });
+                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 220);
+            return;
+        }
         if (item.action === 'theme') {
             window.HSOverlay?.close(document.getElementById('am2-palette'));
             document.getElementById('themeToggle')?.click();
@@ -218,7 +239,14 @@
     input?.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowDown') { e.preventDefault(); cursor = (cursor + 1) % results.length; render(); }
         if (e.key === 'ArrowUp')   { e.preventDefault(); cursor = (cursor - 1 + results.length) % results.length; render(); }
-        if (e.key === 'Enter')     { e.preventDefault(); run(); }
+        if (e.key === 'Enter') {
+            // Deferred, and kept off the document: closing the overlay while
+            // the Enter key was still travelling had Preline re-open it 53ms
+            // later. Letting the key event finish first stops that.
+            e.preventDefault();
+            e.stopPropagation();
+            setTimeout(run, 0);
+        }
     });
 
     // Preline moves focus into the panel; this only resets what is in it.

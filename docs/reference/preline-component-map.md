@@ -175,3 +175,67 @@ Open, and not fixed here -- see the release notes: the page discards
 `shell_exec()`'s result and reports the restore as done whether or not `psql`
 applied anything, and `export_db` for a branch admin dumps `public.users` and
 `public.channels` whole, which is every branch's rows and not only its own.
+
+### settings.php, second pass: the console states its condition
+
+The first pass moved the page onto the shell. It still asked for actions
+without saying what state anything was in. Every card now answers a question
+before it asks for one.
+
+| Addition | What it answers | Built from |
+|---|---|---|
+| Release shelf | which build the app is told to fetch, whether that file exists, what else is on the shelf | `update/admin_version.json` and a `glob()` of the folder — both already there, neither ever shown |
+| QR of the download URL | how a build reaches a phone in the field | `qrcode-generator`, bundled, drawn as an SVG element |
+| SHA-256 of the chosen APK | whether this is the build that was tested | `crypto.subtle` in the browser; the file is never read twice |
+| Upload progress | that a 24 MB upload is moving | XHR, replacing the three server-rendered regions rather than reloading |
+| Restore preflight | what is in the file, against what is in the database | the file read in the browser; nothing reaches the server |
+| Password rules | whether the password will be accepted, before submitting | two comparisons, live |
+| Quota consequence line | what happens at the ceiling | the quota already on the page |
+| Export contents line | what the download will hold | the counts already on the page |
+| ⌘K section jumps | how to reach a section without scrolling | `$pageCommands`, merged into the shell's own palette |
+
+Drag and drop is a second gesture, never a replacement: both `<input
+type="file">` elements stay, because they are what a keyboard and a screen
+reader operate and the only path where drag events do not exist. The zone
+writes into the input through a `DataTransfer` so there is one source of truth
+for the chosen file. A contract test counts the file inputs.
+
+Four defects surfaced while building it, none of them visual:
+
+- **The APK upload could not work.** `upload_max_filesize` is 2 MB and
+  `post_max_size` 8 MB, so a real APK is discarded whole — and when a body
+  exceeds `post_max_size`, PHP empties `$_POST`, `am2_csrf_require()` finds no
+  token and answers "Sesi tidak valid. Muat ulang halaman." The operator was
+  told their session was broken. The page now states the limit, refuses an
+  oversized file before sending it, and maps every `UPLOAD_ERR_*` to its own
+  message. **Raising the limits is a server change and has not been made.**
+- **The update folder was not writable by the web process** on staging
+  (`drwxr-x---`, owner `am2deploy`, group `www-data`). Fixed on staging with
+  `chmod g+w`; production has not been checked.
+- **`update/` did not exist on staging at all.** The handler would have created
+  a real directory inside the deployed tree, which the next rsync erases. The
+  card now says so; staging was given the symlink production has.
+- **`admin_version.json` points at `admin.apk`, which is not on the shelf.**
+  Admin Native is told to download a file that has never been uploaded. The
+  card shows this as a warning; nothing else in the panel ever mentioned it.
+
+Two bugs of my own, both invisible without measuring:
+
+- **The page reached for `window.AM2` at parse time.** The bundle is deferred,
+  so it had not run; every call site guards with `?.`, so the page rendered
+  perfectly and simply had no motion and no QR. `ui-runtime.test.mjs` now fails
+  any page that calls `AM2.enterOnce`, `AM2.revealOnScroll` or `AM2.qr` without
+  something waiting for the bundle first.
+- **Closing the command palette from inside the Enter keydown made Preline
+  re-open it 53ms later**, with no click on any trigger — traced with an event
+  log, not guessed. Letting the key event finish first fixes it.
+
+Verified: QR renders at 114×116 from a 15,394-character path; a 3 MB file is
+refused client-side with the limit named and the submit disabled; a 64 KB APK
+uploads through XHR and the alert, version block and shelf list all swap in
+from the response; the preflight reads a backup as "Cadangan AM2 (per satwil)"
+and shows 218 → 5 devices and 8 → 2 channels with the missing-DROP warning;
+password rules tick at 8 characters and on match; ⌘K jumps to the danger zone
+with focus landing on the section; ID and EN both render and the confirmation
+word follows the locale; no tap target under 40px; nothing under
+`prefers-reduced-motion`; no console errors.
