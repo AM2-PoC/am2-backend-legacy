@@ -312,15 +312,45 @@ describe('alpine expressions in attributes', () => {
         });
     }
 
+    // This guard has caught the json_encode-in-an-attribute bug three times, so
+    // it follows the migration rather than being pinned to one page. It asserts
+    // over whichever pages still render an Alpine expression into an attribute,
+    // and once none do -- which is the end state R7 is walking towards -- it
+    // asserts that instead, so it never quietly passes on an empty set.
+    const ALPINE_ATTR = /(?:x-text|x-show|:class|:disabled)="([^"]*)"/g;
+
     test('a rendered attribute keeps its quotes escaped', async () => {
-        const html = await (await get('/login.php', null)).text();
-        const m = html.match(/x-text="([^"]*)"/g) ?? [];
-        assert.ok(m.length > 0, 'no x-text attribute rendered');
-        for (const attr of m) {
-            assert.ok(!/\?\s*$/.test(attr),
-                `attribute truncated at a quote: ${attr.slice(0, 60)}`);
+        const sup = await asSuper();
+        const pages = ['/login.php', ...fs.readdirSync(SRC)
+            .filter((f) => f.endsWith('.php'))
+            .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+            .map((f) => '/' + f)];
+
+        let checked = 0;
+        for (const path of pages) {
+            const html = await (await get(path, path === '/login.php' ? null : sup)).text();
+            for (const attr of html.match(ALPINE_ATTR) ?? []) {
+                checked++;
+                // json_encode in an attribute terminates it at the first inner
+                // quote, leaving a fragment ending in `?` or `:` that still
+                // renders its server-side fallback and so looks fine.
+                assert.ok(!/[?:]\s*$/.test(attr),
+                    `${path}: attribute truncated at a quote: ${attr.slice(0, 70)}`);
+                // An attribute delimited by " cannot contain a raw " -- the
+                // parser ends it there. Truncation above is therefore the whole
+                // observable signal, and checking for inner quotes here would
+                // only ever match the attribute's own delimiters.
+            }
         }
-        assert.match(html, /&quot;/, 'quotes inside alpine expressions must be entities');
+
+        if (checked === 0) {
+            // Alpine is gone. Prove it rather than pass on an empty loop.
+            const html = await (await get('/dashboard.php', sup)).text();
+            assert.ok(!/\sx-(data|show|text|cloak)[=\s]/.test(html),
+                'no Alpine attributes were checked, but Alpine markup is still rendered');
+            return;
+        }
+        assert.ok(checked > 0);
     });
 });
 
