@@ -275,6 +275,7 @@ return [
     'set.err_apk_type'          => 'Hanya berkas .apk yang diizinkan.',
     'set.err_apk_move'          => 'Gagal menyimpan berkas di server.',
     'set.err_sql_type'          => 'Format berkas tidak valid. Gunakan .sql.',
+    'set.err_restore_failed'    => 'Pemulihan dibatalkan, tidak ada data yang berubah. :reason',
     'set.msg_restore_ok'        => 'Proses pemulihan data selesai dijalankan.',
     'set.err_denied'            => 'Akses ditolak.',
 ];

@@ -275,6 +275,7 @@ return [
     'set.err_apk_type'          => 'Only .apk files are allowed.',
     'set.err_apk_move'          => 'Could not store the file on the server.',
     'set.err_sql_type'          => 'Invalid file format. Use a .sql file.',
+    'set.err_restore_failed'    => 'Restore cancelled, nothing was changed. :reason',
     'set.msg_restore_ok'        => 'The restore has finished running.',
     'set.err_denied'            => 'Access denied.',
 ];

@@ -103,26 +103,55 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
         if ($ext !== 'sql') {
             $error = t('set.err_sql_type');
         } elseif (is_uploaded_file($file)) {
-            try {
-                putenv('PGPASSWORD=' . $password);
-                $command = 'psql -h ' . $host . ' -p ' . $port . ' -U ' . $user
-                         . ' -d ' . $dbname . ' < ' . $file;
-                shell_exec($command);
+            putenv('PGPASSWORD=' . $password);
 
-                // ptt_logs cannot hold this event: user_id is a foreign key to
-                // users(id) and channel_id to channels(id), and an admin is
-                // neither a device nor a channel. The server log can, and it
-                // already carries the refusals from am2_page_require_super().
-                error_log(sprintf(
-                    'AM2 settings RESTORE by=%s from=%s file=%s',
-                    $admin_user,
-                    am2_client_ip(),
-                    basename($_FILES['sql_file']['name'])
-                ));
+            /*
+             * Two flags carry this, and neither was here before.
+             *
+             * ON_ERROR_STOP: psql exits 0 even when every statement in the file
+             * was rejected. Five "value too long" errors and a status of 0 is
+             * what the operator was reading as a completed restore.
+             *
+             * --single-transaction: the restore is all or nothing. Without it a
+             * dump that breaks halfway leaves the database half overwritten,
+             * which is the hardest state to recover from -- worse than a
+             * restore that refuses to start.
+             */
+            $command = 'psql -v ON_ERROR_STOP=1 --single-transaction'
+                     . ' -h ' . $host . ' -p ' . $port . ' -U ' . $user
+                     . ' -d ' . $dbname . ' < ' . $file . ' 2>&1';
 
+            // exec(), not shell_exec(): the exit status is the whole point.
+            $output = [];
+            $status = 1;
+            exec($command, $output, $status);
+
+            // ptt_logs cannot hold this event: user_id is a foreign key to
+            // users(id) and channel_id to channels(id), and an admin is neither
+            // a device nor a channel. The server log can, and it already
+            // carries the refusals from am2_page_require_super().
+            error_log(sprintf(
+                'AM2 settings RESTORE by=%s from=%s file=%s status=%d',
+                $admin_user,
+                am2_client_ip(),
+                basename($_FILES['sql_file']['name']),
+                $status
+            ));
+
+            if ($status === 0) {
                 $msg = t('set.msg_restore_ok');
-            } catch (Exception $e) {
-                $error = am2_safe_error($e, 'settings');
+            } else {
+                // The operator chose this file, so the reason it was refused is
+                // theirs to read. A refusal with no reason is a dead end.
+                $reason = '';
+                foreach ($output as $line) {
+                    if (stripos($line, 'ERROR') !== false) { $reason = $line; break; }
+                }
+                if ($reason === '' && $output) {
+                    $reason = (string) end($output);
+                }
+                $error = t('set.err_restore_failed',
+                           ['reason' => mb_substr(trim($reason), 0, 200)]);
             }
         }
     }

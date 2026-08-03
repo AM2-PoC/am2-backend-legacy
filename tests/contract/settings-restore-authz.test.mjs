@@ -20,7 +20,8 @@ import {
 } from './helpers.mjs';
 
 const FIXTURE = 'ct_channel_a';
-const NONCE = 'ct-probe-' + Date.now();
+// channels.category is varchar(20), so the nonce has to fit in it.
+const NONCE = ('ctp' + Date.now()).slice(0, 20);
 
 const categoryOf = (name) => {
     guardCtTarget(name);
@@ -65,16 +66,9 @@ describe('settings.php restore is superadmin only', () => {
     test('a branch admin cannot run the restore', async () => {
         const html = await (await postRestore(branchA)).text();
 
-        // The refusal is the assertion that was watched failing with the guard
-        // removed, so it is the one carrying this test.
-        //
-        // The nonce below is a second line rather than the primary one: the
-        // page discards shell_exec()'s result and reports success whether or
-        // not psql applied anything, and the uploaded file was observed
-        // applying on one run and not on another. Until the restore reports
-        // its real outcome, an unchanged fixture does not prove psql was never
-        // reached -- so this assertion can catch an execution but cannot be
-        // trusted to.
+        // Two independent ends. The fixture proves psql was never reached;
+        // the refusal proves the operator was told why. Both were watched
+        // failing with the guard removed.
         assert.notEqual(categoryOf(FIXTURE), NONCE,
             'a branch admin reached psql: the uploaded file was executed');
         assert.ok(!/pemulihan data selesai|restore has finished/i.test(html),
@@ -104,9 +98,13 @@ describe('settings.php restore is superadmin only', () => {
         // one feature read whichever cluster answered on the default port.
         const src = readSrc('settings.php');
         for (const tool of ['pg_dump', 'psql']) {
-            const line = src.split('\n').find((l) => l.includes(tool + ' -h'));
-            assert.ok(line, `${tool} is no longer built here`);
-            assert.match(line, /-p ' \. \$port/, `${tool} does not pass -p $port`);
+            // The opening quote, so a mention of the tool in a comment is not
+            // mistaken for the command. Each is assembled over several lines,
+            // so the whole statement is what gets read.
+            const i = src.indexOf(`'${tool}`);
+            assert.ok(i > 0, `${tool} is no longer built here`);
+            const stmt = src.slice(i, src.indexOf(';', i));
+            assert.match(stmt, /-p ' \. \$port/, `${tool} does not pass -p $port`);
         }
     });
 
@@ -120,5 +118,62 @@ describe('settings.php restore is superadmin only', () => {
             'the restore writes an audit row that the schema cannot accept');
         assert.match(src, /error_log\(sprintf\(\s*\n?\s*'AM2 settings RESTORE/,
             'the restore must still leave a record somewhere that works');
+    });
+});
+
+describe('settings.php restore reports what psql actually did', () => {
+    // psql exits 0 even when every statement in the file was rejected, and the
+    // page discarded the result, so a restore that changed nothing was shown
+    // as done. Both halves are asserted here: a good file must apply, and a
+    // file that breaks halfway must leave the database exactly as it was.
+    //
+    // SAFETY: every statement names the ct_channel_a fixture and the fixture is
+    // put back in a finally. channels.category is varchar(20), which is what
+    // makes a statement fail on demand without inventing anything.
+    let sup, original;
+
+    before(async () => { sup = await asSuper(); original = categoryOf(FIXTURE); });
+    after(() => {
+        guardCtTarget(FIXTURE);
+        sql(original === ''
+            ? `UPDATE public.channels SET category = NULL WHERE name = '${FIXTURE}'`
+            : `UPDATE public.channels SET category = '${original}' WHERE name = '${FIXTURE}'`);
+    });
+
+    const runRestore = async (body_sql) => {
+        const body = new FormData();
+        body.append('_csrf', await csrfToken(sup));
+        body.append('import_db', '1');
+        body.append('sql_file', new Blob([body_sql], { type: 'application/sql' }), 'ct-probe.sql');
+        return (await fetch(`${BASE}/settings.php`, {
+            method: 'POST', redirect: 'manual', headers: { Host: HOST, Cookie: sup }, body,
+        })).text();
+    };
+
+    test('a file that applies is reported as applied', async () => {
+        guardCtTarget(FIXTURE);
+        const html = await runRestore(
+            `UPDATE public.channels SET category = 'ct-ok' WHERE name = '${FIXTURE}';\n`);
+        assert.equal(categoryOf(FIXTURE), 'ct-ok', 'the statement did not run');
+        assert.match(html, /Proses pemulihan data selesai/, 'a restore that worked was not reported');
+    });
+
+    test('a file that breaks halfway changes nothing and says why', async () => {
+        guardCtTarget(FIXTURE);
+        sql(`UPDATE public.channels SET category = 'ct-before' WHERE name = '${FIXTURE}'`);
+
+        // The first statement is valid and the second is 26 characters into a
+        // varchar(20). Without --single-transaction the first one sticks.
+        const html = await runRestore(
+            `UPDATE public.channels SET category = 'ct-first' WHERE name = '${FIXTURE}';\n`
+            + `UPDATE public.channels SET category = 'ct-far-too-long-for-column' `
+            + `WHERE name = '${FIXTURE}';\n`);
+
+        assert.equal(categoryOf(FIXTURE), 'ct-before',
+            'the database was left half restored, which is the worst outcome');
+        assert.ok(!/Proses pemulihan data selesai/.test(html),
+            'a restore that was rolled back was reported as done');
+        assert.match(html, /Pemulihan dibatalkan/, 'the operator was not told it failed');
+        assert.match(html, /ERROR/, 'the refusal gives no reason to act on');
     });
 });
