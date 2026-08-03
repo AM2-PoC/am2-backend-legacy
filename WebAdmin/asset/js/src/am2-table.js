@@ -54,9 +54,17 @@ async function postFields(fields) {
 function fieldsFor(el, rowId, on) {
     const fields = { [el.dataset.endpoint]: '1', u_id: rowId };
     if (el.dataset.field) fields.feature = el.dataset.field;
-    fields.val = el.dataset.value !== undefined
-        ? el.dataset.value
-        : (on ? 'true' : 'false');
+    // Three shapes, in order of how specific they are. A bulk verb declares
+    // one fixed value; a toggle declares the value for each of its two states
+    // -- duplex is 'FULL DUPLEX' and 'HALF DUPLEX', not true and false, and
+    // sending the boolean got the change refused and rolled straight back.
+    if (el.dataset.value !== undefined) {
+        fields.val = el.dataset.value;
+    } else if (el.dataset.onValue !== undefined) {
+        fields.val = on ? el.dataset.onValue : el.dataset.offValue;
+    } else {
+        fields.val = on ? 'true' : 'false';
+    }
     return fields;
 }
 
@@ -87,8 +95,13 @@ function setupTable(table) {
     const state = { ids: new Set(), all: false, anchor: null };
 
     const rows = () => [...table.querySelectorAll('tr[data-row-id]')];
-    const bar = table.querySelector('[data-bulk-bar]');
-    const offer = table.querySelector('[data-select-all-matching]');
+
+    // The bar is a sibling of the table, not a descendant: it is fixed to the
+    // viewport so it can stay with the operator while the rows scroll. Looking
+    // for it inside the table found nothing, and the selection highlighted
+    // rows while the bar stayed hidden and the count stayed at zero.
+    const bar = document.querySelector('[data-bulk-bar]');
+    const offer = document.querySelector('[data-select-all-matching]');
     const total = () => Number(table.dataset.total || 0);
 
     const selected = () => (state.all ? total() : state.ids.size);
@@ -101,7 +114,7 @@ function setupTable(table) {
             if (box) box.checked = on;
         }
         const n = selected();
-        const count = table.querySelector('[data-bulk-count]');
+        const count = document.querySelector('[data-bulk-count]');
         if (count) count.textContent = String(n);
         if (bar) bar.hidden = n === 0;
 
@@ -162,17 +175,6 @@ function setupTable(table) {
             if (pageBox.checked) rows().forEach((tr) => state.ids.add(tr.dataset.rowId));
             else state.ids.clear();
             paint();
-            return;
-        }
-
-        if (e.target.closest('[data-select-all-matching]')) {
-            state.all = true;
-            paint();
-            return;
-        }
-
-        if (e.target.closest('[data-clear-selection]')) {
-            clearSelection();
             return;
         }
 
@@ -237,7 +239,12 @@ function setupTable(table) {
         }
     }
 
-    table.querySelectorAll('[data-bulk]').forEach((btn) => {
+    bar?.addEventListener('click', (e) => {
+        if (e.target.closest('[data-select-all-matching]')) { state.all = true; paint(); }
+        if (e.target.closest('[data-clear-selection]')) clearSelection();
+    });
+
+    document.querySelectorAll('[data-bulk]').forEach((btn) => {
         btn.addEventListener('click', () => runBulk(btn));
     });
 

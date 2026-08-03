@@ -350,3 +350,20 @@ tr[data-row-id]:focus-visible {
 /* Condensed rows: 40px against the default 48. Padding only -- nothing that
    changes the type size, because a smaller call sign is a call sign misread. */
 .am2-dense td, .am2-dense th { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+
+/* The small state chip a roster row is made of. Written here rather than as a
+   utility string repeated on eighty buttons a page -- it was 1.5kB of markup
+   per row saying the same thing. */
+.am2-chip {
+    border-radius: var(--am2-radius);
+    border-width: 1px;
+    padding: 0.25rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transition: color var(--duration-micro), background-color var(--duration-micro),
+                border-color var(--duration-micro);
+}
+.am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
+.am2-chip:enabled:hover { border-color: var(--color-primary); }
