@@ -219,7 +219,7 @@ echo json_encode($results);
 
 ### 1.8 `api_settings.php`
 
-**GET `action=export_db`** (`:7-31`) — params `admin_id:int`, `role`. Not JSON: streams a `pg_dump` via `passthru()` with `Content-Type: application/octet-stream` and an attachment filename. Superadmin gets `-n public`; others get `-t public.users -t public.channels --column-inserts`. Uses `$host/$port/$user/$dbname/$password` globals from `config.php`.
+**GET `action=export_db`** (`:7-31`) — params `admin_id:int`, `role`. Not JSON: streams a `pg_dump` via `passthru()` with `Content-Type: application/octet-stream` and an attachment filename. Superadmin gets `-n public`. The non-superadmin branch is unreachable — `am2_api_require_super('export-db')` refuses first — and is left for the dead-code pass. `settings.php` no longer has it at all: a branch admin's export is built in PHP from that account's own rows, because `-t public.users` dumped every branch's. Uses `$host/$port/$user/$dbname/$password` globals from `config.php`.
 
 **GET `action=check_update`** (`:38-55`) — reads `update/admin_version.json` (symlink → `/var/www/am2/shared/webadmin-update`).
 ```php
@@ -243,7 +243,7 @@ echo json_encode(['success' => true, 'message' => 'Password diperbarui']);
 ```
 **No old-password check, and no verification that `admin_id` is the caller.**
 
-**POST `action=import_db`** — multipart `sql_file`. Shells out `psql ... < tmpfile` (`:121-122`). ⇒ `{"success":true,"message":"Database berhasil dipulihkan"}` or `{"success":false,"message":"File .sql tidak ditemukan"}` (`:115`). All **200**. `shell_exec` return value is discarded, so failure is reported as success.
+**POST `action=import_db`** — multipart `sql_file`. Shells out `psql ... < tmpfile` (`:121-122`). ⇒ `{"success":true,"message":"Database berhasil dipulihkan"}` or `{"success":false,"message":"File .sql tidak ditemukan"}` (`:115`). All **200**. Since `fix(webadmin): make the restore report what psql actually did`: `exec()` with `-v ON_ERROR_STOP=1 --single-transaction`, so `success` reflects psql's exit status and a dump that breaks halfway is rolled back whole.
 
 ---
 
