@@ -573,8 +573,8 @@ include 'partials/shell.php';
                                 <button type="button" data-row-channels
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-9 rounded-control border border-edge px-2.5 font-mono
-                                               text-[10px] uppercase tracking-[0.15em] text-ink-muted
+                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('usr.channels') ?>
@@ -583,8 +583,8 @@ include 'partials/shell.php';
                                 <button type="button" data-row-edit
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-9 rounded-control border border-edge px-2.5 font-mono
-                                               text-[10px] uppercase tracking-[0.15em] text-ink-muted
+                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('usr.edit') ?>
@@ -595,8 +595,8 @@ include 'partials/shell.php';
                                     <?= am2_csrf_field() ?>
                                     <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
                                     <button type="submit"
-                                            class="h-9 rounded-control border border-edge px-2.5 font-mono
-                                                   text-[10px] uppercase tracking-[0.15em] text-bad
+                                            class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                                   text-[9px] uppercase tracking-[0.12em] text-bad
                                                    transition-colors duration-[var(--duration-micro)]
                                                    hover:border-bad/50 hover:bg-bad/10">
                                         <?= e('usr.delete') ?>
