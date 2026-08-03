@@ -375,10 +375,18 @@ describe('motion rules that decay quietly', () => {
         .concat(fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`))
         .filter((f) => f.endsWith('.php'));
 
+    // Comments are stripped first: a note explaining why Preline's own example
+    // was rewritten is not markup, and a guard that trips on prose is a guard
+    // people learn to route around.
+    const markupOf = (f) => readSrc(f)
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+
     test('nothing animates with transition-all', () => {
         // transition-all animates properties nobody chose, including layout
         // ones, which is how a hover ends up repainting a table.
-        const offenders = pages().filter((f) => /transition-all/.test(readSrc(f)));
+        const offenders = pages().filter((f) => /transition-all/.test(markupOf(f)));
         assert.deepEqual(offenders, [], 'declare the properties being animated');
     });
 
@@ -399,7 +407,7 @@ describe('motion rules that decay quietly', () => {
         // backdrop and a panel crossing the viewport move identically.
         for (const f of pages()) {
             const src = readSrc(f);
-            assert.ok(!/x-transition(?![:.\w-])/.test(src),
+            assert.ok(!/x-transition(?![:.\w-])/.test(markupOf(f)),
                 `${f}: bare x-transition, give it enter and leave`);
         }
     });
