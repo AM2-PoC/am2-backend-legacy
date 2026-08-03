@@ -178,6 +178,9 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 $pageTitle = t('ch.heading');
 $pageLede  = t('ch.lede', ['n' => count($channels)]);
 
+// Still Alpine-driven; shell_end.php loads the runtime only for these.
+$pageUsesAlpine = true;
+
 include 'partials/head.php';
 include 'partials/shell.php';
 ?>

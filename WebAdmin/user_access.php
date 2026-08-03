@@ -153,6 +153,9 @@ $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
 $pageTitle = t('acc.heading');
 $pageLede  = t('acc.lede');
 
+// Still Alpine-driven; shell_end.php loads the runtime only for these.
+$pageUsesAlpine = true;
+
 include 'partials/head.php';
 include 'partials/shell.php';
 ?>

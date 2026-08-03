@@ -16,6 +16,7 @@ $pageTitle = $pageTitle ?? '';
     <title><?= $pageTitle !== '' ? htmlspecialchars($pageTitle) . ' — ' : '' ?>AM²</title>
     <link rel="icon" href="<?= am2_asset('asset/image/logo.jpeg') ?>">
     <link rel="preload" as="font" type="font/woff2" href="asset/font/Inter.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="asset/font/JetBrainsMono.woff2" crossorigin>
     <!-- Still loaded while pages migrate one at a time: the un-migrated ones
          depend on it, and it owns the tokens Tailwind reads. -->
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
@@ -24,5 +25,4 @@ $pageTitle = $pageTitle ?? '';
              rules are all scoped to .leaflet-*, so it costs other pages nothing. */ ?>
     <link rel="stylesheet" href="<?= am2_asset('asset/vendor/leaflet/leaflet.css') ?>">
 </head>
-<body class="min-h-dvh bg-app font-sans text-ink antialiased"
-      x-data="{ nav: false }" @keydown.escape.window="nav = false">
+<body class="min-h-dvh bg-app font-sans text-ink antialiased">

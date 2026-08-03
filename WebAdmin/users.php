@@ -248,6 +248,9 @@ $features = [
     ['enable_ptt_video', 'usr.f_video', (bool) ($auth['can_manage_video'] ?? false)],
 ];
 
+// Still Alpine-driven; shell_end.php loads the runtime only for these.
+$pageUsesAlpine = true;
+
 include 'partials/head.php';
 include 'partials/shell.php';
 ?>

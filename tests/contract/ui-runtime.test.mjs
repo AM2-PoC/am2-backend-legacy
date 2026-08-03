@@ -21,13 +21,59 @@ const BUNDLE = `${SRC}/asset/js/am2-ui.min.js`;
 describe('the built bundle carries what the pages assume', () => {
     const bundle = () => fs.readFileSync(BUNDLE, 'utf8');
 
-    test('every Preline plugin the shell uses survived the build', () => {
-        // Each of these is a global the plugin assigns on import. If the import
-        // is dropped, the markup still renders and simply does nothing.
-        for (const global of ['HSOverlay', 'HSDropdown', 'HSAccordion', 'HSCollapse',
-                              'HSTabs', 'HSTooltip', 'HSComboBox', 'HSTogglePassword']) {
-            assert.ok(bundle().includes(global),
-                `${global} is not in the bundle -- esbuild dropped the plugin import`);
+    // The plugin behind each hs-* hook, by the global it assigns on import.
+    const PLUGIN = {
+        'hs-overlay': 'HSOverlay',
+        'hs-dropdown': 'HSDropdown',
+        'hs-accordion': 'HSAccordion',
+        'hs-collapse': 'HSCollapse',
+        'hs-tabs': 'HSTabs',
+        'hs-tooltip': 'HSTooltip',
+        'hs-combobox': 'HSComboBox',
+        'hs-toggle-password': 'HSTogglePassword',
+    };
+
+    // Derived from the markup rather than listed by hand: a hand-written list
+    // stops covering the next page that starts using a component, which is
+    // exactly how a missing import goes unnoticed -- the markup renders and
+    // simply does nothing.
+    const used = () => {
+        const files = [...fs.readdirSync(SRC).filter((f) => f.endsWith('.php')).map((f) => f),
+                       ...fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`)]
+            .filter((f) => f.endsWith('.php'));
+        const hooks = new Set();
+        for (const f of files) {
+            const src = readSrc(f);
+            for (const hook of Object.keys(PLUGIN)) {
+                // toggle-password's hook is a data attribute; the rest appear
+                // as class names or data attributes with the same stem.
+                if (new RegExp(`["'\\s]${hook}[-"'\\s]|data-${hook}`).test(src)) hooks.add(hook);
+            }
+        }
+        return hooks;
+    };
+
+    test('every Preline plugin the markup uses is in the bundle', () => {
+        // esbuild dropped all eight of these once and exited 0: preline's
+        // package.json lists only dist/index.mjs under `sideEffects`, and a
+        // plugin module exports nothing. --ignore-annotations is what keeps
+        // them, and nothing but this notices if that flag goes away.
+        const hooks = used();
+        assert.ok(hooks.size > 0, 'no hs-* hooks found at all; the check would pass vacuously');
+        for (const hook of hooks) {
+            assert.ok(bundle().includes(PLUGIN[hook]),
+                `${hook} is in the markup but ${PLUGIN[hook]} is not in the bundle`);
+        }
+    });
+
+    test('no plugin is bundled for markup that does not exist', () => {
+        // Four were imported for pages that had not been built yet, and every
+        // page paid for them on first load.
+        const hooks = used();
+        for (const [hook, global] of Object.entries(PLUGIN)) {
+            if (hooks.has(hook)) continue;
+            assert.ok(!bundle().includes(global),
+                `${global} is bundled but nothing uses ${hook}; drop the import`);
         }
     });
 
