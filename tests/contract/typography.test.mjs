@@ -77,4 +77,27 @@ describe('typography contract', () => {
         assert.deepStrictEqual(new Set(files), expected,
             `expected exactly ${expected.size} woff2 files, got ${files.length}`);
     });
+
+    test('controls and table headers keep mono out of their reading path', () => {
+        const css = readSrc('asset/css/am2-ui.css');
+
+        for (const selector of [
+            'button.font-mono',
+            'label.font-mono',
+            'thead.font-mono',
+            'thead.font-mono th',
+            'tr.font-mono > th',
+            '[class*="font-mono"][class*="uppercase"][class*="tracking-"]',
+        ]) {
+            assert.ok(css.includes(selector),
+                `${selector} must receive the sans override`);
+        }
+
+        assert.match(css, /button\.font-mono,[\s\S]*?font-family:\s*var\(--font-sans\)/,
+            'control labels must render in the interface family');
+        assert.match(css, /thead\.font-mono,[\s\S]*?font-family:\s*var\(--font-sans\)/,
+            'table headers must render in the interface family');
+        assert.match(css, /\[class\*="font-mono"\]\[class\*="uppercase"\]\[class\*="tracking-"\]\s*\{[\s\S]*?font-family:\s*var\(--font-sans\)/,
+            'uppercase UI labels must render in the interface family');
+    });
 });
