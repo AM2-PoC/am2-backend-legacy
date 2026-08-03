@@ -1,16 +1,22 @@
 <?php
 /**
- * The sidebar, the top bar, and the opening of <main>.
+ * The application shell: sidebar, header, status strip, and the opening of
+ * <main>.
  *
- * Replaces the old sidebar.php for migrated pages; the two live side by side
- * until every page has moved.
+ * Composed from Preline's free sidebar, navbar and dropdown components, then
+ * rethemed onto AM2's semantic tokens. Preline owns component state — which
+ * overlay is open, where focus sits, whether the body scrolls. Nothing here
+ * sets any of that.
  *
- * Pages set $pageTitle and optionally $pageLede before including this.
+ * Pages set $pageTitle, optionally $pageLede, and optionally $pageActions
+ * (raw markup for the contextual action slot in the header).
  *
- * The collapsed state comes from a cookie so PHP can render the right width on
- * the first paint. Reading it from localStorage would draw the wide rail and
- * then snap it narrow on every navigation.
+ * Rail state still comes from a cookie so PHP renders the right width on the
+ * first paint; reading it from storage would draw the wide sidebar and snap it
+ * narrow on every navigation.
  */
+require_once __DIR__ . '/state.php';
+
 $currentPage = basename($_SERVER['PHP_SELF']);
 $displayName = $_SESSION['admin_username'] ?? 'Admin';
 $roleName    = $_SESSION['admin_role'] ?? 'admin';
@@ -40,9 +46,20 @@ if ($isSuper) {
     $navGroups['nav.administrator'] = [['admin_panel.php', 'nav.admin_panel', 'shield', 0]];
 }
 
-/** Inline SVG rather than an icon font: one fewer network dependency. */
-require_once __DIR__ . '/state.php';
+/** Which group holds the page being viewed, so it opens and the rest do not. */
+$activeGroup = null;
+foreach ($navGroups as $groupKey => $items) {
+    foreach ($items as [$href]) {
+        if ($href === $currentPage) {
+            $activeGroup = $groupKey;
+        }
+    }
+}
 
+/**
+ * Inline SVG rather than an icon font: one fewer network dependency, and one
+ * family throughout — these are Lucide outlines at 1.75 stroke.
+ */
 function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 {
     $paths = [
@@ -67,6 +84,9 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         'collapse' => '<path d="m14 8-4 4 4 4"/><path d="M4 4v16"/>',
         'chevron'  => '<path d="m6 9 6 6 6-6"/>',
         'expand'   => '<path d="m10 8 4 4-4 4"/><path d="M4 4v16"/>',
+        'signal'   => '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/>',
+        'user'     => '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+        'globe'    => '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>',
     ];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"'
         . ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 ' . $extra . '">'
@@ -74,177 +94,278 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 }
 ?>
 
-<div x-cloak x-show="nav" @click="nav = false"
-     class="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden"></div>
-
 <!--
-    256px expanded, 64px as an icon rail — the widths every comparable console
-    settled on. Collapsed items keep a title and an aria-label, because an icon
-    alone tells a sighted power user what it is and tells a screen reader
-    nothing.
--->
-<aside x-data="{ get rail() { return $store.nav.collapsed; } }"
-       :class="{ 'lg:w-16': rail, 'lg:w-64': !rail,
-                 'translate-x-0': nav, '-translate-x-full': !nav, 'lg:translate-x-0': true }"
-       class="w-64 <?= $rail ? 'lg:w-16' : 'lg:w-64' ?> -translate-x-full lg:translate-x-0
-              fixed inset-y-0 left-0 z-50 flex flex-col border-r border-edge bg-card
-              transition-[width,transform] duration-[var(--duration-drawer)] ease-enter">
+    Sidebar. Preline's free sidebar component:
+    https://preline.co/docs/sidebar.html
 
-    <div class="flex h-16 items-center gap-3 border-b border-edge px-3">
+    hs-overlay makes it an offcanvas below lg -- Preline supplies the backdrop,
+    Escape, focus trap and body scroll lock. From lg up the same element is a
+    fixed column, which is why the toggle button only exists on small screens.
+
+    Preline's own example carries `transition-all duration-300`; that is
+    replaced here with the properties actually being animated, on AM2's
+    duration scale.
+-->
+<aside id="am2-sidebar" role="dialog" tabindex="-1" aria-label="<?= e('nav.menu') ?>"
+       data-am2-drawer
+       class="hs-overlay [--auto-close:lg] hs-overlay-open:translate-x-0
+              -translate-x-full lg:translate-x-0 lg:block hidden
+              fixed inset-y-0 start-0 z-60 flex w-[272px] flex-col
+              border-e border-edge bg-card
+              transition-[transform,width] duration-[var(--duration-drawer)] ease-enter
+              <?= $rail ? 'lg:w-[72px]' : 'lg:w-[272px]' ?>">
+
+    <!-- Brand. In the rail only the mark survives; the wordmark is the first
+         thing to go because the mark alone already identifies the product. -->
+    <div class="flex h-16 shrink-0 items-center gap-3 border-b border-edge px-4">
         <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt=""
-             width="36" height="36" class="h-9 w-9 shrink-0 rounded-full bg-white object-contain p-0.5">
-        <div class="min-w-0 flex-1 overflow-hidden" x-show="!rail" x-cloak>
-            <p class="whitespace-nowrap text-base font-semibold leading-none">AM<sup class="text-[10px]">2</sup></p>
-            <p class="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
-                <?= e('login.subtitle') ?>
+             width="36" height="36"
+             class="h-9 w-9 shrink-0 rounded-full bg-white object-contain p-0.5">
+        <div class="am2-rail-hide min-w-0 flex-1 overflow-hidden">
+            <p class="truncate text-sm font-semibold tracking-tight text-ink">AM²</p>
+            <p class="truncate font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
+                <?= e('brand.tagline') ?>
             </p>
         </div>
-        <button type="button" @click="nav = false"
-                class="rounded-control p-2 text-ink-subtle hover:text-ink lg:hidden"
+        <button type="button" data-hs-overlay="#am2-sidebar"
+                class="grid h-11 w-11 place-items-center rounded-control text-ink-subtle
+                       hover:bg-card-muted hover:text-ink lg:hidden"
                 aria-label="<?= e('nav.close_menu') ?>"><?= am2_icon('close') ?></button>
     </div>
 
-    <!-- The one live fact a push-to-talk network runs on. Collapsed, it keeps
-         the number: it is the reason the rail is worth glancing at. -->
-    <div class="border-b border-edge px-3 py-3" x-data="txRail()" x-init="start()"
-         :title="rail ? <?= js('rail.transmitting') ?> : null">
-        <p x-show="!rail" x-cloak
-           class="flex items-center justify-between whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.2em] text-ink-subtle">
-            <span><?= e('rail.transmitting') ?></span>
-            <span x-show="stale" class="text-warn" title="<?= e('rail.stale') ?>">—</span>
-        </p>
-        <div class="mt-1 flex items-center gap-2.5" :class="rail && 'justify-center'">
-            <span class="relative grid h-2.5 w-2.5 shrink-0 place-items-center" aria-hidden="true">
-                <span x-show="count > 0" x-cloak
-                      class="absolute h-2.5 w-2.5 animate-ping rounded-full bg-bad opacity-70"></span>
-                <span class="relative h-2.5 w-2.5 rounded-full"
-                      :class="count > 0 ? 'bg-bad' : 'bg-edge-strong'"></span>
-            </span>
-            <span class="font-mono text-xl font-semibold leading-none tabular-nums transition-colors"
-                  :class="count > 0 ? 'text-bad' : 'text-ink-subtle/70'" x-text="count">0</span>
-            <span x-show="!rail" x-cloak
-                  class="ml-auto whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
-                <span class="tabular-nums text-ink-muted" x-text="online">0</span> <?= e('rail.online') ?>
-            </span>
-        </div>
-    </div>
+    <!--
+        Navigation. Preline accordion group, always-open so several sections can
+        stay expanded at once; the section holding the current page is the one
+        that starts open.
+    -->
+    <nav class="hs-accordion-group flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
+         data-hs-accordion-always-open>
+        <ul class="flex flex-col gap-1">
+            <?php foreach ($navGroups as $groupKey => $items):
+                $gid = 'nav-' . preg_replace('/[^a-z]/', '', $groupKey);
+                $open = ($activeGroup === $groupKey) || !in_array($groupKey, am2_folded_groups(), true);
+            ?>
+            <li class="hs-accordion <?= $open ? 'active' : '' ?>" id="<?= $gid ?>"
+                data-group="<?= htmlspecialchars($groupKey) ?>">
+                <button type="button"
+                        class="hs-accordion-toggle am2-rail-hide flex w-full items-center gap-2
+                               rounded-control px-2 py-1.5 text-left font-mono text-[10px]
+                               uppercase tracking-[0.18em] text-ink-subtle
+                               transition-colors duration-[var(--duration-micro)]
+                               hover:text-ink focus:outline-none focus-visible:ring-2
+                               focus-visible:ring-brand/60"
+                        aria-expanded="<?= $open ? 'true' : 'false' ?>"
+                        aria-controls="<?= $gid ?>-content">
+                    <span class="flex-1"><?= e($groupKey) ?></span>
+                    <span class="hs-accordion-active:rotate-180 transition-transform
+                                 duration-[var(--duration-micro)] ease-standard">
+                        <?= am2_icon('chevron', 'h-3.5 w-3.5') ?>
+                    </span>
+                </button>
 
-    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
-        <?php foreach ($navGroups as $groupKey => $items): ?>
-            <button type="button" x-show="!rail" x-cloak
-                    @click="$store.nav.fold(<?= js($groupKey) ?>)"
-                    :aria-expanded="$store.nav.isFolded(<?= js($groupKey) ?>) ? 'false' : 'true'"
-                    class="flex w-full items-center gap-1.5 whitespace-nowrap rounded-control px-3 pb-1.5 pt-4
-                           font-mono text-[9px] uppercase tracking-[0.2em] text-ink-subtle
-                           hover:text-ink-muted">
-                <span class="transition-transform"
-                      :class="$store.nav.isFolded(<?= js($groupKey) ?>) && '-rotate-90'"><?= am2_icon('chevron', 'h-3 w-3') ?></span>
-                <?= e($groupKey) ?>
-            </button>
-            <div x-show="rail" x-cloak class="mx-2 my-2 h-px bg-edge first:hidden" aria-hidden="true"></div>
-            <?php foreach ($items as [$href, $labelKey, $icon, $depth]): $active = $currentPage === $href; ?>
-                <a href="<?= $href ?>"
-                   <?= $active ? 'aria-current="page"' : '' ?>
-                   :title="rail ? <?= js($labelKey) ?> : null"
-                   aria-label="<?= e($labelKey) ?>"
-                   x-show="rail || !$store.nav.isFolded(<?= js($groupKey) ?>)"
-                   :class="rail && 'justify-center'"
-                   class="group relative mb-0.5 flex items-center gap-3 rounded-control py-2 text-sm no-underline! transition-colors
-                          <?= $depth ? 'pl-9 pr-3' : 'px-3' ?>
-                          <?= $active
-                              ? 'bg-brand/10 font-medium text-ink!'
-                              : 'text-ink-muted! hover:bg-card-muted hover:text-ink!' ?>">
-                    <?php if ($active): ?>
-                        <span class="absolute inset-y-1.5 left-0 w-0.5 rounded-r-full bg-brand" aria-hidden="true"></span>
-                    <?php endif; ?>
-                    <span class="<?= $active ? 'text-brand' : 'text-ink-subtle group-hover:text-ink-muted' ?>"><?= am2_icon($icon) ?></span>
-                    <span x-show="!rail" x-cloak class="whitespace-nowrap"><?= e($labelKey) ?></span>
-                </a>
+                <div id="<?= $gid ?>-content" role="region" aria-labelledby="<?= $gid ?>"
+                     class="hs-accordion-content w-full overflow-hidden
+                            transition-[height] duration-[var(--duration-drawer)] ease-enter
+                            <?= $open ? '' : 'hidden' ?>">
+                    <ul class="mt-1 flex flex-col gap-0.5">
+                        <?php foreach ($items as [$href, $labelKey, $icon, $depth]):
+                            $on = $currentPage === $href; ?>
+                            <li>
+                                <!--
+                                    Active state carries four signals, not one:
+                                    the indicator bar, the background, the icon
+                                    colour and the label weight. Colour alone
+                                    fails for anyone who cannot separate these
+                                    two hues.
+                                -->
+                                <a href="<?= $href ?>" <?= $on ? 'aria-current="page"' : '' ?>
+                                   class="am2-nav-item group relative flex h-11 items-center gap-3
+                                          rounded-control px-2 no-underline!
+                                          transition-colors duration-[var(--duration-micro)]
+                                          <?= $depth > 0 ? 'am2-nav-child' : '' ?>
+                                          <?= $on
+                                              ? 'bg-brand/10 font-semibold text-brand!'
+                                              : 'text-ink-muted! hover:bg-card-muted hover:text-ink!' ?>">
+                                    <?php if ($on): ?>
+                                        <span aria-hidden="true"
+                                              class="am2-nav-indicator absolute inset-y-2 start-0 w-[3px]
+                                                     rounded-full bg-brand"></span>
+                                    <?php endif; ?>
+                                    <span class="grid w-7 shrink-0 place-items-center
+                                                 <?= $on ? 'text-brand' : 'text-ink-subtle group-hover:text-ink' ?>">
+                                        <?= am2_icon($icon) ?>
+                                    </span>
+                                    <span class="am2-rail-hide truncate text-sm"><?= e($labelKey) ?></span>
+                                </a>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </li>
             <?php endforeach; ?>
-        <?php endforeach; ?>
+        </ul>
     </nav>
 
-    <div class="border-t border-edge p-3">
-        <div class="flex items-center gap-3" :class="rail && 'justify-center'">
-            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand/15
-                         font-mono text-sm font-semibold text-brand"
-                  :title="rail ? <?= js('nav.logout') ?> : null">
-                <?= strtoupper(htmlspecialchars(substr($displayName, 0, 1))) ?>
-            </span>
-            <div class="min-w-0 flex-1 overflow-hidden" x-show="!rail" x-cloak>
-                <p class="truncate text-sm font-medium"><?= htmlspecialchars($displayName) ?></p>
-                <p class="whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.15em] <?= $isSuper ? 'text-bad' : 'text-ink-subtle' ?>">
-                    <?= htmlspecialchars($roleName) ?>
+    <!--
+        Account. Preline dropdown, opening upward out of the sidebar foot:
+        https://preline.co/docs/dropdown.html
+        Everything that is about the operator rather than the network lives
+        here — theme, language, sign out — so the header can stay about the page.
+    -->
+    <div class="shrink-0 border-t border-edge p-3">
+        <div class="hs-dropdown relative w-full [--placement:top-left] [--auto-close:inside]">
+            <button id="am2-account" type="button"
+                    class="hs-dropdown-toggle flex w-full items-center gap-3 rounded-control p-2
+                           text-left transition-colors duration-[var(--duration-micro)]
+                           hover:bg-card-muted focus:outline-none focus-visible:ring-2
+                           focus-visible:ring-brand/60"
+                    aria-haspopup="menu" aria-expanded="false" aria-label="<?= e('nav.account') ?>">
+                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-edge
+                             bg-card-muted font-mono text-xs uppercase text-brand">
+                    <?= htmlspecialchars(mb_substr($displayName, 0, 2)) ?>
+                </span>
+                <span class="am2-rail-hide min-w-0 flex-1 overflow-hidden">
+                    <span class="block truncate text-sm text-ink"><?= htmlspecialchars($displayName) ?></span>
+                    <span class="block truncate font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+                        <?= htmlspecialchars($roleName) ?>
+                    </span>
+                </span>
+                <span class="am2-rail-hide text-ink-subtle"><?= am2_icon('chevron', 'h-3.5 w-3.5') ?></span>
+            </button>
+
+            <div class="hs-dropdown-menu hs-dropdown-open:opacity-100 z-70 hidden w-56 opacity-0
+                        rounded-panel border border-edge bg-card p-1.5 shadow-lg
+                        transition-opacity duration-[var(--duration-pop)]"
+                 role="menu" aria-orientation="vertical" aria-labelledby="am2-account">
+
+                <p class="px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
+                    <?= e('pref.language') ?>
                 </p>
+                <div class="flex gap-1 px-1 pb-1.5">
+                    <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
+                        <a href="?lang=<?= $loc ?>" role="menuitem"
+                           <?= $onLoc ? 'aria-current="true"' : '' ?>
+                           class="flex h-11 flex-1 items-center justify-center rounded-control border
+                                  no-underline! font-mono text-[11px] uppercase
+                                  transition-colors duration-[var(--duration-micro)]
+                                  <?= $onLoc
+                                      ? 'border-brand bg-brand/10 text-brand!'
+                                      : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
+                            <?= strtoupper($loc) ?>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+
+                <button type="button" id="themeToggle" role="menuitem"
+                        class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
+                               text-ink-muted transition-colors duration-[var(--duration-micro)]
+                               hover:bg-card-muted hover:text-ink"
+                        aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>">
+                    <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon', 'h-4 w-4') ?></span>
+                    <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun', 'h-4 w-4') ?></span>
+                    <span><?= e('pref.theme') ?></span>
+                </button>
+
+                <div class="my-1 h-px bg-edge"></div>
+
+                <a href="logout.php" role="menuitem"
+                   class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
+                          no-underline! text-bad! transition-colors duration-[var(--duration-micro)]
+                          hover:bg-bad/10">
+                    <?= am2_icon('power', 'h-4 w-4') ?><span><?= e('nav.logout') ?></span>
+                </a>
             </div>
-            <a href="logout.php" x-show="!rail" x-cloak
-               onclick="return confirm(<?= htmlspecialchars(json_encode(t('nav.logout_confirm')), ENT_QUOTES) ?>)"
-               class="rounded-control p-2 text-ink-subtle! no-underline! hover:bg-bad/10 hover:text-bad!"
-               title="<?= e('nav.logout') ?>" aria-label="<?= e('nav.logout') ?>"><?= am2_icon('power') ?></a>
         </div>
 
-        <button type="button" @click="$store.nav.toggle()" x-cloak
-                :title="rail ? <?= js('nav.expand') ?> : <?= js('nav.collapse') ?>"
-                :aria-label="rail ? <?= js('nav.expand') ?> : <?= js('nav.collapse') ?>"
-                :aria-expanded="rail ? 'false' : 'true'"
-                :class="rail && 'justify-center'"
-                class="mt-3 hidden w-full items-center gap-3 rounded-control px-3 py-2
-                       text-ink-subtle transition-colors hover:bg-card-muted hover:text-ink lg:flex">
-            <span x-show="!rail"><?= am2_icon('collapse') ?></span>
-            <span x-show="rail"><?= am2_icon('expand') ?></span>
-            <span x-show="!rail" class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em]">
-                <?= e('nav.collapse') ?>
+        <!-- Rail toggle. Desktop only: below lg the sidebar is a drawer and
+             there is nothing to collapse it into. -->
+        <button type="button" id="am2-rail-toggle"
+                class="mt-1 hidden h-11 w-full items-center gap-3 rounded-control px-2
+                       font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle
+                       transition-colors duration-[var(--duration-micro)]
+                       hover:bg-card-muted hover:text-ink lg:flex"
+                aria-controls="am2-sidebar" aria-expanded="<?= $rail ? 'false' : 'true' ?>">
+            <span class="grid w-7 shrink-0 place-items-center">
+                <span id="am2-rail-icon"><?= am2_icon($rail ? 'expand' : 'collapse', 'h-4 w-4') ?></span>
             </span>
+            <span class="am2-rail-hide"><?= e('nav.collapse') ?></span>
         </button>
     </div>
 </aside>
 
-<div x-data="{ get rail() { return $store.nav.collapsed; } }"
-     :class="{ 'lg:pl-16': rail, 'lg:pl-64': !rail }"
-     class="<?= $rail ? 'lg:pl-16' : 'lg:pl-64' ?> transition-[padding] duration-[var(--duration-drawer)] ease-enter">
-    <header class="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-edge bg-card/85 px-4 backdrop-blur-md lg:px-6">
-        <button type="button" @click="nav = true"
-                class="rounded-control p-2 text-ink-muted hover:bg-card-muted lg:hidden"
-                aria-label="<?= e('nav.open_menu') ?>"><?= am2_icon('menu') ?></button>
+<!--
+    Content column. Preline navbar composition:
+    https://preline.co/docs/navbar.html
+-->
+<div id="am2-content"
+     class="transition-[padding] duration-[var(--duration-drawer)] ease-enter
+            <?= $rail ? 'lg:ps-[72px]' : 'lg:ps-[272px]' ?>">
 
-        <div class="min-w-0 flex-1">
-            <h1 class="truncate text-base font-semibold tracking-tight"><?= htmlspecialchars($pageTitle ?? '') ?></h1>
-            <?php if (!empty($pageLede)): ?>
-                <p class="hidden truncate text-xs text-ink-muted sm:block"><?= htmlspecialchars($pageLede) ?></p>
+    <header class="sticky top-0 z-40 border-b border-edge bg-card/90 backdrop-blur-md">
+        <div class="flex h-16 items-center gap-3 px-4 lg:px-6">
+            <button type="button" data-hs-overlay="#am2-sidebar"
+                    class="grid h-11 w-11 place-items-center rounded-control text-ink-muted
+                           transition-colors duration-[var(--duration-micro)]
+                           hover:bg-card-muted hover:text-ink lg:hidden"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-sidebar"
+                    aria-label="<?= e('nav.open_menu') ?>"><?= am2_icon('menu') ?></button>
+
+            <div class="min-w-0 flex-1">
+                <h1 class="truncate text-base font-semibold tracking-tight text-ink">
+                    <?= htmlspecialchars($pageTitle ?? '') ?>
+                </h1>
+                <?php if (!empty($pageLede)): ?>
+                    <p class="hidden truncate text-xs text-ink-muted sm:block">
+                        <?= htmlspecialchars($pageLede) ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <!-- Contextual action slot: the page's primary verb, next to its title. -->
+            <?php if (!empty($pageActions)): ?>
+                <div class="flex shrink-0 items-center gap-2"><?= $pageActions ?></div>
             <?php endif; ?>
+
+            <button type="button" data-hs-overlay="#am2-palette"
+                    class="hidden h-11 items-center gap-2 rounded-control border border-edge
+                           bg-card-muted px-3 text-sm text-ink-subtle
+                           transition-colors duration-[var(--duration-micro)]
+                           hover:border-edge-strong hover:text-ink md:flex md:w-56 lg:w-64"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette">
+                <?= am2_icon('search', 'h-4 w-4') ?>
+                <span class="flex-1 text-left"><?= e('search.placeholder') ?></span>
+                <kbd class="rounded border border-edge px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+            </button>
+            <button type="button" data-hs-overlay="#am2-palette"
+                    class="grid h-11 w-11 place-items-center rounded-control border border-edge
+                           text-ink-subtle md:hidden"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette"
+                    aria-label="<?= e('search.placeholder') ?>"><?= am2_icon('search', 'h-4 w-4') ?></button>
         </div>
 
-        <button type="button" @click="$dispatch('open-palette')"
-                class="hidden items-center gap-2 rounded-control border border-edge bg-card-muted
-                       px-3 py-2 text-sm text-ink-subtle transition-colors
-                       hover:border-edge-strong hover:text-ink md:flex md:w-56 lg:w-64">
-            <?= am2_icon('search', 'h-4 w-4') ?>
-            <span class="flex-1 text-left"><?= e('search.placeholder') ?></span>
-            <kbd class="rounded border border-edge px-1.5 py-0.5 font-mono text-[10px] text-ink-subtle">⌘K</kbd>
-        </button>
-        <button type="button" @click="$dispatch('open-palette')"
-                class="rounded-control border border-edge p-2 text-ink-subtle md:hidden"
-                aria-label="<?= e('search.placeholder') ?>"><?= am2_icon('search', 'h-4 w-4') ?></button>
-
-        <div class="flex items-center gap-1.5">
-            <?php foreach (AM2_LOCALES as $loc): $on = am2_locale() === $loc; ?>
-                <a href="?lang=<?= $loc ?>"
-                   <?= $on ? 'aria-current="true"' : '' ?> title="<?= e('pref.language') ?>"
-                   class="grid h-9 w-9 place-items-center rounded-control border no-underline!
-                          font-mono text-[11px] uppercase transition-colors
-                          <?= $on
-                              ? 'border-brand bg-brand/10 text-brand!'
-                              : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>"><?= strtoupper($loc) ?></a>
-            <?php endforeach; ?>
-            <button type="button" id="themeToggle"
-                    class="grid h-9 w-9 place-items-center rounded-control border border-edge
-                           text-ink-subtle transition-colors hover:border-edge-strong hover:text-ink"
-                    aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
-                    aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
-                <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon', 'h-4 w-4') ?></span>
-                <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun', 'h-4 w-4') ?></span>
-            </button>
+        <!--
+            Operational status. Full width and on every page, because an
+            operator should not have to navigate to the dashboard to find out
+            whether the relay is up. aria-live is polite: it reports when the
+            numbers change without interrupting whatever is being read.
+        -->
+        <div id="am2-status" aria-live="polite"
+             class="flex items-center gap-4 overflow-x-auto border-t border-edge
+                    bg-card-muted/60 px-4 py-2 font-mono text-[10px] uppercase
+                    tracking-[0.15em] lg:px-6">
+            <span class="flex shrink-0 items-center gap-1.5">
+                <span id="am2-relay-dot" class="h-1.5 w-1.5 rounded-full bg-ink-subtle"></span>
+                <span id="am2-relay-text" class="text-ink-subtle"><?= e('status.checking') ?></span>
+            </span>
+            <span class="flex shrink-0 items-center gap-1.5 text-ink-subtle">
+                <span id="am2-online" class="text-ink">–</span><?= e('rail.online') ?>
+            </span>
+            <span class="flex shrink-0 items-center gap-1.5 text-ink-subtle">
+                <span id="am2-tx-dot" class="hidden h-1.5 w-1.5 rounded-full bg-bad"></span>
+                <span id="am2-tx" class="text-ink">0</span><?= e('status.transmitting') ?>
+            </span>
+            <span id="am2-stale" class="hidden shrink-0 text-warn"><?= e('rail.stale') ?></span>
         </div>
     </header>
 
-    <main class="px-4 py-6 lg:px-6 lg:py-8">
+    <main class="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">

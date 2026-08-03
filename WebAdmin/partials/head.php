@@ -8,7 +8,7 @@
 $pageTitle = $pageTitle ?? '';
 ?>
 <!DOCTYPE html>
-<html <?= am2_html_attrs() ?>>
+<html <?= am2_html_attrs() ?> class="<?= am2_sidebar_collapsed() ? 'am2-rail' : '' ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -70,6 +70,33 @@ controlled by both; Alpine is removed once the last R7 page is done.
 
 Filled in as each page lands.
 
+### Shared shell
+
 | Preline component | Free | Docs | Target file | Adapted from | AM2 changes |
 |---|---|---|---|---|---|
-| _(shell pending)_ | | | | | |
+| Sidebar | core | [sidebar](https://preline.co/docs/sidebar.html) | `partials/shell.php` | the `hs-overlay` aside, `[--auto-close]`, and the mobile toggle | 272px / 72px rail instead of a fixed `w-64`; `transition-all duration-300` replaced with `transition-[transform,width]` on AM2's scale; rail width rendered by PHP from a cookie so there is no snap after paint |
+| Accordion | core | [accordion](https://preline.co/docs/accordion.html) | `partials/shell.php` | `hs-accordion-group` + `data-hs-accordion-always-open`, `hs-accordion-toggle`, `hs-accordion-content` | the group holding the current page starts open; folded groups are written to a cookie so the sidebar renders already folded |
+| Dropdown | core | [dropdown](https://preline.co/docs/dropdown.html) | `partials/shell.php` | `hs-dropdown`, `hs-dropdown-toggle`, `hs-dropdown-menu`, `[--placement:top-left]` | account menu in the sidebar foot, holding language, theme and sign out; opacity left to Preline, travel given to Motion |
+| Navbar | core | [navbar](https://preline.co/docs/navbar.html) | `partials/shell.php` | sticky header composition and the overlay toggle button | page title, contextual action slot, and a full-width operational status strip below it |
+| Modal | core | [modal](https://preline.co/docs/modal.html) | `partials/shell_end.php` | `hs-overlay` dialog with `data-hs-overlay` triggers | the command palette: Preline owns open, Escape and focus, the list and cursor are plain JS |
+
+### Where Preline stops and Motion starts
+
+Opacity is Preline's visibility mechanism — it swaps `opacity-0` for
+`hs-overlay-open:opacity-100`. Motion therefore never touches opacity on those
+elements, only `transform`. That keeps one property under one controller, and
+it means an animation that fails to run leaves the component visible rather
+than stuck at zero.
+
+| Element | Preline owns | Motion owns |
+|---|---|---|
+| Mobile drawer | open/close, backdrop, focus trap, Escape, body scroll lock | `x` translate, 220ms enter / 120ms exit |
+| Modal + palette | open/close, focus, Escape | panel `y` and `scale`, 180ms / 120ms |
+| Dropdown | open/close, placement, keyboard | menu `y`, 160ms |
+| Rail | — | width and padding, CSS transition (no Motion: nothing is being revealed) |
+
+Verified in the browser, not inferred: `HSOverlay`, `HSDropdown` and
+`HSAccordion` are all functions at runtime; the rail goes 272px to 72px with
+labels hidden; the account dropdown opens; folding a group takes the visible
+links from 8 to 5; the palette opens on Ctrl+K with 11 entries; and the mobile
+drawer opens with a backdrop, locks body scroll and closes on Escape.

@@ -7,6 +7,12 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'nav.menu' => 'Menu navigasi',
+    'nav.account' => 'Akun',
+    'brand.tagline' => 'Pusat Kendali Radio',
+    'status.checking' => 'Memeriksa relay',
+    'status.relay_up' => 'Relay aktif',
+    'status.transmitting' => 'memancar',
     'common.retry' => 'Coba lagi',
     'state.error_title' => 'Gagal memuat data',
     'state.error_body' => 'Sambungan ke server terputus. Data di layar mungkin sudah tidak berlaku.',
