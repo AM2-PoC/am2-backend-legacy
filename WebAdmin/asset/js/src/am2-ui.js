@@ -178,8 +178,15 @@ function countTo(el, value) {
     if (!Number.isFinite(target)) { el.textContent = String(value); return; }
 
     const from = Number(el.dataset.am2Value ?? 0);
+    const first = el.dataset.am2Value === undefined;
     el.dataset.am2Value = String(target);
-    if (from === target) return;
+    if (from === target) {
+        // Still write it. On the first pass the element holds a placeholder,
+        // and a genuine zero equals the assumed starting value -- so returning
+        // here left "–" on screen for every count that really was zero.
+        if (first) el.textContent = target.toLocaleString();
+        return;
+    }
     if (reduced) { el.textContent = target.toLocaleString(); return; }
 
     animate(from, target, {
