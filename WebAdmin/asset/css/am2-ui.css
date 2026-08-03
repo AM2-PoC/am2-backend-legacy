@@ -140,6 +140,19 @@ body {
     width: 100%;
 }
 
+/* Mono identifies machine-readable values, not controls. Several migrated
+   pages applied font-mono to their button, label, and table-header wrappers;
+   keep those control surfaces in the interface face without touching nested
+   ids, timestamps, or keyboard hints that explicitly opt into mono. */
+button.font-mono,
+label.font-mono,
+thead.font-mono,
+thead.font-mono th,
+tr.font-mono > th,
+[class*="font-mono"][class*="uppercase"][class*="tracking-"] {
+    font-family: var(--font-sans);
+}
+
 a {
     color: var(--color-secondary);
 }
