@@ -7,6 +7,7 @@
  *
  */
 return [
+    'track.collapse' => 'Hide panel',
     'track.lede' => 'Unit positions in real time',
     'track.units' => 'Unit monitoring',
     'track.search' => 'Search units...',
