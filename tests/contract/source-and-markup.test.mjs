@@ -487,3 +487,22 @@ describe('probes may only name fixtures', () => {
         assert.equal(guardCtTarget('ct_super'), 'ct_super');
     });
 });
+
+describe('translated strings arrive substituted', () => {
+    // t() prepends the colon itself, so the caller passes 'n' and not ':n'.
+    // Passing ':n' produces '::n', which matches nothing and renders the
+    // placeholder to the operator. It looked fine in every test until someone
+    // read the page.
+    test('no unsubstituted placeholder reaches a rendered page', async () => {
+        const sup = await asSuper();
+        for (const path of ['/dashboard.php', '/users.php', '/channels.php',
+                            '/user_access.php', '/logs.php']) {
+            const html = await (await get(path, sup)).text();
+            const body = html.replace(/<script[\s\S]*?<\/script>/g, '')
+                             .replace(/<[^>]+>/g, ' ');
+            const left = [...body.matchAll(/(?:^|\s):([a-z][a-z0-9_]{0,14})(?=\s|%|\b)/gi)]
+                .map((m) => m[0].trim());
+            assert.deepEqual(left, [], `${path}: placeholder never substituted`);
+        }
+    });
+});

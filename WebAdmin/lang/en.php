@@ -7,6 +7,12 @@
  *
  */
 return [
+    'dash.ctx_stranded' => ':n units with no default channel',
+    'dash.ctx_share' => ':p% of all units',
+    'dash.no_channels_note' => 'Create a channel before units can reach each other.',
+    'dash.stranded_none_note' => 'No unit is missing its default channel.',
+    'dash.range' => 'Time range',
+    'dash.days_left' => 'days left',
     'login.eyebrow' => 'Administrator access',
     'login.wordmark_note' => 'Radio network operations console',
     'nav.menu' => 'Navigation menu',
