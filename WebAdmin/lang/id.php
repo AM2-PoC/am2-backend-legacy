@@ -7,6 +7,9 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'track.zoom_in' => 'Perbesar',
+    'track.zoom_out' => 'Perkecil',
+    'track.fit' => 'Tampilkan semua unit',
     'track.collapse' => 'Sembunyikan panel',
     'track.lede' => 'Posisi unit secara real-time',
     'track.units' => 'Monitoring unit',
