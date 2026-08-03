@@ -279,6 +279,19 @@ function setupTable(table) {
         }
     });
 
+    /*
+     * Density. A console is read at a distance, and at a glance -- forty
+     * pixels a row fits half again as many units on a screen, forty-eight is
+     * easier to hit with a thumb. The choice is remembered beside the sidebar
+     * rail's, so the panel does not forget it between pages.
+     */
+    table.querySelector('[data-density]')?.addEventListener('click', function () {
+        const dense = !table.classList.contains('am2-dense');
+        table.classList.toggle('am2-dense', dense);
+        this.setAttribute('aria-pressed', dense ? 'true' : 'false');
+        document.cookie = `am2_density=${dense ? 'compact' : 'normal'};path=/;max-age=31536000;samesite=lax`;
+    });
+
     paint();
 }
 

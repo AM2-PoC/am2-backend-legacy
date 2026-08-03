@@ -325,4 +325,16 @@ return [
     'set.err_server_store'      => 'Server tidak bisa menyimpan berkas sementara.',
     'set.err_upload'            => 'Unggahan gagal.',
     'set.err_denied'            => 'Akses ditolak.',
+    // Tables
+    'tbl.rows'                  => ':n baris',
+    'tbl.density'               => 'Kerapatan baris',
+    'tbl.select_page'           => 'Pilih semua di halaman ini',
+    'tbl.selected'              => 'dipilih',
+    'tbl.clear_selection'       => 'Batalkan pilihan',
+    'tbl.page_selected'         => 'Semua di halaman ini terpilih.',
+    'tbl.select_all_matching'   => 'Pilih semua :n yang cocok',
+    'tbl.showing'               => 'Menampilkan :from–:to dari :total',
+    'tbl.pagination'            => 'Halaman',
+    'tbl.prev'                  => 'Sebelumnya',
+    'tbl.next'                  => 'Berikutnya',
 ];

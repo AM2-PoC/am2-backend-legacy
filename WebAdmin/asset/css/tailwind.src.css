@@ -346,3 +346,7 @@ tr[data-row-id]:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
 }
+
+/* Condensed rows: 40px against the default 48. Padding only -- nothing that
+   changes the type size, because a smaller call sign is a call sign misread. */
+.am2-dense td, .am2-dense th { padding-top: 0.375rem; padding-bottom: 0.375rem; }

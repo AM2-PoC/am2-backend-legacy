@@ -325,4 +325,16 @@ return [
     'set.err_server_store'      => 'The server could not store the temporary file.',
     'set.err_upload'            => 'The upload failed.',
     'set.err_denied'            => 'Access denied.',
+    // Tables
+    'tbl.rows'                  => ':n rows',
+    'tbl.density'               => 'Row density',
+    'tbl.select_page'           => 'Select everything on this page',
+    'tbl.selected'              => 'selected',
+    'tbl.clear_selection'       => 'Clear the selection',
+    'tbl.page_selected'         => 'Everything on this page is selected.',
+    'tbl.select_all_matching'   => 'Select all :n matching',
+    'tbl.showing'               => 'Showing :from–:to of :total',
+    'tbl.pagination'            => 'Pages',
+    'tbl.prev'                  => 'Previous',
+    'tbl.next'                  => 'Next',
 ];
