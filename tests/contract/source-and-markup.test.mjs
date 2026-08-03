@@ -203,7 +203,14 @@ describe('untrusted text is not rendered as markup', () => {
         const interpolated = [...src.matchAll(/\$\{\s*(?:row|log)\.[a-z_]+/g)].map((m) => m[0]);
         assert.deepEqual(interpolated, [],
             `log fields interpolated into a string: ${interpolated.join(', ')}`);
-        assert.match(src, /x-text="row\.target"/, 'the detail column must render as text');
+        // Mechanism-agnostic: Alpine's x-text and a textContent assignment are
+        // both fine, and pinning the test to one of them made it fail the
+        // moment the page stopped using Alpine rather than when it stopped
+        // being safe.
+        assert.ok(!/\b(?:outerHTML\s*=|insertAdjacentHTML)/.test(src),
+            'log rows must not be inserted as markup');
+        assert.match(src, /x-text="row\.target"|textContent\s*=\s*(?:r|row)\.target/,
+            'the detail column must reach the DOM as text');
     });
 
     test('livetrack.php does not build a handler argument from a raw id', () => {

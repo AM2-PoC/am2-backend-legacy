@@ -7,6 +7,9 @@
  *
  */
 return [
+    'logs.pagination' => "Log pagination",
+    'logs.count' => "Showing :from–:to of :total most recent",
+    'logs.paused_browsing' => "Paused \u2014 page 2+",
     'dash.ctx_stranded' => ':n units with no default channel',
     'dash.ctx_share' => ':p% of all units',
     'dash.no_channels_note' => 'Create a channel before units can reach each other.',
