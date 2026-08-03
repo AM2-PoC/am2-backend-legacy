@@ -127,6 +127,17 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <?= e('brand.tagline') ?>
             </p>
         </div>
+        <!-- Collapse sits with the thing it collapses. Icon only: a label
+             here would be the first casualty of the rail it operates. -->
+        <button type="button" id="am2-rail-toggle"
+                class="hidden h-11 w-11 shrink-0 place-items-center rounded-control
+                       text-ink-subtle transition-colors duration-[var(--duration-micro)]
+                       hover:bg-card-muted hover:text-ink lg:grid"
+                aria-controls="am2-sidebar" aria-expanded="<?= $rail ? 'false' : 'true' ?>"
+                aria-label="<?= e('nav.collapse') ?>" title="<?= e('nav.collapse') ?>">
+            <span id="am2-rail-icon"><?= am2_icon($rail ? 'expand' : 'collapse', 'h-4 w-4') ?></span>
+        </button>
+
         <button type="button" data-hs-overlay="#am2-sidebar"
                 class="grid h-11 w-11 place-items-center rounded-control text-ink-subtle
                        hover:bg-card-muted hover:text-ink lg:hidden"
@@ -212,85 +223,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         Everything that is about the operator rather than the network lives
         here — theme, language, sign out — so the header can stay about the page.
     -->
-    <div class="shrink-0 border-t border-edge p-3">
-        <div class="hs-dropdown relative w-full [--placement:top-left] [--auto-close:inside]">
-            <button id="am2-account" type="button"
-                    class="hs-dropdown-toggle flex w-full items-center gap-3 rounded-control p-2
-                           text-left transition-colors duration-[var(--duration-micro)]
-                           hover:bg-card-muted focus:outline-none focus-visible:ring-2
-                           focus-visible:ring-brand/60"
-                    aria-haspopup="menu" aria-expanded="false" aria-label="<?= e('nav.account') ?>">
-                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-edge
-                             bg-card-muted font-mono text-xs uppercase text-brand">
-                    <?= htmlspecialchars(mb_substr($displayName, 0, 2)) ?>
-                </span>
-                <span class="am2-rail-hide min-w-0 flex-1 overflow-hidden">
-                    <span class="block truncate text-sm text-ink"><?= htmlspecialchars($displayName) ?></span>
-                    <span class="block truncate font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
-                        <?= htmlspecialchars($roleName) ?>
-                    </span>
-                </span>
-                <span class="am2-rail-hide text-ink-subtle"><?= am2_icon('chevron', 'h-3.5 w-3.5') ?></span>
-            </button>
-
-            <div class="hs-dropdown-menu hs-dropdown-open:opacity-100 z-70 hidden w-56 opacity-0
-                        rounded-panel border border-edge bg-card p-1.5 shadow-pop
-                        transition-opacity duration-[var(--duration-pop)]"
-                 role="menu" aria-orientation="vertical" aria-labelledby="am2-account">
-
-                <p class="px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
-                    <?= e('pref.language') ?>
-                </p>
-                <div class="flex gap-1 px-1 pb-1.5">
-                    <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
-                        <a href="?lang=<?= $loc ?>" role="menuitem"
-                           <?= $onLoc ? 'aria-current="true"' : '' ?>
-                           class="flex h-11 flex-1 items-center justify-center rounded-control border
-                                  no-underline! font-mono text-[11px] uppercase
-                                  transition-colors duration-[var(--duration-micro)]
-                                  <?= $onLoc
-                                      ? 'border-brand bg-brand/10 text-brand!'
-                                      : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
-                            <?= strtoupper($loc) ?>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-
-                <button type="button" id="themeToggle" role="menuitem"
-                        class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
-                               text-ink-muted transition-colors duration-[var(--duration-micro)]
-                               hover:bg-card-muted hover:text-ink"
-                        aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>">
-                    <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon', 'h-4 w-4') ?></span>
-                    <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun', 'h-4 w-4') ?></span>
-                    <span><?= e('pref.theme') ?></span>
-                </button>
-
-                <div class="my-1 h-px bg-edge"></div>
-
-                <a href="logout.php" role="menuitem"
-                   class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
-                          no-underline! text-bad! transition-colors duration-[var(--duration-micro)]
-                          hover:bg-bad/10">
-                    <?= am2_icon('power', 'h-4 w-4') ?><span><?= e('nav.logout') ?></span>
-                </a>
-            </div>
-        </div>
-
-        <!-- Rail toggle. Desktop only: below lg the sidebar is a drawer and
-             there is nothing to collapse it into. -->
-        <button type="button" id="am2-rail-toggle"
-                class="mt-1 hidden h-11 w-full items-center gap-3 rounded-control px-2
-                       font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle
-                       transition-colors duration-[var(--duration-micro)]
-                       hover:bg-card-muted hover:text-ink lg:flex"
-                aria-controls="am2-sidebar" aria-expanded="<?= $rail ? 'false' : 'true' ?>">
-            <span class="grid w-7 shrink-0 place-items-center">
-                <span id="am2-rail-icon"><?= am2_icon($rail ? 'expand' : 'collapse', 'h-4 w-4') ?></span>
-            </span>
-            <span class="am2-rail-hide"><?= e('nav.collapse') ?></span>
-        </button>
-    </div>
 </aside>
 
 <!--
@@ -341,6 +273,82 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                            text-ink-subtle md:hidden"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette"
                     aria-label="<?= e('search.placeholder') ?>"><?= am2_icon('search', 'h-4 w-4') ?></button>
+
+            <!--
+                Language and theme sit in the bar, not behind a menu. They are
+                switched often enough that a click to reveal them is a click
+                too many, and hiding a theme control behind an account menu
+                makes it look like an account setting.
+            -->
+            <div class="hidden items-center gap-1.5 sm:flex" role="group"
+                 aria-label="<?= e('pref.language') ?>">
+                <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
+                    <a href="?lang=<?= $loc ?>" <?= $onLoc ? 'aria-current="true"' : '' ?>
+                       class="grid h-11 w-11 place-items-center rounded-control border no-underline!
+                              font-mono text-[11px] uppercase transition-colors
+                              duration-[var(--duration-micro)]
+                              <?= $onLoc
+                                  ? 'border-brand bg-brand/10 text-brand!'
+                                  : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
+                        <?= strtoupper($loc) ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+
+            <button type="button" id="themeToggle"
+                    class="grid h-11 w-11 place-items-center rounded-control border border-edge
+                           text-ink-subtle transition-colors duration-[var(--duration-micro)]
+                           hover:border-edge-strong hover:text-ink"
+                    aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
+                    aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
+                <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon', 'h-4 w-4') ?></span>
+                <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun', 'h-4 w-4') ?></span>
+            </button>
+
+            <!-- Who is signed in, and the way out. Preline dropdown. -->
+            <div class="hs-dropdown relative [--placement:bottom-right]">
+                <button id="am2-account" type="button"
+                        class="hs-dropdown-toggle flex h-11 items-center gap-2 rounded-control
+                               border border-edge px-1.5 transition-colors
+                               duration-[var(--duration-micro)] hover:border-edge-strong"
+                        aria-haspopup="menu" aria-expanded="false"
+                        aria-label="<?= e('nav.account') ?>">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full
+                                 bg-card-muted font-mono text-[11px] uppercase text-brand">
+                        <?= htmlspecialchars(mb_substr($displayName, 0, 2)) ?>
+                    </span>
+                    <span class="hidden min-w-0 pe-1 text-left lg:block">
+                        <span class="block truncate text-xs text-ink"><?= htmlspecialchars($displayName) ?></span>
+                        <span class="block truncate font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+                            <?= htmlspecialchars($roleName) ?>
+                        </span>
+                    </span>
+                    <span class="text-ink-subtle"><?= am2_icon('chevron', 'h-3.5 w-3.5') ?></span>
+                </button>
+
+                <div class="hs-dropdown-menu hs-dropdown-open:opacity-100 z-70 hidden w-52 opacity-0
+                            rounded-panel border border-edge bg-card p-1.5 shadow-pop
+                            transition-opacity duration-[var(--duration-pop)]"
+                     role="menu" aria-orientation="vertical" aria-labelledby="am2-account">
+                    <!-- Language repeats here for narrow screens, where the bar
+                         has no room for it. -->
+                    <div class="flex gap-1 px-1 pb-1.5 sm:hidden">
+                        <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
+                            <a href="?lang=<?= $loc ?>" role="menuitem"
+                               class="flex h-11 flex-1 items-center justify-center rounded-control border
+                                      no-underline! font-mono text-[11px] uppercase
+                                      <?= $onLoc ? 'border-brand bg-brand/10 text-brand!'
+                                                 : 'border-edge text-ink-subtle!' ?>"><?= strtoupper($loc) ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                    <a href="logout.php" role="menuitem"
+                       class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
+                              no-underline! text-bad! transition-colors duration-[var(--duration-micro)]
+                              hover:bg-bad/10">
+                        <?= am2_icon('power', 'h-4 w-4') ?><span><?= e('nav.logout') ?></span>
+                    </a>
+                </div>
+            </div>
         </div>
 
         <!--
