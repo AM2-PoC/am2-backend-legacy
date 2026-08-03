@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="robots" content="noindex, nofollow">
     <title><?= e('login.title') ?> — AM²</title>
     <link rel="icon" href="<?= am2_asset('asset/image/logo.jpeg') ?>">
-    <link rel="preload" as="font" type="font/woff2" href="asset/font/Inter.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexSans-Regular.woff2" crossorigin>
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-tailwind.css') ?>">
 </head>
