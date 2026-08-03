@@ -18,7 +18,6 @@ $chips      = $chips ?? [];
 $total      = (int) ($total ?? 0);
 $allIds     = $allIds ?? [];
 $selectable = $selectable ?? true;
-$dense      = ($_COOKIE['am2_density'] ?? 'normal') === 'compact';
 
 if (!function_exists('am2_table_qs')) {
     /** The current view with some parameters replaced. Page resets on any change. */
@@ -48,7 +47,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
 <section id="<?= htmlspecialchars($tableId) ?>" data-am2-table
          data-total="<?= $total ?>"
          data-all-ids="<?= htmlspecialchars(implode(' ', $allIds)) ?>"
-         class="am2-surface flex flex-col rounded-card <?= $dense ? 'am2-dense' : '' ?>">
+         class="am2-surface flex flex-col rounded-card">
 
     <header class="flex flex-col gap-3 border-b border-edge p-4 lg:flex-row lg:items-center lg:gap-4 lg:px-5">
 
@@ -93,18 +92,13 @@ $curChip = (string) ($_GET['chip'] ?? '');
         <?php endif; ?>
 
         <div class="flex shrink-0 items-center gap-3">
-            <!-- It was three stacked lines, which is a menu everywhere else on
-                 the web. A control nobody can name is a control nobody uses. -->
-            <button type="button" data-density
-                    aria-pressed="<?= $dense ? 'true' : 'false' ?>"
-                    title="<?= e('tbl.density') ?>"
-                    class="h-11 rounded-control border border-edge px-3 font-mono text-[10px]
-                           uppercase tracking-[0.15em] text-ink-subtle transition-colors
-                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand
-                           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
-                <span data-density-label data-dense="<?= e('tbl.dense') ?>"
-                      data-normal="<?= e('tbl.normal') ?>"><?= $dense ? e('tbl.dense') : e('tbl.normal') ?></span>
-            </button>
+            <!-- The page's own verb, in the toolbar with the thing it acts on.
+                 It was in the shell's header, which is where the app's
+                 navigation lives, not a page's controls. -->
+            <?php if (!empty($tableAction)): ?>
+                <?= $tableAction ?>
+            <?php endif; ?>
+
             <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e($countKey ?? 'tbl.rows', ['n' => number_format($total)]) ?>
             </span>
