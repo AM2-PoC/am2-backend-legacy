@@ -133,7 +133,7 @@ html {
 body {
     background: var(--color-bg) !important;
     color: var(--color-text);
-    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif !important;
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0;
     max-width: 100%;
     overflow-x: hidden;

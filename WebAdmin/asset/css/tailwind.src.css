@@ -12,19 +12,47 @@
 
 /*
  * Self-hosted, so the panel does not reach a third party to render itself.
- * Variable weights: one file each instead of six.
+ * IBM Plex Sans for the interface, IBM Plex Mono for technical text.
  */
 @font-face {
-    font-family: "Inter";
-    src: url("../font/Inter.woff2") format("woff2-variations");
-    font-weight: 100 900;
+    font-family: "IBM Plex Sans";
+    src: url("../font/IBMPlexSans-Regular.woff2") format("woff2");
+    font-weight: 400;
     font-style: normal;
     font-display: swap;
 }
 @font-face {
-    font-family: "JetBrains Mono";
-    src: url("../font/JetBrainsMono.woff2") format("woff2-variations");
-    font-weight: 100 800;
+    font-family: "IBM Plex Sans";
+    src: url("../font/IBMPlexSans-Medium.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    src: url("../font/IBMPlexSans-SemiBold.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    src: url("../font/IBMPlexSans-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "IBM Plex Mono";
+    src: url("../font/IBMPlexMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: "IBM Plex Mono";
+    src: url("../font/IBMPlexMono-Medium.woff2") format("woff2");
+    font-weight: 500;
     font-style: normal;
     font-display: swap;
 }
@@ -66,11 +94,12 @@
     --color-warn: var(--color-warning);
     --color-bad: var(--color-danger);
 
-    /* Inter for the interface. Mono is not decoration here: unit ids, call
-       signs, timestamps and log lines are identifiers, and every real dispatch
-       system sets them monospaced so digits align and can be read aloud. */
-    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+    /* IBM Plex Sans for the interface, IBM Plex Mono for technical text.
+       The mono is not decoration: unit ids, call signs, timestamps and log
+       lines are identifiers, and every real dispatch system sets them
+       monospaced so digits align and can be read aloud. */
+    --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
     /* The app already had a radius scale; the redesign inherits it rather than
        inventing one. --am2-radius is 8px and --am2-card-radius is 20px, and the

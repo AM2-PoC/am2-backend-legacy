@@ -15,8 +15,8 @@ $pageTitle = $pageTitle ?? '';
     <meta name="robots" content="noindex, nofollow">
     <title><?= $pageTitle !== '' ? htmlspecialchars($pageTitle) . ' — ' : '' ?>AM²</title>
     <link rel="icon" href="<?= am2_asset('asset/image/logo.jpeg') ?>">
-    <link rel="preload" as="font" type="font/woff2" href="asset/font/Inter.woff2" crossorigin>
-    <link rel="preload" as="font" type="font/woff2" href="asset/font/JetBrainsMono.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexSans-Regular.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexMono-Regular.woff2" crossorigin>
     <!-- Still loaded while pages migrate one at a time: the un-migrated ones
          depend on it, and it owns the tokens Tailwind reads. -->
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
