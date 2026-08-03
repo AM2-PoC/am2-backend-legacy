@@ -78,6 +78,17 @@
     --radius-control: var(--am2-radius);
     --radius-card: var(--am2-card-radius);
     --radius-panel: 14px;
+
+    /*
+     * Elevation. am2-ui.css has carried these since before the redesign and
+     * nothing was using them -- Tailwind's own shadow-sm was standing in, which
+     * on a white card over #f8fafc is very nearly nothing at all. Same mistake
+     * as overriding the project's border radii: the visual language was already
+     * here.
+     */
+    --shadow-card: var(--am2-card-shadow);
+    --shadow-panel: var(--am2-shadow);
+    --shadow-pop: var(--am2-shadow-sm);
 }
 
 /* Someone watching a live map for hours did not ask for movement. */
@@ -261,3 +272,44 @@
 /* Preline ships its sidebar with `transition-all`; these are the properties
  * that actually change, so nothing else is dragged into the transition. */
 #am2-sidebar { transition-property: transform, width; }
+
+/*
+ * The login brand panel. It was bg-slate-950 whatever the theme, so light mode
+ * covered three fifths of the page and stopped. Light gets a raised neutral
+ * surface with the mark in colour; dark keeps the deep panel, because there it
+ * is the page.
+ */
+.am2-brand-panel {
+    background: var(--color-surface-muted);
+    border-inline-end: 1px solid var(--color-border);
+}
+[data-theme="dark"] .am2-brand-panel {
+    background: #020617;
+    border-inline-end-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+/*
+ * A surface has to be findable before it can be read. In light mode a white
+ * card sits on #f8fafc behind a #e2e8f0 border, which is three shades of the
+ * same thing; the stronger border and the real shadow are what separate them.
+ */
+.am2-surface {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--am2-card-shadow);
+}
+[data-theme="dark"] .am2-surface {
+    border-color: var(--color-border);
+}
+
+/* The console's own detail: a hairline of brand across the top of the card it
+ * is asking you to fill in. */
+.am2-surface-accent { position: relative; overflow: hidden; }
+.am2-surface-accent::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 2px;
+    background: var(--color-primary);
+}

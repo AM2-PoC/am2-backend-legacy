@@ -66,9 +66,12 @@ before(async () => {
 });
 
 after(() => {
-    // Leave no membership behind for the next run to trip over.
-    sql(`DELETE FROM public.user_channels WHERE user_id IN ('CT_A1','CT_A2','CT_B1')`);
-    sql(`UPDATE public.users SET last_channel_id = NULL WHERE id IN ('CT_A1','CT_A2','CT_B1')`);
+    // Only the units this file touches. It used to clear CT_A2 as well, which
+    // session-order.test.mjs is using -- the runner executes files in parallel,
+    // so that cleanup was deleting rows out from under another file's
+    // assertions. It failed roughly one run in ten and looked like a flake.
+    sql(`DELETE FROM public.user_channels WHERE user_id IN ('CT_A1','CT_B1')`);
+    sql(`UPDATE public.users SET last_channel_id = NULL WHERE id IN ('CT_A1','CT_B1')`);
 });
 
 /** Put the unit into a known state: two channels, A default, A2 receive-only. */

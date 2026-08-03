@@ -7,6 +7,8 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'login.eyebrow' => 'Akses administrator',
+    'login.wordmark_note' => 'Konsol kendali jaringan radio',
     'nav.menu' => 'Menu navigasi',
     'nav.account' => 'Akun',
     'brand.tagline' => 'Pusat Kendali Radio',
