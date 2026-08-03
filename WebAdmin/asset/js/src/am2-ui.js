@@ -16,14 +16,17 @@
 /* Only the plugins this panel uses. The barrel export pulls in the datatable,
  * the datepicker, the carousel and the range slider as well, which is 449kB of
  * behaviour for a console that has none of those. */
-import 'preline/plugins/overlay';    /* modal, and the mobile drawer */
-import 'preline/plugins/dropdown';   /* header menus, row actions      */
-import 'preline/plugins/collapse';
-import 'preline/plugins/accordion';  /* foldable navigation groups     */
-import 'preline/plugins/tabs';
-import 'preline/plugins/tooltip';    /* also backs the popovers        */
-import 'preline/plugins/combobox';   /* search over units and channels */
-import 'preline/plugins/toggle-password';
+/*
+ * One import per plugin the markup actually uses, and no others. collapse,
+ * tabs, tooltip and combobox were imported for pages that have not been built
+ * yet, and every page paid for them on first load. ui-runtime.test.mjs reads
+ * the hs-* attributes out of the markup and fails if an import is missing, so
+ * adding one back is a line and forgetting one is a red test.
+ */
+import 'preline/plugins/overlay';          /* modal, and the mobile drawer  */
+import 'preline/plugins/dropdown';         /* header menus, row actions     */
+import 'preline/plugins/accordion';        /* foldable navigation groups    */
+import 'preline/plugins/toggle-password';  /* login, and the password card  */
 import { animate, stagger, inView } from 'motion';
 import qrcode from 'qrcode-generator';
 
