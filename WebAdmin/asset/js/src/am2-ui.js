@@ -25,6 +25,7 @@ import 'preline/plugins/tooltip';    /* also backs the popovers        */
 import 'preline/plugins/combobox';   /* search over units and channels */
 import 'preline/plugins/toggle-password';
 import { animate, stagger, inView } from 'motion';
+import qrcode from 'qrcode-generator';
 
 /* Durations, in seconds because that is what Motion takes. Graded by how far
  * a thing travels: a colour change is over before it is noticed, a drawer
@@ -196,6 +197,47 @@ function countTo(el, value) {
     });
 }
 
+/**
+ * A QR code, as an SVG element.
+ *
+ * The console hands a phone to an officer in the field; the officer scans and
+ * installs. Type 0 lets the encoder choose the smallest version that fits, and
+ * correction level M survives a photograph of a screen at an angle.
+ *
+ * Built as DOM rather than a markup string: the only thing interpolated is a
+ * path of numbers, but the rule in this codebase is that markup is not
+ * assembled from data, and an exception is how the rule stops holding.
+ */
+function qr(text, size = 120) {
+    const code = qrcode(0, 'M');
+    code.addData(String(text));
+    code.make();
+
+    const n = code.getModuleCount();
+    const cell = size / n;
+    let d = '';
+    for (let r = 0; r < n; r += 1) {
+        for (let c = 0; c < n; c += 1) {
+            if (!code.isDark(r, c)) continue;
+            const x = (c * cell).toFixed(2);
+            const y = (r * cell).toFixed(2);
+            d += `M${x} ${y}h${cell.toFixed(2)}v${cell.toFixed(2)}h-${cell.toFixed(2)}z`;
+        }
+    }
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('fill', 'currentColor');
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+    return svg;
+}
+
 /** Reveal below the fold, once, for the long lower half of the dashboard. */
 function revealOnScroll(selector) {
     if (reduced) {
@@ -249,6 +291,6 @@ function emit(selector) {
 }
 
 window.AM2 = {
-    enterOnce, countTo, revealOnScroll, filtered, toast, emit,
+    enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr,
     prefersReducedMotion, move, T, EASE, STAGGER,
 };

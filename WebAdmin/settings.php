@@ -31,6 +31,100 @@ function am2_page_require_super(bool $is_super, string $what): bool
     return true;
 }
 
+/** "2M" as a number of bytes. */
+function am2_ini_bytes(string $value): int
+{
+    $value = trim($value);
+    $n = (int) $value;
+    return match (strtolower(substr($value, -1))) {
+        'g' => $n * 1024 ** 3,
+        'm' => $n * 1024 ** 2,
+        'k' => $n * 1024,
+        default => $n,
+    };
+}
+
+/** Bytes as something a person reads. */
+function am2_bytes_human(int $bytes): string
+{
+    if ($bytes >= 1024 ** 2) {
+        return number_format($bytes / 1024 ** 2, 1) . ' MB';
+    }
+    if ($bytes >= 1024) {
+        return number_format($bytes / 1024, 1) . ' KB';
+    }
+    return $bytes . ' B';
+}
+
+/**
+ * Why an upload did not arrive.
+ *
+ * move_uploaded_file() failing was reported as "Gagal mengunggah file ke
+ * server" whatever went wrong, including the case that actually happens: the
+ * file was larger than PHP accepts and was never written at all.
+ */
+function am2_upload_error(array $file): string
+{
+    return match ($file['error'] ?? UPLOAD_ERR_NO_FILE) {
+        UPLOAD_ERR_OK => '',
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'set.err_too_big',
+        UPLOAD_ERR_PARTIAL => 'set.err_partial',
+        UPLOAD_ERR_NO_FILE => 'set.err_no_file',
+        UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'set.err_server_store',
+        default => 'set.err_upload',
+    };
+}
+
+/**
+ * What `update/` actually is on this host.
+ *
+ * The APK handler writes into a relative `update/` and creates it when it is
+ * missing. In production that path is a symlink to shared storage; on staging
+ * it did not exist, so an upload would have made a real directory inside the
+ * deployed tree, where the next deploy erases it. Nothing said so on screen.
+ */
+function am2_update_state(): array
+{
+    $dir = __DIR__ . '/update';
+    $state = [
+        'exists'   => is_dir($dir),
+        'symlink'  => is_link($dir),
+        'writable' => is_dir($dir) && is_writable($dir),
+        'files'    => [],
+    ];
+    foreach (glob($dir . '/*.apk') ?: [] as $f) {
+        $state['files'][] = [
+            'name' => basename($f),
+            'size' => (int) filesize($f),
+            'time' => (int) filemtime($f),
+        ];
+    }
+    usort($state['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
+
+    // The version Admin Native is told about, read from the same file
+    // api_settings.php?action=check_update serves.
+    $state['version'] = null;
+    $json = $dir . '/admin_version.json';
+    if (is_file($json)) {
+        $parsed = json_decode((string) file_get_contents($json), true);
+        if (is_array($parsed)) {
+            $state['version'] = $parsed;
+        }
+    }
+    return $state;
+}
+
+$upload_limit = min(
+    am2_ini_bytes((string) ini_get('upload_max_filesize')),
+    am2_ini_bytes((string) ini_get('post_max_size'))
+);
+
+// A body over post_max_size is discarded whole: $_POST and $_FILES arrive
+// empty, so am2_csrf_require() finds no token and answers "Sesi tidak valid"
+// -- which is what an operator uploading a 24 MB APK actually saw. The guard
+// runs in config.php and exits before this file, so the only thing that can be
+// done here is refuse the file before it is ever sent. See the page script.
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
     $new_pass     = $_POST['new_password'] ?? '';
     $confirm_pass = $_POST['confirm_password'] ?? '';
@@ -53,6 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
 if (isset($_POST['upload_apk']) && isset($_FILES['apk_file'])) {
     if (am2_page_require_super($is_super, 'upload-apk')) {
         $error = t('set.err_denied');
+    } elseif (($why = am2_upload_error($_FILES['apk_file'])) !== '') {
+        $error = t($why, ['limit' => am2_bytes_human($upload_limit)]);
     } else {
         $target_dir = 'update/';
         if (!is_dir($target_dir)) {
@@ -133,6 +229,8 @@ if (isset($_POST['export_db'])) {
 if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
     if (am2_page_require_super($is_super, 'import-db')) {
         $error = t('set.err_denied');
+    } elseif (($why = am2_upload_error($_FILES['sql_file'])) !== '') {
+        $error = t($why, ['limit' => am2_bytes_human($upload_limit)]);
     } else {
         $file = $_FILES['sql_file']['tmp_name'];
         $ext  = strtolower(pathinfo($_FILES['sql_file']['name'], PATHINFO_EXTENSION));
@@ -233,9 +331,11 @@ function am2_quota_pct($used, $quota): ?int
 
 $quotas = [
     ['label' => 'set.quota_users',    'used' => (int) $total_users,
-     'quota' => $is_super ? null : ($settings['user_quota'] ?? null),    'icon' => 'users'],
+     'quota' => $is_super ? null : ($settings['user_quota'] ?? null),    'icon' => 'users',
+     'at_limit' => 'set.quota_users_full'],
     ['label' => 'set.quota_channels', 'used' => (int) $total_channels,
-     'quota' => $is_super ? null : ($settings['channel_quota'] ?? null), 'icon' => 'radio'],
+     'quota' => $is_super ? null : ($settings['channel_quota'] ?? null), 'icon' => 'radio',
+     'at_limit' => 'set.quota_channels_full'],
 ];
 
 $features = [
@@ -253,6 +353,16 @@ if ($is_super) {
         ['key' => 'set.stat_admins', 'value' => (int) $total_admins, 'href' => 'admin_panel.php']);
 }
 
+$shelf = $is_super ? am2_update_state() : ['exists' => false, 'files' => [], 'version' => null];
+
+// The file Admin Native is told to fetch, and whether it is actually there.
+$shelf_target = '';
+$shelf_present = true;
+if (!empty($shelf['version']['download_url'])) {
+    $shelf_target = basename((string) parse_url($shelf['version']['download_url'], PHP_URL_PATH));
+    $shelf_present = in_array($shelf_target, array_column($shelf['files'], 'name'), true);
+}
+
 $pageTitle = t('set.heading');
 $pageLede  = t('set.lede');
 $pageActions = '<span class="hidden rounded-control border border-edge px-2.5 py-1.5 font-mono'
@@ -260,23 +370,37 @@ $pageActions = '<span class="hidden rounded-control border border-edge px-2.5 py
     . ($is_super ? 'border-bad/40 text-bad' : 'text-ink-muted') . '">'
     . htmlspecialchars(strtoupper($role_user)) . '</span>';
 
+// The command palette can reach the sections of this page, which is the
+// fuzzy-search affordance the shell already owns rather than a second one.
+$pageCommands = array_values(array_filter([
+    ['id' => 's-account', 'group' => t('set.heading'), 'label' => t('set.account'),    'target' => '#am2-card-account'],
+    ['id' => 's-quota',   'group' => t('set.heading'), 'label' => t('set.licence'),    'target' => '#am2-card-licence'],
+    $is_super ? ['id' => 's-apk', 'group' => t('set.heading'), 'label' => t('set.distribution'), 'target' => '#am2-card-shelf'] : null,
+    ['id' => 's-export',  'group' => t('set.heading'), 'label' => t('set.export'),     'target' => '#am2-card-danger'],
+    $is_super ? ['id' => 's-restore', 'group' => t('set.heading'), 'label' => t('set.restore'), 'target' => '#am2-card-danger'] : null,
+]));
+
 include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
-<?php if ($msg !== '' || $error !== ''): ?>
-    <!-- The result of a POST round trip, so it belongs on the page rather than
-         in a toast that can be missed while the page is reloading. -->
-    <div role="<?= $error !== '' ? 'alert' : 'status' ?>" data-kpi
-         class="mb-4 flex items-start gap-2.5 rounded-control border px-3 py-3 text-sm
-                <?= $error !== '' ? 'border-bad/40 border-l-2 border-l-bad bg-bad/5'
-                                  : 'border-ok/40 border-l-2 border-l-ok bg-ok/5' ?>">
-        <span class="mt-px shrink-0 <?= $error !== '' ? 'text-bad' : 'text-ok' ?>" aria-hidden="true">
-            <?= am2_icon($error !== '' ? 'alert' : 'shield', 'h-4 w-4') ?>
-        </span>
-        <span><?= htmlspecialchars($error !== '' ? $error : $msg) ?></span>
-    </div>
-<?php endif; ?>
+<!--
+    Always rendered, empty or not: the upload swaps this node in from the
+    response rather than reloading the page, so it needs somewhere to land.
+-->
+<div id="am2-page-alert">
+    <?php if ($msg !== '' || $error !== ''): ?>
+        <div role="<?= $error !== '' ? 'alert' : 'status' ?>" data-kpi
+             class="mb-4 flex items-start gap-2.5 rounded-control border px-3 py-3 text-sm
+                    <?= $error !== '' ? 'border-bad/40 border-l-2 border-l-bad bg-bad/5'
+                                      : 'border-ok/40 border-l-2 border-l-ok bg-ok/5' ?>">
+            <span class="mt-px shrink-0 <?= $error !== '' ? 'text-bad' : 'text-ok' ?>" aria-hidden="true">
+                <?= am2_icon($error !== '' ? 'alert' : 'shield', 'h-4 w-4') ?>
+            </span>
+            <span><?= htmlspecialchars($error !== '' ? $error : $msg) ?></span>
+        </div>
+    <?php endif; ?>
+</div>
 
 <!--
     Scope of the account, as three counts. Each one is a link, because each one
@@ -306,7 +430,7 @@ include 'partials/shell.php';
     <div class="flex flex-col gap-4">
 
         <!-- Account. One thing an operator changes here, and it is their own key. -->
-        <section class="am2-surface rounded-card">
+        <section id="am2-card-account" class="am2-surface rounded-card scroll-mt-28">
             <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
                 <span class="text-ink-subtle"><?= am2_icon('lock', 'h-4 w-4') ?></span>
                 <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
@@ -326,7 +450,7 @@ include 'partials/shell.php';
 
                 <!-- method and field names are the contract: the handler above reads
                      $_POST['update_password'], ['new_password'] and ['confirm_password']. -->
-                <form method="POST" class="mt-4">
+                <form method="POST" class="mt-4" id="am2-password-form">
                     <?= am2_csrf_field() ?>
 
                     <?php
@@ -383,6 +507,33 @@ include 'partials/shell.php';
                         </div>
                     <?php endforeach; ?>
 
+                    <!--
+                        The rules, checked as they are met. The server said
+                        "minimal 8 karakter" only after a round trip, and said
+                        nothing at all about the two fields matching until the
+                        password had already been submitted.
+                    -->
+                    <ul id="am2-pw-rules" class="mb-4 space-y-1.5" aria-live="polite">
+                        <li data-rule="length" class="flex items-center gap-2 text-xs text-ink-subtle">
+                            <span data-mark aria-hidden="true"
+                                  class="grid h-4 w-4 shrink-0 place-items-center rounded-full
+                                         border border-edge-strong text-[9px]">·</span>
+                            <span><?= e('set.rule_length') ?></span>
+                        </li>
+                        <li data-rule="match" class="flex items-center gap-2 text-xs text-ink-subtle">
+                            <span data-mark aria-hidden="true"
+                                  class="grid h-4 w-4 shrink-0 place-items-center rounded-full
+                                         border border-edge-strong text-[9px]">·</span>
+                            <span><?= e('set.rule_match') ?></span>
+                        </li>
+                    </ul>
+
+                    <p id="am2-pw-caps" hidden
+                       class="mb-3 flex items-center gap-2 rounded-control border border-warn/40
+                              bg-warn/5 px-3 py-2 text-xs text-warn">
+                        <?= am2_icon('alert', 'h-3.5 w-3.5') ?><?= e('set.caps_lock') ?>
+                    </p>
+
                     <button type="submit" name="update_password" value="1"
                             class="h-12 w-full rounded-control bg-brand px-4 font-mono text-[11px]
                                    font-semibold uppercase tracking-[0.15em] text-slate-950
@@ -395,55 +546,10 @@ include 'partials/shell.php';
             </div>
         </section>
 
-        <?php if ($is_super): ?>
-            <!-- Distribution. The field app checks update/admin_version.json. -->
-            <section class="am2-surface rounded-card">
-                <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
-                    <span class="text-ink-subtle"><?= am2_icon('inbox', 'h-4 w-4') ?></span>
-                    <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
-                        <?= e('set.distribution') ?>
-                    </h2>
-                </header>
-
-                <div class="p-5">
-                    <form method="POST" enctype="multipart/form-data">
-                        <?= am2_csrf_field() ?>
-                        <input type="file" name="apk_file" accept=".apk" required
-                               aria-label="<?= e('set.distribution') ?>"
-                               class="w-full cursor-pointer rounded-control border border-edge bg-card
-                                      text-sm text-ink-muted file:me-3 file:cursor-pointer file:border-0
-                                      file:bg-card-muted file:px-4 file:py-3 file:font-mono
-                                      file:text-[10px] file:uppercase file:tracking-[0.15em]
-                                      file:text-ink hover:border-edge-strong focus:border-brand
-                                      focus:outline-none focus:ring-2 focus:ring-brand/25">
-
-                        <div class="mt-3 flex items-center justify-between gap-3">
-                            <!-- 135x15 on a phone. A link beside a 44px button has
-                                 to be reachable by the same thumb. -->
-                            <a href="update/" target="_blank" rel="noopener"
-                               class="inline-flex h-11 items-center font-mono text-[10px]
-                                      uppercase tracking-[0.15em] text-ink-subtle!
-                                      no-underline! hover:text-brand!
-                                      focus-visible:outline-2 focus-visible:outline-offset-2">
-                                <?= e('set.open_folder') ?>
-                            </a>
-                            <button type="submit" name="upload_apk" value="1"
-                                    class="h-11 rounded-control border border-edge px-5 font-mono
-                                           text-[10px] font-semibold uppercase tracking-[0.15em]
-                                           text-ink transition-colors duration-[var(--duration-micro)]
-                                           hover:border-brand hover:text-brand focus:outline-none
-                                           focus-visible:ring-2 focus-visible:ring-brand/60">
-                                <?= e('set.upload') ?>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </section>
-        <?php endif; ?>
-        </div>
+    </div>
 
     <!-- Licence and quota. -->
-    <section class="am2-surface rounded-card">
+    <section id="am2-card-licence" class="am2-surface rounded-card scroll-mt-28">
         <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
             <span class="text-ink-subtle"><?= am2_icon('shield', 'h-4 w-4') ?></span>
             <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
@@ -463,8 +569,9 @@ include 'partials/shell.php';
                 </p>
             </div>
 
-            <!-- Usage against the ceiling, not two numbers side by side.
-                 The old card printed "100" next to "sisa UNLIMITED". -->
+            <!-- Usage against the ceiling, not two numbers side by side. The old
+                 card printed "100" next to "sisa UNLIMITED", and neither number
+                 said what happens when the ceiling is reached. -->
             <div class="mt-5 space-y-4">
                 <?php foreach ($quotas as $q): $pct = am2_quota_pct($q['used'], $q['quota']); ?>
                     <div>
@@ -482,14 +589,25 @@ include 'partials/shell.php';
                             </span>
                         </p>
                         <?php if ($pct !== null): ?>
+                            <?php
+                            // Written out in full: Tailwind reads this file as
+                            // text, so a class name assembled from a variable
+                            // ships with no rule behind it.
+                            $bar = $pct >= 90 ? 'bg-bad' : ($pct >= 70 ? 'bg-warn' : 'bg-brand');
+                            $left = max(0, (int) $q['quota'] - (int) $q['used']);
+                            ?>
                             <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-card-muted"
                                  role="progressbar" aria-valuenow="<?= $pct ?>"
                                  aria-valuemin="0" aria-valuemax="100"
                                  aria-label="<?= e($q['label']) ?>">
-                                <div class="h-full rounded-full <?= $pct >= 90 ? 'bg-bad'
-                                                : ($pct >= 70 ? 'bg-warn' : 'bg-brand') ?>"
+                                <div class="h-full rounded-full <?= $bar ?>"
                                      style="width: <?= $pct ?>%"></div>
                             </div>
+                            <p class="mt-1.5 text-xs <?= $pct >= 90 ? 'text-bad' : 'text-ink-muted' ?>">
+                                <?= $left === 0
+                                    ? e($q['at_limit'])
+                                    : e('set.quota_left', ['n' => number_format($left)]) ?>
+                            </p>
                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
@@ -520,15 +638,217 @@ include 'partials/shell.php';
             </ul>
         </div>
     </section>
-
 </div>
+
+<?php if ($is_super): ?>
+    <!--
+        The release shelf. This card used to be a file input and an
+        Unggah button, which said nothing about what was already on the
+        shelf, what version the app believes is current, or whether the
+        file it is told to download exists. All three are here now, and
+        the QR is how a console hands a build to a phone in the field.
+    -->
+    <section id="am2-card-shelf" class="am2-surface mt-4 rounded-card scroll-mt-28" data-reveal>
+        <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
+            <span class="text-ink-subtle"><?= am2_icon('inbox', 'h-4 w-4') ?></span>
+            <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+                <?= e('set.distribution') ?>
+            </h2>
+        </header>
+
+        <div id="am2-shelf-version" class="border-b border-edge p-5">
+            <?php if ($shelf['version']): ?>
+                <div class="flex flex-wrap items-start gap-5">
+                    <div class="min-w-0 flex-1">
+                        <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                            <?= e('set.current_version') ?>
+                        </p>
+                        <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
+                            <?= htmlspecialchars((string) ($shelf['version']['version_name'] ?? '—')) ?>
+                        </p>
+                        <p class="mt-2 text-xs text-ink-muted">
+                            <?= htmlspecialchars((string) ($shelf['version']['changelog'] ?? '')) ?>
+                        </p>
+
+                        <div class="mt-3 flex items-center gap-2">
+                            <code id="am2-shelf-url"
+                                  class="min-w-0 flex-1 truncate rounded-control border border-edge
+                                         bg-card-muted px-2.5 py-2 font-mono text-[11px] text-ink-muted"
+                                  data-url="<?= htmlspecialchars((string) ($shelf['version']['download_url'] ?? '')) ?>">
+                                <?= htmlspecialchars((string) ($shelf['version']['download_url'] ?? '')) ?>
+                            </code>
+                            <button type="button" id="am2-copy-url"
+                                    class="grid h-11 w-11 shrink-0 place-items-center rounded-control
+                                           border border-edge text-ink-subtle transition-colors
+                                           duration-[var(--duration-micro)] hover:border-brand
+                                           hover:text-brand focus:outline-none focus-visible:ring-2
+                                           focus-visible:ring-brand/60"
+                                    aria-label="<?= e('set.copy_url') ?>" title="<?= e('set.copy_url') ?>">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                                     stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"
+                                     aria-hidden="true">
+                                    <rect x="9" y="9" width="12" height="12" rx="2"/>
+                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Drawn client-side from the URL above. -->
+                    <figure class="shrink-0 text-center">
+                        <div id="am2-shelf-qr"
+                             class="grid h-[132px] w-[132px] place-items-center rounded-control
+                                    border border-edge bg-white p-2 text-slate-950"></div>
+                        <figcaption class="mt-1.5 font-mono text-[9px] uppercase
+                                           tracking-[0.15em] text-ink-subtle">
+                            <?= e('set.scan_to_install') ?>
+                        </figcaption>
+                    </figure>
+                </div>
+
+                <?php if ($shelf_target !== '' && !$shelf_present): ?>
+                    <p class="mt-4 flex items-start gap-2 rounded-control border border-warn/40
+                              bg-warn/5 px-3 py-2.5 text-xs text-warn">
+                        <?= am2_icon('alert', 'h-4 w-4') ?>
+                        <span><?= e('set.version_missing', ['file' => $shelf_target]) ?></span>
+                    </p>
+                <?php endif; ?>
+            <?php else: ?>
+                <p class="text-sm text-ink-muted"><?= e('set.no_version') ?></p>
+            <?php endif; ?>
+
+            <?php if (!$shelf['exists']): ?>
+                <p class="mt-4 flex items-start gap-2 rounded-control border border-bad/40
+                          bg-bad/5 px-3 py-2.5 text-xs text-bad">
+                    <?= am2_icon('alert', 'h-4 w-4') ?>
+                    <span><?= e('set.folder_missing') ?></span>
+                </p>
+            <?php elseif (!$shelf['writable']): ?>
+                <p class="mt-4 flex items-start gap-2 rounded-control border border-bad/40
+                          bg-bad/5 px-3 py-2.5 text-xs text-bad">
+                    <?= am2_icon('alert', 'h-4 w-4') ?>
+                    <span><?= e('set.folder_readonly') ?></span>
+                </p>
+            <?php endif; ?>
+        </div>
+
+        <div class="grid gap-5 p-5 lg:grid-cols-2">
+            <form method="POST" enctype="multipart/form-data" id="am2-apk-form"
+                  data-limit="<?= $upload_limit ?>">
+                <?= am2_csrf_field() ?>
+
+                <!--
+                    The input is the control: it is what a keyboard and a
+                    screen reader operate, and it is the fallback where
+                    drag events do not exist. The zone is a second way
+                    in, not a replacement.
+                -->
+                <div id="am2-apk-zone" data-input="apk_file"
+                     class="rounded-control border-2 border-dashed border-edge-strong
+                            bg-card-muted/40 px-4 py-6 text-center transition-colors
+                            duration-[var(--duration-micro)]">
+                    <p class="text-sm text-ink-muted"><?= e('set.drop_apk') ?></p>
+                    <input id="apk_file" type="file" name="apk_file" accept=".apk" required
+                           class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
+                                  border border-edge bg-card text-sm text-ink-muted
+                                  file:me-3 file:cursor-pointer file:border-0 file:bg-card-muted
+                                  file:px-4 file:py-3 file:font-mono file:text-[10px]
+                                  file:uppercase file:tracking-[0.15em] file:text-ink
+                                  hover:border-edge-strong focus:border-brand focus:outline-none
+                                  focus:ring-2 focus:ring-brand/25">
+                    <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                        <?= e('set.upload_limit', ['limit' => am2_bytes_human($upload_limit)]) ?>
+                    </p>
+                </div>
+
+                <!-- Filled in by the page script once a file is chosen. -->
+                <div id="am2-apk-detail" hidden class="mt-3 space-y-1.5 rounded-control
+                            border border-edge bg-card-muted px-3 py-2.5">
+                    <p class="flex items-baseline justify-between gap-3 text-sm">
+                        <span data-apk-name class="min-w-0 truncate font-mono text-ink"></span>
+                        <span data-apk-size class="shrink-0 font-mono text-xs text-ink-muted"></span>
+                    </p>
+                    <p class="flex items-baseline gap-2 font-mono text-[10px] text-ink-subtle">
+                        <span class="uppercase tracking-[0.15em]"><?= e('set.checksum') ?></span>
+                        <span data-apk-hash class="min-w-0 truncate"><?= e('set.computing') ?></span>
+                    </p>
+                    <p data-apk-warn hidden
+                       class="flex items-start gap-2 text-xs text-bad"></p>
+                </div>
+
+                <!-- The progress of the upload itself. A 24 MB file used
+                     to leave the page apparently idle for half a minute. -->
+                <div id="am2-apk-progress" hidden class="mt-3">
+                    <div class="h-1.5 overflow-hidden rounded-full bg-card-muted">
+                        <div data-bar class="h-full w-0 rounded-full bg-brand
+                                    transition-[width] duration-[var(--duration-micro)]"></div>
+                    </div>
+                    <p data-label class="mt-1.5 text-center font-mono text-[10px]
+                              uppercase tracking-[0.15em] text-ink-subtle"></p>
+                </div>
+
+                <div class="mt-4 flex items-center justify-between gap-3">
+                    <!-- 135x15 on a phone. A link beside a 44px button has
+                         to be reachable by the same thumb. -->
+                    <a href="update/" target="_blank" rel="noopener"
+                       class="inline-flex h-11 items-center font-mono text-[10px]
+                              uppercase tracking-[0.15em] text-ink-subtle!
+                              no-underline! hover:text-brand!
+                              focus-visible:outline-2 focus-visible:outline-offset-2">
+                        <?= e('set.open_folder') ?>
+                    </a>
+                    <button type="submit" name="upload_apk" value="1" id="am2-apk-submit"
+                            class="h-11 rounded-control border border-edge px-5 font-mono
+                                   text-[10px] font-semibold uppercase tracking-[0.15em]
+                                   text-ink transition-colors duration-[var(--duration-micro)]
+                                   hover:border-brand hover:text-brand focus:outline-none
+                                   focus-visible:ring-2 focus-visible:ring-brand/60
+                                   disabled:cursor-not-allowed disabled:opacity-40">
+                        <?= e('set.upload') ?>
+                    </button>
+                </div>
+            </form>
+
+            <div id="am2-shelf-list" class="self-start rounded-control border border-edge">
+            <p class="px-4 pt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                <?= e('set.on_shelf') ?>
+            </p>
+            <?php if (!$shelf['files']): ?>
+                <p class="px-4 pb-3 pt-2 text-sm text-ink-muted"><?= e('set.shelf_empty') ?></p>
+            <?php else: ?>
+                <ul class="mt-1 divide-y divide-edge">
+                    <?php foreach ($shelf['files'] as $f): ?>
+                        <li class="flex items-center justify-between gap-3 px-4 py-2.5">
+                            <span class="flex min-w-0 items-center gap-2">
+                                <span class="truncate font-mono text-sm text-ink">
+                                    <?= htmlspecialchars($f['name']) ?>
+                                </span>
+                                <?php if ($f['name'] === $shelf_target): ?>
+                                    <span class="shrink-0 rounded-control bg-ok/10 px-1.5 font-mono
+                                                 text-[9px] uppercase tracking-[0.1em] text-ok">
+                                        <?= e('set.served') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </span>
+                            <span class="shrink-0 font-mono text-[10px] text-ink-subtle">
+                                <?= am2_bytes_human($f['size']) ?> ·
+                                <?= date('d M Y', $f['time']) ?>
+                            </span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            </div>
+        </div>
+    </section>
+<?php endif; ?>
 
 <!--
     Everything below this line changes data that cannot be got back. It used to
     sit in the same card as the password field, which said the two were the same
     kind of act.
 -->
-<section class="am2-surface mt-4 rounded-card border-bad/40" data-reveal>
+<section id="am2-card-danger" class="am2-surface mt-4 rounded-card border-bad/40 scroll-mt-28" data-reveal>
     <header class="flex items-center gap-2.5 border-b border-bad/30 bg-bad/5 px-5 py-3.5">
         <span class="text-bad"><?= am2_icon('alert', 'h-4 w-4') ?></span>
         <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-bad">
@@ -541,6 +861,15 @@ include 'partials/shell.php';
             <div class="min-w-0">
                 <h3 class="text-sm font-semibold text-ink"><?= e('set.export') ?></h3>
                 <p class="mt-1 text-xs text-ink-muted"><?= e('set.export_note') ?></p>
+                <!-- What the file will hold, before it is asked for. -->
+                <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <?= $is_super
+                        ? e('set.export_full_note')
+                        : e('set.export_contents', [
+                            'devices'  => number_format((int) $total_users),
+                            'channels' => number_format((int) $total_channels),
+                          ]) ?>
+                </p>
             </div>
             <!-- A native submit, deliberately: the response to this POST is the
                  dump itself, streamed by passthru(). Sending it through fetch()
@@ -587,8 +916,8 @@ include 'partials/shell.php';
         https://preline.co/docs/modal.html
         Preline owns open, close, Escape and the focus trap. No transition on
         the container: Preline waits for one to end before it re-adds `hidden`,
-        and a transition on a property that never changes never ends -- which is
-        how an invisible overlay ended up swallowing every click on this app.
+        and a transition on a property that doesn't change never ends -- which
+        is how an invisible overlay ended up swallowing every click on this app.
 
         The whole form lives in here so the file and the confirmation are one
         submission. name="import_db" and name="sql_file" are the contract.
@@ -597,8 +926,10 @@ include 'partials/shell.php';
          class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
                 bg-slate-950/50 backdrop-blur-sm">
         <div data-am2-panel
-             class="am2-surface mx-auto mt-[10vh] w-[92%] max-w-lg overflow-hidden rounded-card">
-            <form method="POST" enctype="multipart/form-data" id="am2-restore-form">
+             class="am2-surface mx-auto my-[6vh] w-[92%] max-w-lg overflow-hidden rounded-card">
+            <form method="POST" enctype="multipart/form-data" id="am2-restore-form"
+                  data-devices="<?= (int) $total_users ?>" data-channels="<?= (int) $total_channels ?>"
+                  data-limit="<?= $upload_limit ?>">
                 <?= am2_csrf_field() ?>
 
                 <header class="flex items-start gap-3 border-b border-edge px-5 py-4">
@@ -612,17 +943,73 @@ include 'partials/shell.php';
                 </header>
 
                 <div class="p-5">
+                    <!-- Take a backup first. The one thing that makes this
+                         reversible, one click away, in the place it is needed. -->
+                    <p class="mb-4 flex items-center gap-2 rounded-control border border-edge
+                              bg-card-muted px-3 py-2.5 text-xs text-ink-muted">
+                        <?= am2_icon('shield', 'h-4 w-4') ?>
+                        <span><?= e('set.backup_first') ?></span>
+                    </p>
+
                     <label for="am2-restore-file"
                            class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.restore_file') ?>
                     </label>
-                    <input id="am2-restore-file" type="file" name="sql_file" accept=".sql" required
-                           class="mt-2 w-full cursor-pointer rounded-control border border-edge bg-card
-                                  text-sm text-ink-muted file:me-3 file:cursor-pointer file:border-0
-                                  file:bg-card-muted file:px-4 file:py-3 file:font-mono
-                                  file:text-[10px] file:uppercase file:tracking-[0.15em] file:text-ink
-                                  hover:border-edge-strong focus:border-brand focus:outline-none
-                                  focus:ring-2 focus:ring-brand/25">
+                    <div id="am2-sql-zone" data-input="am2-restore-file"
+                         class="mt-2 rounded-control border-2 border-dashed border-edge-strong
+                                bg-card-muted/40 px-4 py-5 text-center transition-colors
+                                duration-[var(--duration-micro)]">
+                        <p class="text-sm text-ink-muted"><?= e('set.drop_sql') ?></p>
+                        <input id="am2-restore-file" type="file" name="sql_file" accept=".sql" required
+                               class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
+                                      border border-edge bg-card text-sm text-ink-muted
+                                      file:me-3 file:cursor-pointer file:border-0 file:bg-card-muted
+                                      file:px-4 file:py-3 file:font-mono file:text-[10px]
+                                      file:uppercase file:tracking-[0.15em] file:text-ink
+                                      hover:border-edge-strong focus:border-brand focus:outline-none
+                                      focus:ring-2 focus:ring-brand/25">
+                    </div>
+
+                    <!--
+                        Preflight. The file is read in the browser before anything
+                        is sent, so the operator sees what is about to replace
+                        what. Nothing here reaches the server.
+                    -->
+                    <div id="am2-sql-preflight" hidden class="mt-3 rounded-control border border-edge
+                                bg-card-muted px-3 py-3" aria-live="polite">
+                        <p class="flex items-baseline justify-between gap-3 text-sm">
+                            <span data-sql-name class="min-w-0 truncate font-mono text-ink"></span>
+                            <span data-sql-size class="shrink-0 font-mono text-xs text-ink-muted"></span>
+                        </p>
+                        <p data-sql-kind class="mt-1 font-mono text-[10px] uppercase
+                                  tracking-[0.15em] text-ink-subtle"></p>
+
+                        <table class="mt-3 w-full text-sm">
+                            <thead>
+                                <tr class="font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+                                    <th class="pb-1 text-left font-normal"></th>
+                                    <th class="pb-1 text-right font-normal"><?= e('set.now') ?></th>
+                                    <th class="pb-1 text-right font-normal"><?= e('set.in_file') ?></th>
+                                </tr>
+                            </thead>
+                            <tbody class="font-mono tabular-nums">
+                                <tr>
+                                    <td class="py-0.5 text-ink-muted"><?= e('set.quota_users') ?></td>
+                                    <td class="py-0.5 text-right text-ink" data-now-devices></td>
+                                    <td class="py-0.5 text-right text-ink" data-file-devices></td>
+                                </tr>
+                                <tr>
+                                    <td class="py-0.5 text-ink-muted"><?= e('set.quota_channels') ?></td>
+                                    <td class="py-0.5 text-right text-ink" data-now-channels></td>
+                                    <td class="py-0.5 text-right text-ink" data-file-channels></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <p data-sql-warn hidden
+                           class="mt-3 flex items-start gap-2 rounded-control border border-warn/40
+                                  bg-warn/5 px-2.5 py-2 text-xs text-warn"></p>
+                    </div>
 
                     <label for="am2-restore-word"
                            class="mt-5 block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
@@ -668,23 +1055,264 @@ include 'partials/shell.php';
 (() => {
     'use strict';
 
-    document.querySelectorAll('[data-stat]').forEach((el) => {
-        window.AM2?.countTo(el, Number(el.textContent.replace(/[^\d]/g, '')));
-    });
-    window.AM2?.enterOnce('[data-kpi]');
-    window.AM2?.revealOnScroll('[data-reveal]');
+    const $ = (id) => document.getElementById(id);
+    const T = <?= json_encode([
+        'copied'     => t('set.copied'),
+        'too_big'    => t('set.err_too_big', ['limit' => am2_bytes_human($upload_limit)]),
+        'uploading'  => t('set.uploading'),
+        'kind_am2'   => t('set.kind_am2'),
+        'kind_dump'  => t('set.kind_dump'),
+        'kind_other' => t('set.kind_other'),
+        'no_drop'    => t('set.warn_no_drop'),
+        'partial'    => t('set.warn_partial_read'),
+        'not_sql'    => t('set.err_sql_type'),
+    ], JSON_UNESCAPED_UNICODE) ?>;
 
-    // Restore stays locked until the operator writes the word out. confirm()
-    // was one keystroke away from overwriting every tenant's data.
-    const word = document.getElementById('am2-restore-word');
-    const submit = document.getElementById('am2-restore-submit');
+    const bytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                       : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
+
+    /*
+     * The bundle is deferred, and a deferred script runs after the document is
+     * parsed -- which is after this inline block. Calling window.AM2 here found
+     * nothing, silently, because every call site guards with `?.`: the page
+     * looked correct and simply had no motion and no QR. Deferred scripts do
+     * run before DOMContentLoaded, so that event is the earliest safe moment.
+     */
+    const ready = (fn) => (window.AM2
+        ? fn()
+        : window.addEventListener('DOMContentLoaded', fn, { once: true }));
+
+    ready(() => {
+        document.querySelectorAll('[data-stat]').forEach((el) => {
+            window.AM2.countTo(el, Number(el.textContent.replace(/[^\d]/g, '')));
+        });
+        window.AM2.enterOnce('[data-kpi]');
+        window.AM2.revealOnScroll('[data-reveal]');
+
+        const box = $('am2-shelf-qr');
+        const link = $('am2-shelf-url');
+        if (box && link?.dataset.url) box.appendChild(window.AM2.qr(link.dataset.url, 116));
+    });
+
+    /* ---- Drop zones ---------------------------------------------------
+     * The <input type="file"> is never replaced: it is what a keyboard and a
+     * screen reader operate, and the only path where drag events do not exist.
+     * The zone is a second way in for a pointer, and it delegates to the input
+     * so there is one source of truth for the chosen file.
+     */
+    function dropzone(zoneId, onFile) {
+        const zone = $(zoneId);
+        if (!zone) return;
+        const input = $(zone.dataset.input);
+        if (!input) return;
+
+        const lit = ['border-brand', 'bg-brand/5'];
+        const off = () => zone.classList.remove(...lit);
+
+        ['dragenter', 'dragover'].forEach((ev) => zone.addEventListener(ev, (e) => {
+            e.preventDefault();
+            zone.classList.add(...lit);
+        }));
+        ['dragleave', 'dragend'].forEach((ev) => zone.addEventListener(ev, off));
+
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            off();
+            const file = e.dataTransfer?.files?.[0];
+            if (!file) return;
+            // Hand it to the input, so the form submits it and the input shows
+            // it -- the drop is an alternative gesture, not a parallel state.
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        input.addEventListener('change', () => onFile(input.files[0] || null));
+    }
+
+    /* ---- Release shelf ------------------------------------------------ */
+    const url = $('am2-shelf-url');
+
+    $('am2-copy-url')?.addEventListener('click', async (e) => {
+        try {
+            await navigator.clipboard.writeText(url.dataset.url);
+            window.AM2?.toast(T.copied);
+        } catch {
+            // Clipboard needs a secure context and permission; selecting the
+            // text is the fallback that always works.
+            const r = document.createRange();
+            r.selectNodeContents(url);
+            const sel = getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
+    });
+
+    const apkDetail = $('am2-apk-detail');
+    const apkSubmit = $('am2-apk-submit');
+    const LIMIT = Number($('am2-apk-form')?.dataset.limit || 0);
+
+    dropzone('am2-apk-zone', async (file) => {
+        if (!file) { apkDetail.hidden = true; return; }
+        apkDetail.hidden = false;
+        apkDetail.querySelector('[data-apk-name]').textContent = file.name;
+        apkDetail.querySelector('[data-apk-size]').textContent = bytes(file.size);
+
+        const warn = apkDetail.querySelector('[data-apk-warn]');
+        const tooBig = LIMIT > 0 && file.size > LIMIT;
+        warn.hidden = !tooBig;
+        warn.textContent = tooBig ? T.too_big : '';
+        // Over post_max_size PHP discards the body entirely, the CSRF check
+        // finds no token and answers "Sesi tidak valid" -- so refusing here is
+        // the only place the real reason can be given.
+        if (apkSubmit) apkSubmit.disabled = tooBig;
+
+        const hash = apkDetail.querySelector('[data-apk-hash]');
+        try {
+            const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+            hash.textContent = [...new Uint8Array(digest)]
+                .map((b) => b.toString(16).padStart(2, '0')).join('');
+        } catch {
+            hash.textContent = '—';
+        }
+    });
+
+    /* ---- Upload with a visible progress -------------------------------
+     * Progressive enhancement: without XMLHttpRequest the form posts itself as
+     * it always did. With it, the same request is sent and the parts of the
+     * page the server re-rendered are swapped in, so the confirmation is not
+     * lost to a reload.
+     */
+    const apkForm = $('am2-apk-form');
+    const progress = $('am2-apk-progress');
+    apkForm?.addEventListener('submit', (e) => {
+        const input = $('apk_file');
+        if (!window.XMLHttpRequest || !input?.files?.length || apkSubmit?.disabled) return;
+        e.preventDefault();
+
+        const body = new FormData(apkForm);
+        body.append('upload_apk', '1');   // a submit button is not in FormData
+
+        const bar = progress.querySelector('[data-bar]');
+        const label = progress.querySelector('[data-label]');
+        progress.hidden = false;
+        apkSubmit.disabled = true;
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', (ev) => {
+            if (!ev.lengthComputable) return;
+            const pct = Math.round((ev.loaded / ev.total) * 100);
+            bar.style.width = pct + '%';
+            label.textContent = `${T.uploading} ${pct}%`;
+        });
+        xhr.addEventListener('loadend', () => {
+            apkSubmit.disabled = false;
+            progress.hidden = true;
+            bar.style.width = '0%';
+
+            // Parsed, not assigned as markup: the response is this page, and
+            // the three regions the server re-rendered replace their own nodes.
+            const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+            for (const id of ['am2-page-alert', 'am2-shelf-version', 'am2-shelf-list']) {
+                const fresh = doc.getElementById(id);
+                const here = $(id);
+                if (fresh && here) here.replaceWith(fresh);
+            }
+            $('am2-page-alert')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            window.AM2?.enterOnce('#am2-page-alert [data-kpi]');
+        });
+        xhr.open('POST', window.location.pathname);
+        xhr.send(body);
+    });
+
+    /* ---- Password rules, as they are met ------------------------------ */
+    const pw = $('new_password');
+    const pw2 = $('confirm_password');
+    const rules = $('am2-pw-rules');
+    const caps = $('am2-pw-caps');
+
+    function mark(name, ok) {
+        const li = rules?.querySelector(`[data-rule="${name}"]`);
+        if (!li) return;
+        li.classList.toggle('text-ok', ok);
+        li.classList.toggle('text-ink-subtle', !ok);
+        const dot = li.querySelector('[data-mark]');
+        dot.textContent = ok ? '✓' : '·';
+        dot.classList.toggle('border-ok', ok);
+        dot.classList.toggle('border-edge-strong', !ok);
+    }
+
+    function checkRules() {
+        mark('length', (pw?.value || '').length >= 8);
+        mark('match', !!pw?.value && pw.value === pw2?.value);
+    }
+    [pw, pw2].forEach((el) => el?.addEventListener('input', checkRules));
+
+    // A console operated at night, with a monospaced field that shows dots.
+    [pw, pw2].forEach((el) => el?.addEventListener('keyup', (ev) => {
+        if (typeof ev.getModifierState !== 'function') return;
+        caps.hidden = !ev.getModifierState('CapsLock');
+    }));
+    checkRules();
+
+    /* ---- Restore preflight -------------------------------------------- */
+    const restoreForm = $('am2-restore-form');
+    const pre = $('am2-sql-preflight');
+    const word = $('am2-restore-word');
+    const submit = $('am2-restore-submit');
+
+    const countOf = (text, re) => (text.match(re) || []).length;
+
+    dropzone('am2-sql-zone', async (file) => {
+        if (!file || !pre) { if (pre) pre.hidden = true; return; }
+        pre.hidden = false;
+        pre.querySelector('[data-sql-name]').textContent = file.name;
+        pre.querySelector('[data-sql-size]').textContent = bytes(file.size);
+
+        const warn = pre.querySelector('[data-sql-warn]');
+        const notes = [];
+
+        // A dump can be large, and reading all of it would stall the dialog.
+        // The cap is the server's own limit: anything past it cannot be sent.
+        const cap = 8 * 1024 * 1024;
+        const slice = file.size > cap ? file.slice(0, cap) : file;
+        const text = await slice.text();
+        if (file.size > cap) notes.push(T.partial);
+
+        const kind = /PostgreSQL database dump/i.test(text) ? T.kind_dump
+                   : /^--\s*AM2 backup/im.test(text) ? T.kind_am2
+                   : T.kind_other;
+        pre.querySelector('[data-sql-kind]').textContent = kind;
+
+        const devices = countOf(text, /INSERT INTO public\.users\b/gi);
+        const channels = countOf(text, /INSERT INTO public\.channels\b/gi);
+        const copies = countOf(text, /^COPY public\./gim);
+
+        pre.querySelector('[data-now-devices]').textContent = restoreForm.dataset.devices;
+        pre.querySelector('[data-now-channels]').textContent = restoreForm.dataset.channels;
+        pre.querySelector('[data-file-devices]').textContent = copies ? '—' : String(devices);
+        pre.querySelector('[data-file-channels]').textContent = copies ? '—' : String(channels);
+
+        // A backup with no DROP or TRUNCATE is added to what is already there,
+        // which is where duplicate keys come from.
+        if (!/\b(DROP TABLE|TRUNCATE)\b/i.test(text)) notes.push(T.no_drop);
+        if (!/\.sql$/i.test(file.name)) notes.push(T.not_sql);
+
+        warn.hidden = notes.length === 0;
+        warn.textContent = notes.join(' ');
+    });
+
     if (word && submit) {
         const expected = word.dataset.confirmWord.toUpperCase();
         const check = () => { submit.disabled = word.value.trim().toUpperCase() !== expected; };
         word.addEventListener('input', check);
         // Reopening the dialog must not inherit the last attempt's state.
-        document.getElementById('am2-restore')
-                ?.addEventListener('close.hs.overlay', () => { word.value = ''; check(); });
+        $('am2-restore')?.addEventListener('close.hs.overlay', () => {
+            word.value = '';
+            if (pre) pre.hidden = true;
+            check();
+        });
         check();
     }
 })();
