@@ -7,6 +7,9 @@
  *
  */
 return [
+    'track.zoom_in' => 'Zoom in',
+    'track.zoom_out' => 'Zoom out',
+    'track.fit' => 'Show all units',
     'track.collapse' => 'Hide panel',
     'track.lede' => 'Unit positions in real time',
     'track.units' => 'Unit monitoring',

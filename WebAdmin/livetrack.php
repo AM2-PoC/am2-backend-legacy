@@ -20,6 +20,59 @@ include 'partials/shell.php';
     <!-- Leaflet writes into this. The id is the contract. -->
     <div id="map" class="absolute inset-0 z-0"></div>
 
+    <!--
+        Map controls. Leaflet's own zoom buttons were switched off and nothing
+        replaced them, so the only way to move around was a scroll wheel -- and
+        nothing at all on a touch screen except pinching. These are the console's
+        own, in the console's tokens.
+    -->
+    <div class="absolute right-4 top-4 z-30 flex flex-col gap-1.5 lg:right-[372px]"
+         id="mapControls">
+        <button type="button" id="mapZoomIn" aria-label="<?= e('track.zoom_in') ?>"
+                title="<?= e('track.zoom_in') ?>"
+                class="grid h-11 w-11 place-items-center rounded-control border border-edge
+                       bg-card text-ink-muted shadow-pop transition-colors
+                       duration-[var(--duration-micro)] hover:border-brand hover:text-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                 stroke-linecap="round" class="h-4 w-4" aria-hidden="true">
+                <path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        </button>
+        <button type="button" id="mapZoomOut" aria-label="<?= e('track.zoom_out') ?>"
+                title="<?= e('track.zoom_out') ?>"
+                class="grid h-11 w-11 place-items-center rounded-control border border-edge
+                       bg-card text-ink-muted shadow-pop transition-colors
+                       duration-[var(--duration-micro)] hover:border-brand hover:text-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                 stroke-linecap="round" class="h-4 w-4" aria-hidden="true">
+                <path d="M5 12h14"/></svg>
+        </button>
+        <button type="button" id="mapFit" aria-label="<?= e('track.fit') ?>"
+                title="<?= e('track.fit') ?>"
+                class="grid h-11 w-11 place-items-center rounded-control border border-edge
+                       bg-card text-ink-muted shadow-pop transition-colors
+                       duration-[var(--duration-micro)] hover:border-brand hover:text-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                 stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
+                <path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+                <path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
+        </button>
+    </div>
+
+    <!--
+        Legend. The marker colours mean something, and colour alone does not
+        carry meaning for everyone looking at this screen.
+    -->
+    <div class="absolute bottom-4 left-4 z-20 hidden items-center gap-4 rounded-control
+                border border-edge bg-card/95 px-3 py-2 font-mono text-[10px] uppercase
+                tracking-[0.15em] text-ink-subtle shadow-pop backdrop-blur-sm lg:flex">
+        <span class="flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-ok" aria-hidden="true"></span><?= e('rail.online') ?>
+        </span>
+        <span class="flex items-center gap-1.5">
+            <span class="am2-live h-2 w-2 rounded-full bg-bad" aria-hidden="true"></span><?= e('track.transmitting') ?>
+        </span>
+    </div>
+
     <!-- Transmitting right now. The one pulse in the application. -->
     <div id="tx-indicator" hidden
          class="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-control
@@ -108,10 +161,40 @@ include 'partials/shell.php';
     const EMPTY = <?= json_encode(t('track.empty')) ?>;
     const CHANNEL = <?= json_encode(t('track.channel')) ?>;
 
-    const map = L.map('map', { zoomControl: false, attributionControl: false })
+    const map = L.map('map', { zoomControl: false, attributionControl: true })
                  .setView([-2.5, 118], 5);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png')
-     .addTo(map);
+
+    // Attribution was switched off. CARTO and OpenStreetMap both require it,
+    // so this is a licence term rather than a design choice -- it is small and
+    // in the corner, but it is there.
+    map.attributionControl.setPrefix('');
+
+    /*
+     * The basemap follows the theme. It was Voyager -- a light street map --
+     * in both, which under the dark theme put a white continent behind dark
+     * chrome and made the markers hard to pick out. CARTO's Positron and Dark
+     * Matter share a structure, so switching between them changes the palette
+     * and nothing else.
+     */
+    const BASEMAP = {
+        light: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
+        dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
+    };
+    const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
+               + '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+    let tiles = null;
+    function paintBasemap() {
+        const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        if (tiles) map.removeLayer(tiles);
+        tiles = L.tileLayer(BASEMAP[theme], { attribution: ATTR }).addTo(map);
+    }
+    paintBasemap();
+
+    // The theme toggle lives in the shell and only writes the attribute, so
+    // the map watches the attribute rather than the button.
+    new MutationObserver(paintBasemap).observe(document.documentElement,
+        { attributes: true, attributeFilter: ['data-theme'] });
 
     const markers = {};
     let userCache = [];
@@ -273,6 +356,16 @@ include 'partials/shell.php';
         panel.classList.contains('translate-y-[110%]') ? openPanel() : closePanel();
     });
 
+    $('mapZoomIn').addEventListener('click', () => map.zoomIn());
+    $('mapZoomOut').addEventListener('click', () => map.zoomOut());
+    $('mapFit').addEventListener('click', () => {
+        // Every unit on screen at once, which is the question this page is
+        // usually opened to answer.
+        const pts = Object.values(markers).map((m) => m.getLatLng());
+        if (!pts.length) return;
+        map.flyToBounds(L.latLngBounds(pts).pad(0.25), { duration: 0.8 });
+    });
+
     // Desktop collapse. Translating rather than hiding keeps Motion's job and
     // Preline's separate -- this panel is not an overlay, so nothing else owns
     // its visibility.
@@ -280,6 +373,8 @@ include 'partials/shell.php';
     const restore = $('panelRestore');
     const setCollapsed = (on) => {
         panel.classList.toggle('lg:translate-x-[calc(100%+1.5rem)]', on);
+        $('mapControls').classList.toggle('lg:right-[372px]', !on);
+        $('mapControls').classList.toggle('lg:right-4', on);
         collapse.setAttribute('aria-expanded', on ? 'false' : 'true');
         restore.hidden = !on;
         restore.setAttribute('aria-expanded', on ? 'false' : 'true');
