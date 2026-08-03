@@ -7,6 +7,12 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'dash.ctx_stranded' => ':n unit tanpa channel default',
+    'dash.ctx_share' => ':p% dari seluruh unit',
+    'dash.no_channels_note' => 'Buat channel dulu sebelum unit bisa saling terhubung.',
+    'dash.stranded_none_note' => 'Tidak ada unit yang kehilangan channel default.',
+    'dash.range' => 'Rentang waktu',
+    'dash.days_left' => 'hari lagi',
     'login.eyebrow' => 'Akses administrator',
     'login.wordmark_note' => 'Konsol kendali jaringan radio',
     'nav.menu' => 'Menu navigasi',
