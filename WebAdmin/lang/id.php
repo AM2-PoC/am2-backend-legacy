@@ -7,6 +7,12 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'track.lede' => 'Posisi unit secara real-time',
+    'track.units' => 'Monitoring unit',
+    'track.search' => 'Cari unit...',
+    'track.empty' => 'Tidak ada unit aktif',
+    'track.transmitting' => 'Sedang memancar',
+    'track.channel' => 'Channel',
     'logs.pagination' => "Navigasi halaman log",
     'logs.count' => "Menampilkan :from–:to dari :total terbaru",
     'logs.paused_browsing' => "Dijeda \u2014 halaman 2+",

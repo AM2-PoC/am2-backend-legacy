@@ -2,311 +2,260 @@
 require_once 'auth.php';
 require_once 'config.php';
 
+$pageTitle = t('nav.live_track');
+$pageLede  = t('track.lede');
 
-
-$pageTitle = "LIVE TRACKING UNIT";
+include 'partials/head.php';
+include 'partials/shell.php';
 ?>
 
-<!DOCTYPE html>
-<html <?= am2_html_attrs() ?>>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title><?= $pageTitle ?> | am²</title>
+<!--
+    The map breaks out of <main>'s gutter: a tracking view is the page, not a
+    card on it. The negative margins undo the shell's padding exactly, which is
+    cheaper and less brittle than giving the shell a second layout mode for one
+    page.
+-->
+<section class="relative -mx-4 -my-6 h-[calc(100dvh-9rem)] overflow-hidden lg:-mx-6 lg:-my-8">
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="asset/css/am2-ui.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet writes into this. The id is the contract. -->
+    <div id="map" class="absolute inset-0 z-0"></div>
 
-    <style>
-        body { background-color: var(--color-bg); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; overflow: hidden; }
-
-        .main-content {
-            position: relative;
-            height: 100vh;
-            overflow: hidden;
-            padding: 0 !important;
-            transition: margin-left 0.3s ease;
-            background: var(--color-map-bg);
-        }
-
-        #map { width: 100%; height: 100%; z-index: 1; }
-
-        .map-overlay-panel {
-            position: absolute; top: 20px; right: 20px; z-index: 1000;
-            width: 310px; max-height: calc(100vh - 60px);
-            background: color-mix(in srgb, var(--color-surface) 94%, transparent); backdrop-filter: blur(10px);
-            border-radius: 18px; box-shadow: 0 10px 35px rgba(var(--shadow-color),0.2);
-            display: flex; flex-direction: column; border: 1px solid var(--color-border);
-            overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .panel-header {
-            background: var(--color-sidebar-bg); color: var(--color-sidebar-hover-text);
-            padding: 15px; border-bottom: 3px solid var(--color-primary);
-            font-size: 0.7rem; font-weight: 800; display: flex;
-            justify-content: space-between; align-items: center;
-            text-transform: uppercase; letter-spacing: 1px;
-        }
-
-        .unit-list { overflow-y: auto; flex-grow: 1; padding: 10px; scrollbar-width: thin; display: flex; flex-direction: column; }
-        
-        .unit-item {
-            padding: 12px 15px; border-radius: 12px; margin-bottom: 8px;
-            cursor: pointer; transition: all 0.2s ease; background: var(--color-surface);
-            border: 1px solid var(--color-border); display: flex; align-items: center;
-            position: relative;
-        }
-        
-        .unit-item.speaking-active {
-            border: 2px solid var(--color-danger);
-            background: var(--color-danger-surface);
-            box-shadow: 0 4px 12px color-mix(in srgb, var(--color-danger) 22%, transparent);
-            order: -1;
-        }
-
-        .unit-item:hover { transform: translateY(-2px); border-color: var(--color-primary); box-shadow: var(--am2-shadow-sm); }
-
-        .custom-marker { display: flex; flex-direction: column; align-items: center; transition: all 0.3s; }
-        .marker-label {
-            background: var(--color-sidebar-bg); color: var(--color-sidebar-hover-text); padding: 3px 10px;
-            border-radius: 20px; font-size: 10px; font-weight: 700;
-            border: 1.5px solid var(--color-primary); white-space: nowrap; margin-bottom: 5px;
-            box-shadow: 0 4px 10px rgba(var(--shadow-color),0.3); pointer-events: none;
-        }
-        
-        .pulse-dot {
-            width: 14px; height: 14px; border: 2.5px solid var(--color-surface);
-            border-radius: 50%; background: var(--color-success);
-            box-shadow: 0 0 8px rgba(var(--shadow-color),0.3);
-        }
-
-        .speaking-marker .pulse-dot {
-            background: var(--color-danger) !important;
-            width: 18px; height: 18px;
-            animation: pulse-red-map 1s infinite;
-        }
-        .speaking-marker .marker-label {
-            background: var(--color-danger); border-color: var(--color-surface);
-            box-shadow: 0 0 15px color-mix(in srgb, var(--color-danger) 45%, transparent);
-        }
-
-        @keyframes pulse-red-map {
-            0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-danger) 70%, transparent); transform: scale(1); }
-            70% { box-shadow: 0 0 0 15px transparent; transform: scale(1.1); }
-            100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
-        }
-
-        .btn-reset-view {
-            width: 45px; height: 45px; background: var(--color-surface); border-radius: 12px;
-            position: absolute; right: 20px; bottom: 40px; z-index: 1000;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: var(--am2-shadow); border: 1px solid var(--color-border); cursor: pointer;
-            color: var(--color-text); transition: 0.2s;
-        }
-        .btn-reset-view:hover { background: var(--color-primary); color: var(--color-on-primary); }
-
-        .btn-toggle-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: var(--color-sidebar-bg);
-            color: var(--color-sidebar-hover-text);
-            border: 2px solid var(--color-primary);
-            border-radius: 12px;
-            padding: 10px;
-            box-shadow: var(--am2-shadow);
-        }
-
-        @keyframes flash-text { from { opacity: 1; } to { opacity: 0.5; } }
-        .tx-badge-anim { animation: flash-text 0.6s infinite alternate; font-weight: 800; font-size: 9px; }
-
-        @media (max-width: 992px) {
-            .map-overlay-panel {
-                width: min(280px, calc(100vw - 24px));
-                max-height: calc(100dvh - 84px);
-                top: 80px;
-                right: -320px;
-            }
-            .map-overlay-panel.show { right: 12px; }
-        }
-
-        @media (max-width: 767.98px) {
-            .btn-toggle-panel {
-                top: calc(var(--mobile-navbar-height) + 12px);
-                right: 12px;
-            }
-            .map-overlay-panel {
-                max-height: calc(100dvh - var(--mobile-navbar-height) - 84px);
-                top: calc(var(--mobile-navbar-height) + 64px);
-            }
-        }
-    </style>
-</head>
-<body class="map-page">
-
-<?php include 'sidebar.php'; ?>
-
-<main class="main-content">
-    <div id="map"></div>
-
-    <button type="button" class="btn-toggle-panel d-lg-none" id="panelToggle" aria-label="Toggle monitoring unit panel" aria-expanded="false">
-        <i class="fas fa-users"></i>
-    </button>
-    
-    <button class="btn-reset-view" onclick="resetMap()" title="Reset View">
-        <i class="fas fa-expand-arrows-alt"></i>
-    </button>
-
-    <div class="map-overlay-panel choice-list" id="unitPanel">
-        <div class="panel-header">
-            <span><i class="fas fa-satellite-dish me-2 text-warning"></i> Monitoring Unit</span>
-            <span class="badge bg-danger tx-badge-anim" id="tx-indicator" style="display:none;">TX AKTIF</span>
-        </div>
-
-        <div class="p-2 bg-light border-bottom">
-            <div class="input-group input-group-sm">
-                <span class="input-group-text bg-white border-0"><i class="fas fa-search text-muted"></i></span>
-                <input type="text" id="unitSearch" class="form-control border-0 shadow-none" placeholder="Cari User..." onkeyup="renderList()">
-            </div>
-        </div>
-
-        <div id="unitList" class="unit-list">
-             </div>
-
-        <div class="p-2 px-3 bg-white border-top d-flex justify-content-between align-items-center">
-            <small class="text-muted fw-bold" style="font-size: 10px;"><span id="count-online">0</span> Online</small>
-            <small class="text-muted" style="font-size: 9px; font-weight: 700;">am²</small>
-        </div>
+    <!-- Transmitting right now. The one pulse in the application. -->
+    <div id="tx-indicator" hidden
+         class="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-control
+                border border-bad/40 bg-card/95 px-3 py-2 font-mono text-[10px]
+                uppercase tracking-[0.15em] text-bad shadow-pop backdrop-blur-sm">
+        <span class="am2-live h-2 w-2 rounded-full bg-bad" aria-hidden="true"></span>
+        <?= e('track.transmitting') ?>
     </div>
-</main>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Opens the panel below lg, where it is a sheet rather than a column. -->
+    <button type="button" id="panelToggle" aria-expanded="false" aria-controls="unitPanel"
+            class="absolute bottom-4 right-4 z-30 flex h-12 items-center gap-2 rounded-card
+                   border border-edge bg-card px-4 font-mono text-[10px] uppercase
+                   tracking-[0.15em] text-ink shadow-panel lg:hidden">
+        <?= am2_icon('users', 'h-4 w-4') ?>
+        <span><?= e('track.units') ?></span>
+        <span id="count-online-badge"
+              class="rounded-control bg-brand/15 px-1.5 py-0.5 text-brand">0</span>
+    </button>
+
+    <!--
+        Unit panel. A floating card from lg up; below that it is a sheet that
+        rises from the bottom, because a side panel on a phone leaves the map
+        too narrow to be a map.
+    -->
+    <aside id="unitPanel" aria-label="<?= e('track.units') ?>"
+           class="am2-surface absolute inset-x-3 bottom-3 z-20 flex max-h-[70%] translate-y-[110%]
+                  flex-col rounded-card transition-transform
+                  duration-[var(--duration-drawer)] ease-enter
+                  lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:w-[340px]
+                  lg:max-h-none lg:translate-y-0">
+
+        <header class="flex items-center justify-between gap-3 border-b border-edge px-4 py-3">
+            <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+                <?= e('track.units') ?>
+            </h2>
+            <span class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
+                <span id="count-online" class="text-ink">0</span>
+                <span class="text-ink-subtle"><?= e('rail.online') ?></span>
+            </span>
+        </header>
+
+        <div class="border-b border-edge p-3">
+            <input id="unitSearch" type="search" autocomplete="off"
+                   placeholder="<?= e('track.search') ?>"
+                   class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm
+                          text-ink transition-colors duration-[var(--duration-micro)]
+                          hover:border-edge-strong focus:border-brand focus:outline-none
+                          focus:ring-2 focus:ring-brand/25">
+        </div>
+
+        <!-- id is the contract; rows are built as DOM, never as markup. -->
+        <div id="unitList" class="flex-1 overflow-y-auto"></div>
+    </aside>
+</section>
+
+<?php include 'partials/shell_end.php'; ?>
+
+<script src="<?= am2_asset('asset/vendor/leaflet/leaflet.js') ?>"></script>
 <script>
-    var map = L.map('map', { zoomControl: false, attributionControl: false }).setView([-2.5, 118], 5);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
+(() => {
+    'use strict';
 
-    var markers = {};
-    var userCache = [];
+    const $ = (id) => document.getElementById(id);
+    const EMPTY = <?= json_encode(t('track.empty')) ?>;
+    const CHANNEL = <?= json_encode(t('track.channel')) ?>;
 
-    function syncData() {
-        $.getJSON('get-users-ajax.php', function(data) {
+    const map = L.map('map', { zoomControl: false, attributionControl: false })
+                 .setView([-2.5, 118], 5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png')
+     .addTo(map);
+
+    const markers = {};
+    let userCache = [];
+
+    /** Leaflet's divIcon takes a string, so the one place markup is built from
+     *  a unit's name escapes it. The name is admin-entered free text. */
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    async function syncData() {
+        try {
+            const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
+            if (!res.ok) throw new Error(res.status);
+            const data = await res.json();
             if (!data || data.error) return;
-            
             userCache = data;
             updateMarkers();
             renderList();
-        });
+        } catch {
+            // The last known positions stay on the map rather than vanishing.
+        }
     }
 
     function updateMarkers() {
-        let activeIds = userCache.map(u => u.id.toString());
+        const activeIds = userCache.map((u) => String(u.id));
         let txFound = false;
 
-        userCache.forEach(user => {
-            const uid = user.id.toString();
+        userCache.forEach((user) => {
+            const uid = String(user.id);
             const lat = parseFloat(user.lat);
             const lng = parseFloat(user.lng);
-            
-            if (isNaN(lat) || lat === 0) return;
+            if (Number.isNaN(lat) || lat === 0) return;
 
-            const isSpeaking = parseInt(user.is_speaking) === 1;
-            if(isSpeaking) txFound = true;
+            const isSpeaking = parseInt(user.is_speaking, 10) === 1;
+            if (isSpeaking) txFound = true;
 
+            // Class names are the contract am2-ui.css styles the markers with.
             const icon = L.divIcon({
                 className: isSpeaking ? 'custom-marker speaking-marker' : 'custom-marker',
-                html: `<div class="marker-label">${user.name}</div><div class="pulse-dot"></div>`,
+                html: `<div class="marker-label">${esc(user.name)}</div><div class="pulse-dot"></div>`,
                 iconSize: [100, 40],
-                iconAnchor: [50, 35]
+                iconAnchor: [50, 35],
             });
 
             if (markers[uid]) {
                 markers[uid].setLatLng([lat, lng]);
-                
                 if (markers[uid]._speakingState !== isSpeaking) {
                     markers[uid].setIcon(icon);
                     markers[uid]._speakingState = isSpeaking;
                 }
-                
-                if(isSpeaking) markers[uid].setZIndexOffset(1000);
-                else markers[uid].setZIndexOffset(0);
-
+                markers[uid].setZIndexOffset(isSpeaking ? 1000 : 0);
             } else {
-                markers[uid] = L.marker([lat, lng], {icon: icon}).addTo(map);
+                markers[uid] = L.marker([lat, lng], { icon }).addTo(map);
                 markers[uid]._speakingState = isSpeaking;
-                markers[uid].bindPopup(`<b>${user.name}</b><br><small>Channel: ${user.channel_name}</small>`);
+                markers[uid].bindPopup(
+                    `<b>${esc(user.name)}</b><br><small>${CHANNEL}: ${esc(user.channel_name)}</small>`);
             }
         });
 
-        Object.keys(markers).forEach(id => {
+        Object.keys(markers).forEach((id) => {
             if (!activeIds.includes(id)) {
                 map.removeLayer(markers[id]);
                 delete markers[id];
             }
         });
 
-        if(txFound) $('#tx-indicator').fadeIn(200);
-        else $('#tx-indicator').fadeOut(200);
-
-        $('#count-online').text(userCache.length);
+        $('tx-indicator').hidden = !txFound;
+        window.AM2?.countTo($('count-online'), userCache.length);
+        $('count-online-badge').textContent = String(userCache.length);
     }
 
     function renderList() {
-        const q = $('#unitSearch').val().toLowerCase();
-        const container = $('#unitList');
-        
-        const filtered = userCache.filter(u => u.name.toLowerCase().includes(q) || u.id.toString().includes(q));
+        const q = $('unitSearch').value.toLowerCase();
+        const list = $('unitList');
+        const filtered = userCache.filter(
+            (u) => String(u.name).toLowerCase().includes(q) || String(u.id).includes(q));
 
-        let html = '';
-        filtered.forEach(u => {
-            const isSpeaking = parseInt(u.is_speaking) === 1;
-            html += `
-                <div class="unit-item ${isSpeaking ? 'speaking-active' : ''}" data-lat="${u.lat}" data-lng="${u.lng}" data-uid="${String(u.id).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}"
-                     onclick="gotoUnit(this.dataset.lat, this.dataset.lng, this.dataset.uid)">
-                    <div class="position-relative me-3">
-                        <div style="width:12px; height:12px; border-radius:50%; background:${isSpeaking ? 'var(--color-danger)' : 'var(--color-success)'};"></div>
-                        ${isSpeaking ? '<div class="spinner-grow text-danger position-absolute" style="width:12px; height:12px; top:0; left:0; opacity:0.4;"></div>' : ''}
-                    </div>
-                    <div class="flex-grow-1 overflow-hidden">
-                        <div class="small fw-bold text-dark text-truncate d-flex justify-content-between">
-                            <span>${u.name}</span>
-                            ${isSpeaking ? '<span class="badge bg-danger" style="font-size:7px;">TX</span>' : ''}
-                        </div>
-                        <div class="text-muted d-flex justify-content-between" style="font-size:9px;">
-                            <span>#${u.id}</span>
-                            <span>${u.channel_name}</span>
-                        </div>
-                    </div>
-                </div>`;
-        });
-        
-        container.html(html || '<div class="p-4 text-center text-muted small">Tidak ada user aktif</div>');
+        list.textContent = '';
+
+        if (!filtered.length) {
+            const p = document.createElement('p');
+            p.className = 'px-4 py-8 text-center text-sm text-ink-muted';
+            p.textContent = EMPTY;
+            list.appendChild(p);
+            return;
+        }
+
+        for (const u of filtered) {
+            const speaking = parseInt(u.is_speaking, 10) === 1;
+
+            // A button, so it is reachable by keyboard. The old rows were divs
+            // with an inline onclick and could only be used with a mouse.
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'unit-item flex w-full items-center gap-3 border-b border-edge px-4 '
+                + 'py-2.5 text-left transition-colors duration-[var(--duration-micro)] '
+                + 'hover:bg-card-muted' + (speaking ? ' speaking-active' : '');
+            row.dataset.lat = u.lat;
+            row.dataset.lng = u.lng;
+            row.dataset.uid = String(u.id);
+            row.addEventListener('click', () => gotoUnit(u.lat, u.lng, String(u.id)));
+
+            const dot = document.createElement('span');
+            dot.className = 'h-2.5 w-2.5 shrink-0 rounded-full '
+                + (speaking ? 'bg-bad am2-live' : 'bg-ok');
+            dot.setAttribute('aria-hidden', 'true');
+
+            const body = document.createElement('span');
+            body.className = 'min-w-0 flex-1';
+
+            const top = document.createElement('span');
+            top.className = 'flex items-center justify-between gap-2';
+            const name = document.createElement('span');
+            name.className = 'truncate text-sm font-semibold text-ink';
+            name.textContent = u.name ?? '';
+            top.appendChild(name);
+            if (speaking) {
+                const tx = document.createElement('span');
+                tx.className = 'shrink-0 rounded-control bg-bad/10 px-1.5 font-mono text-[9px] text-bad';
+                tx.textContent = 'TX';
+                top.appendChild(tx);
+            }
+
+            const meta = document.createElement('span');
+            meta.className = 'mt-0.5 flex items-center justify-between gap-2 font-mono '
+                + 'text-[10px] text-ink-subtle';
+            const idEl = document.createElement('span');
+            idEl.textContent = '#' + String(u.id);
+            const chEl = document.createElement('span');
+            chEl.className = 'truncate';
+            chEl.textContent = u.channel_name ?? '';
+            meta.append(idEl, chEl);
+
+            body.append(top, meta);
+            row.append(dot, body);
+            list.appendChild(row);
+        }
     }
 
     function gotoUnit(lat, lng, id) {
-        if ($(window).width() <= 992) $('#unitPanel').removeClass('show');
+        // Below lg the panel covers the map, so it gets out of the way.
+        if (window.innerWidth <= 992) closePanel();
         map.flyTo([lat, lng], 17, { duration: 1.2 });
-        setTimeout(() => {
-            if (markers[id]) markers[id].openPopup();
-        }, 1300);
+        setTimeout(() => { if (markers[id]) markers[id].openPopup(); }, 1300);
     }
 
-    function resetMap() {
-        map.setView([-2.5, 118], 5);
-    }
-
-    $(document).ready(function() {
-        syncData();
-        setInterval(syncData, 2000);
-
-        $('#panelToggle').click(function() {
-            $('#unitPanel').toggleClass('show');
-            $(this).attr('aria-expanded', $('#unitPanel').hasClass('show') ? 'true' : 'false');
-        });
+    const panel = $('unitPanel');
+    const toggle = $('panelToggle');
+    const openPanel = () => {
+        panel.classList.remove('translate-y-[110%]');
+        toggle.setAttribute('aria-expanded', 'true');
+    };
+    const closePanel = () => {
+        panel.classList.add('translate-y-[110%]');
+        toggle.setAttribute('aria-expanded', 'false');
+    };
+    toggle.addEventListener('click', () => {
+        panel.classList.contains('translate-y-[110%]') ? openPanel() : closePanel();
     });
+
+    $('unitSearch').addEventListener('input', renderList);
+
+    syncData();
+    setInterval(syncData, 3000);
+})();
 </script>
 </body>
 </html>

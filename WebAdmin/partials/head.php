@@ -20,6 +20,9 @@ $pageTitle = $pageTitle ?? '';
          depend on it, and it owns the tokens Tailwind reads. -->
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-tailwind.css') ?>">
+    <?php /* Leaflet, vendored: livetrack.php pulled it from unpkg before. Its
+             rules are all scoped to .leaflet-*, so it costs other pages nothing. */ ?>
+    <link rel="stylesheet" href="<?= am2_asset('asset/vendor/leaflet/leaflet.css') ?>">
 </head>
 <body class="min-h-dvh bg-app font-sans text-ink antialiased"
       x-data="{ nav: false }" @keydown.escape.window="nav = false">
