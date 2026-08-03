@@ -378,10 +378,8 @@ tr[data-row-id]:focus-visible {
  * what they are allowed to do, then the verbs.
  */
 @media (max-width: 1023px) {
-    /* Stop being a table. tbody was laid out as a flex column while the
-       table element still used the table width algorithm, so every card was
-       sized to its content and the call sign wrapped three times inside a
-       card with room to spare. */
+    /* Stop being a table: tbody is laid out as a flex column, and the table
+       width algorithm would size every card to its content. */
     .am2-roster { display: block; width: 100%; }
     .am2-roster thead { display: none; }
 
@@ -392,55 +390,69 @@ tr[data-row-id]:focus-visible {
         padding: 0.75rem;
     }
 
-    /* Three columns and four rows, said explicitly. Left to `auto` the first
-       column took its width from whatever the browser felt like, and the call
-       sign ended up a third of the way across the card. */
     .am2-roster tr {
         display: grid;
-        grid-template-columns: 1.5rem minmax(0, 1fr);
-        align-items: start;
-        gap: 0.5rem 0.75rem;
+        grid-template-columns: 1.25rem minmax(0, 1fr);
+        gap: 0 0.625rem;
         border: 1px solid var(--color-border);
         border-radius: var(--am2-radius);
-        padding: 0.75rem;
         background: var(--color-surface);
+        overflow: hidden;
     }
 
-    /* The column names belong to the head, which is not on screen here. */
     /* display:block needs the !important too. Without it the card mode's own
-       rule won and every cell stayed a two-column grid -- a 90px column
-       holding a label that was hidden, and 167px of the 266px available for
-       everything else. Measured, after guessing at it four times. */
-    .am2-roster td { display: block !important; padding: 0 !important; border: 0 !important; }
-    .am2-roster td::before { content: none !important; }
+       rule wins and every cell stays a two-column grid -- a 90px column for a
+       label, and 167px of the 266px available for everything else. */
+    .am2-roster td { display: block !important; border: 0 !important; }
 
-    .am2-roster td[data-cell="select"]   { grid-column: 1; grid-row: 1 / span 4; width: auto; }
-    .am2-roster td[data-cell="unit"]     { grid-column: 2; grid-row: 1; }
+    /* Who. The headline of the card, so it carries no label -- a name does not
+       need to be told it is a name. */
+    .am2-roster td[data-cell="select"] { grid-column: 1; grid-row: 1; padding: 0.75rem 0 0 0.75rem !important; }
+    .am2-roster td[data-cell="unit"]   { grid-column: 2; grid-row: 1; padding: 0.75rem 0.75rem 0.625rem 0 !important; }
+    .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
 
-    /* Two columns, not three. A third column sized to the duplex chip was
-       taking width from the one that holds the call sign, and the name wrapped
-       three times inside a card that had room to spare. */
-    .am2-roster td[data-cell="channel"]  { grid-column: 2; grid-row: 2; }
-    .am2-roster td[data-cell="duplex"]   { grid-column: 2; grid-row: 3; }
-    .am2-roster td[data-cell="features"] { grid-column: 2; grid-row: 4; }
-
-    /* A call sign is the one thing on this card that must never be cut. The
-       truncation is right in a table column and wrong in a card, where the
-       line can simply wrap. */
-    .am2-roster td[data-cell="unit"] * {
-        white-space: normal;
-        overflow: visible;
-        text-overflow: clip;
+    /*
+     * What. Three attributes, each named and each on its own line with a rule
+     * above it. Stripping the names left a card of loose chips -- HALF beside
+     * a warning beside three more chips, and nothing saying which was which.
+     */
+    .am2-roster td[data-cell="channel"],
+    .am2-roster td[data-cell="duplex"],
+    .am2-roster td[data-cell="features"] {
+        grid-column: 1 / -1;
+        display: flex !important;
+        align-items: baseline;
+        gap: 0.75rem;
+        border-top: 1px solid var(--color-border) !important;
+        padding: 0.5rem 0.75rem !important;
     }
 
+    .am2-roster td[data-cell="channel"]::before,
+    .am2-roster td[data-cell="duplex"]::before,
+    .am2-roster td[data-cell="features"]::before {
+        content: attr(data-label) !important;
+        flex: 0 0 4.5rem;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--color-text-subtle);
+        line-height: 1.6;
+    }
+
+    /* The verbs, on their own band at the foot of the card. */
     .am2-roster td[data-cell="actions"] {
         grid-column: 1 / -1;
-        margin-top: 0.25rem;
         border-top: 1px solid var(--color-border) !important;
-        padding-top: 0.625rem !important;
+        background: var(--color-surface-muted);
+        padding: 0.625rem 0.75rem !important;
         text-align: end;
     }
 
+    .am2-roster td[data-cell="select"]::before,
+    .am2-roster td[data-cell="unit"]::before,
+    .am2-roster td[data-cell="actions"]::before { content: none !important; }
+
     /* An empty state is one message, not a card with a checkbox. */
-    .am2-roster tr:has(td[colspan]) { display: block; border: 0; padding: 0; background: none; }
+    .am2-roster tr:has(td[colspan]) { display: block; border: 0; background: none; }
 }

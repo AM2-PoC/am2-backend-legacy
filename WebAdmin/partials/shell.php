@@ -86,6 +86,9 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         'expand'   => '<path d="m10 8 4 4-4 4"/><path d="M4 4v16"/>',
         'signal'   => '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/>',
         'user'     => '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+        'trash'    => '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+        'download' => '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+        'swap'     => '<path d="M7 4v13"/><path d="m4 14 3 3 3-3"/><path d="M17 20V7"/><path d="m14 10 3-3 3 3"/>',
         'globe'    => '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>',
     ];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"'

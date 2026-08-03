@@ -145,12 +145,6 @@ function setupTable(table) {
     function clearSelection() {
         state.ids.clear();
         state.all = false;
-        const v = bar?.querySelector('[data-bulk-verbs]');
-        if (v && window.matchMedia('(max-width: 639px)').matches) {
-            v.classList.remove('flex');
-            v.classList.add('hidden');
-            bar?.querySelector('[data-bulk-more]')?.setAttribute('aria-expanded', 'false');
-        }
         paint();
     }
 
@@ -245,20 +239,9 @@ function setupTable(table) {
         }
     }
 
-    const verbs = bar?.querySelector('[data-bulk-verbs]');
-    const more = bar?.querySelector('[data-bulk-more]');
-
     bar?.addEventListener('click', (e) => {
         if (e.target.closest('[data-select-all-matching]')) { state.all = true; paint(); }
         if (e.target.closest('[data-clear-selection]')) clearSelection();
-
-        // Below sm the verbs are folded away, so the bar is one row until
-        // somebody asks for them.
-        if (e.target.closest('[data-bulk-more]')) {
-            const open = verbs.classList.toggle('flex');
-            verbs.classList.toggle('hidden', !open);
-            more.setAttribute('aria-expanded', open ? 'true' : 'false');
-        }
     });
 
     document.querySelectorAll('[data-bulk]').forEach((btn) => {
