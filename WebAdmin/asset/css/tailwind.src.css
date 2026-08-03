@@ -332,3 +332,7 @@
     height: 2px;
     background: var(--color-primary);
 }
+
+/* A marker with no label is only its dot, so it must not reserve label space. */
+.custom-marker-bare { width: 16px !important; height: 16px !important; }
+.custom-marker-bare .marker-label { display: none; }

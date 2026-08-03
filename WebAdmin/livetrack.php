@@ -15,7 +15,13 @@ include 'partials/shell.php';
     cheaper and less brittle than giving the shell a second layout mode for one
     page.
 -->
-<section class="relative -mx-4 -my-6 h-[calc(100dvh-9rem)] overflow-hidden lg:-mx-6 lg:-my-8">
+<!--
+    The map is a card like every other page's, sitting in the shell's gutter
+    rather than bleeding past it. Full-bleed made this page the only one whose
+    content did not line up with the rest, which is what it looked like.
+    overflow-hidden is what makes Leaflet respect the rounded corners.
+-->
+<section class="am2-surface relative h-[calc(100dvh-11rem)] overflow-hidden rounded-card">
 
     <!-- Leaflet writes into this. The id is the contract. -->
     <div id="map" class="absolute inset-0 z-0"></div>
@@ -26,8 +32,13 @@ include 'partials/shell.php';
         nothing at all on a touch screen except pinching. These are the console's
         own, in the console's tokens.
     -->
-    <div class="absolute right-4 top-4 z-30 flex flex-col gap-1.5 lg:right-[372px]"
-         id="mapControls">
+    <!--
+        Left, under the transmitting badge. They used to sit top-right and step
+        aside when the panel collapsed -- straight underneath the handle that
+        brings the panel back, which covered the zoom-in button entirely. The
+        left edge belongs to nothing else, so nothing can land on top of them.
+    -->
+    <div class="absolute left-4 top-16 z-30 flex flex-col gap-1.5" id="mapControls">
         <button type="button" id="mapZoomIn" aria-label="<?= e('track.zoom_in') ?>"
                 title="<?= e('track.zoom_in') ?>"
                 class="grid h-11 w-11 place-items-center rounded-control border border-edge
@@ -199,6 +210,9 @@ include 'partials/shell.php';
     const markers = {};
     let userCache = [];
 
+    /** Zoom at which unit names stop colliding. */
+    const LABEL_ZOOM = 9;
+
     /** Leaflet's divIcon takes a string, so the one place markup is built from
      *  a unit's name escapes it. The name is admin-entered free text. */
     const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
@@ -232,23 +246,33 @@ include 'partials/shell.php';
             if (isSpeaking) txFound = true;
 
             // Class names are the contract am2-ui.css styles the markers with.
+            // Below zoom 9 the labels collide into an unreadable stack -- a
+            // dozen units over Java is one smear of overlapping names. The dot
+            // still says where each unit is, and the name is a click or a
+            // glance at the panel away.
+            const showLabel = map.getZoom() >= LABEL_ZOOM;
             const icon = L.divIcon({
-                className: isSpeaking ? 'custom-marker speaking-marker' : 'custom-marker',
-                html: `<div class="marker-label">${esc(user.name)}</div><div class="pulse-dot"></div>`,
-                iconSize: [100, 40],
-                iconAnchor: [50, 35],
+                className: (isSpeaking ? 'custom-marker speaking-marker' : 'custom-marker')
+                    + (showLabel ? '' : ' custom-marker-bare'),
+                html: (showLabel ? `<div class="marker-label">${esc(user.name)}</div>` : '')
+                    + '<div class="pulse-dot"></div>',
+                iconSize: showLabel ? [100, 40] : [16, 16],
+                iconAnchor: showLabel ? [50, 35] : [8, 8],
             });
 
             if (markers[uid]) {
                 markers[uid].setLatLng([lat, lng]);
-                if (markers[uid]._speakingState !== isSpeaking) {
+                if (markers[uid]._speakingState !== isSpeaking
+                    || markers[uid]._labelState !== showLabel) {
                     markers[uid].setIcon(icon);
                     markers[uid]._speakingState = isSpeaking;
+                    markers[uid]._labelState = showLabel;
                 }
                 markers[uid].setZIndexOffset(isSpeaking ? 1000 : 0);
             } else {
                 markers[uid] = L.marker([lat, lng], { icon }).addTo(map);
                 markers[uid]._speakingState = isSpeaking;
+                markers[uid]._labelState = showLabel;
                 markers[uid].bindPopup(
                     `<b>${esc(user.name)}</b><br><small>${CHANNEL}: ${esc(user.channel_name)}</small>`);
             }
@@ -356,6 +380,16 @@ include 'partials/shell.php';
         panel.classList.contains('translate-y-[110%]') ? openPanel() : closePanel();
     });
 
+    // Redraw the markers when crossing the label threshold.
+    let lastLabelState = null;
+    map.on('zoomend', () => {
+        const now = map.getZoom() >= LABEL_ZOOM;
+        if (now !== lastLabelState) {
+            lastLabelState = now;
+            updateMarkers();
+        }
+    });
+
     $('mapZoomIn').addEventListener('click', () => map.zoomIn());
     $('mapZoomOut').addEventListener('click', () => map.zoomOut());
     $('mapFit').addEventListener('click', () => {
@@ -373,8 +407,6 @@ include 'partials/shell.php';
     const restore = $('panelRestore');
     const setCollapsed = (on) => {
         panel.classList.toggle('lg:translate-x-[calc(100%+1.5rem)]', on);
-        $('mapControls').classList.toggle('lg:right-[372px]', !on);
-        $('mapControls').classList.toggle('lg:right-4', on);
         collapse.setAttribute('aria-expanded', on ? 'false' : 'true');
         restore.hidden = !on;
         restore.setAttribute('aria-expanded', on ? 'false' : 'true');

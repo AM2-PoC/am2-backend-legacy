@@ -321,9 +321,16 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                                  bg-card-muted font-mono text-[11px] uppercase text-brand">
                         <?= htmlspecialchars(mb_substr($displayName, 0, 2)) ?>
                     </span>
-                    <span class="hidden min-w-0 pe-1 text-left lg:block">
-                        <span class="block truncate text-xs text-ink"><?= htmlspecialchars($displayName) ?></span>
-                        <span class="block truncate font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <!-- Two lines in a 44px control left the name and the role
+                         crowding each other. Explicit leading gives each one its
+                         own line, and the block gets room to hold a longer
+                         username without the two running together. -->
+                    <span class="hidden min-w-0 max-w-[140px] pe-1 text-left lg:block">
+                        <span class="block truncate text-[13px] leading-[1.15] text-ink">
+                            <?= htmlspecialchars($displayName) ?>
+                        </span>
+                        <span class="mt-0.5 block truncate font-mono text-[9px] uppercase
+                                     leading-none tracking-[0.12em] text-ink-subtle">
                             <?= htmlspecialchars($roleName) ?>
                         </span>
                     </span>
