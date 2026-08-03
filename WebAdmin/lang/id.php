@@ -7,6 +7,9 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'logs.pagination' => "Navigasi halaman log",
+    'logs.count' => "Menampilkan :from–:to dari :total terbaru",
+    'logs.paused_browsing' => "Dijeda \u2014 halaman 2+",
     'dash.ctx_stranded' => ':n unit tanpa channel default',
     'dash.ctx_share' => ':p% dari seluruh unit',
     'dash.no_channels_note' => 'Buat channel dulu sebelum unit bisa saling terhubung.',
