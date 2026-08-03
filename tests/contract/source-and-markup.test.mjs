@@ -515,7 +515,7 @@ describe('translated strings arrive substituted', () => {
     test('no unsubstituted placeholder reaches a rendered page', async () => {
         const sup = await asSuper();
         for (const path of ['/dashboard.php', '/users.php', '/channels.php',
-                            '/user_access.php', '/logs.php']) {
+                            '/user_access.php', '/logs.php', '/settings.php']) {
             const html = await (await get(path, sup)).text();
             const body = html.replace(/<script[\s\S]*?<\/script>/g, '')
                              .replace(/<[^>]+>/g, ' ');
