@@ -38,7 +38,16 @@
 <script src="<?= am2_asset('asset/js/am2-ui.min.js') ?>" defer></script>
 <?php /* Alpine still drives the bodies of pages this release has not reached.
          It controls nothing in the shell; it goes when the last page lands. */ ?>
-<script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
+<?php if (!empty($pageUsesAlpine)): ?>
+    <?php /*
+        Only the pages that still have Alpine markup. It was loaded on all of
+        them, which meant every migrated page paid for a second runtime it did
+        not use -- and on users.php, whose 4,500 nodes Alpine walks at startup,
+        that was measured at 800ms of the 1,750ms to DOMContentLoaded on a
+        four-times-slower CPU. Deleted outright once the last page migrates.
+    */ ?>
+    <script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
+<?php endif; ?>
 
 <script>
 (() => {
@@ -127,8 +136,29 @@
             $('am2-stale').classList.remove('hidden');
         }
     }
-    pollStatus();
-    setInterval(pollStatus, 10000);
+    /*
+     * Every ten seconds on every page was a request for the whole fleet -- the
+     * endpoint returns one row per unit, so on a full deployment that is tens
+     * of kilobytes a tab, forever, including tabs nobody is looking at. Thirty
+     * seconds is still inside the window an operator would call live, and a
+     * hidden tab asks for nothing at all until it comes back.
+     */
+    const STATUS_EVERY = 30000;
+    let statusTimer = null;
+
+    function startStatus() {
+        if (statusTimer) return;
+        pollStatus();
+        statusTimer = setInterval(pollStatus, STATUS_EVERY);
+    }
+    function stopStatus() {
+        clearInterval(statusTimer);
+        statusTimer = null;
+    }
+
+    document.addEventListener('visibilitychange',
+        () => (document.hidden ? stopStatus() : startStatus()));
+    if (!document.hidden) startStatus();
 
     /* ---- Command palette --------------------------------------------- */
     // A page may add its own sections; the shell owns the search, so this
