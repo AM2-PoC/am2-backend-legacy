@@ -78,43 +78,53 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         fold. Two fifths rather than half — the smaller claim on the screen,
         because it is the smaller part of the job.
     -->
-    <aside class="relative hidden overflow-hidden bg-slate-950 lg:flex lg:flex-col
-                  lg:justify-between lg:border-r lg:border-brand/25 lg:p-10">
+    <aside class="am2-brand-panel relative hidden overflow-hidden lg:flex lg:flex-col
+                  lg:justify-between lg:p-10">
         <!-- The mark already draws two orbital arcs. Rings travelling outward
              turn the logo into what it depicts: a signal leaving a
              transmitter. Motion drives them rather than CSS keyframes, so
              there is one owner and reduced motion is a branch instead of a
              media query fighting an animation. -->
-        <div class="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
-            <span data-am2-ring class="am2-ring"></span>
-            <span data-am2-ring class="am2-ring"></span>
-            <span data-am2-ring class="am2-ring"></span>
-        </div>
-
-        <p class="relative font-mono text-[11px] uppercase tracking-[0.25em] text-white/40">
+        <p class="relative font-mono text-[11px] uppercase tracking-[0.25em] text-ink-subtle">
             AM<sup>2</sup> — <?= e('login.subtitle') ?>
         </p>
 
-        <div class="relative grid place-items-center py-8">
-            <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt="AM²"
-                 width="160" height="160"
-                 class="h-40 w-40 rounded-full bg-white object-contain p-3 shadow-2xl">
+        <div class="relative grid place-items-center gap-6 py-8">
+            <!-- The rings belong to the mark, so they are anchored to it. Centred
+                 on the panel instead, they ran straight through the wordmark. -->
+            <div class="relative grid place-items-center">
+                <div class="pointer-events-none absolute inset-0 grid place-items-center"
+                     aria-hidden="true">
+                    <span data-am2-ring class="am2-ring"></span>
+                    <span data-am2-ring class="am2-ring"></span>
+                    <span data-am2-ring class="am2-ring"></span>
+                </div>
+                <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt="AM²"
+                     width="160" height="160"
+                     class="relative h-40 w-40 rounded-full bg-white object-contain p-3"
+                     style="box-shadow: var(--am2-card-shadow)">
+            </div>
         </div>
 
         <!-- What the product does, in the operator's words. Three facts, not a
              pitch: whoever reads this page already bought it. -->
-        <div class="relative border-t border-white/10 pt-5">
-            <dl class="grid grid-cols-3 gap-4">
+        <div class="relative">
+            <p class="text-2xl font-semibold tracking-tight text-ink">AM²</p>
+            <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-subtle">
+                <?= e('login.wordmark_note') ?>
+            </p>
+
+            <dl class="mt-6 grid grid-cols-3 gap-4 border-t border-edge pt-5">
                 <?php foreach ([
                     ['login.fact_ptt_label', 'login.fact_ptt'],
                     ['login.fact_channels_label', 'login.fact_channels'],
                     ['login.fact_tracking_label', 'login.fact_tracking'],
                 ] as [$labelKey, $bodyKey]): ?>
                     <div>
-                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-brand/80">
+                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
                             <?= e($labelKey) ?>
                         </dt>
-                        <dd class="mt-1 font-mono text-[11px] leading-relaxed text-white/45">
+                        <dd class="mt-1 font-mono text-[11px] leading-relaxed text-ink-muted">
                             <?= e($bodyKey) ?>
                         </dd>
                     </div>
@@ -148,10 +158,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 one.
             -->
             <div id="am2-login-card"
-                 class="rounded-card border border-edge bg-card p-6 shadow-sm sm:p-8">
+                 class="am2-surface am2-surface-accent rounded-card p-6 sm:p-8">
 
                 <div data-am2-field>
-                    <h1 class="text-xl font-semibold tracking-tight"><?= e('login.heading') ?></h1>
+                    <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-brand">
+                        <?= e('login.eyebrow') ?>
+                    </p>
+                    <h1 class="mt-1.5 text-xl font-semibold tracking-tight"><?= e('login.heading') ?></h1>
                     <p class="mt-1 text-sm text-ink-muted"><?= e('login.lede') ?></p>
                 </div>
 
@@ -260,14 +273,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </button>
                     </div>
                 </form>
-            </div>
 
-            <!--
-                Operator controls. The same 44px targets and the same shape as
-                the shell behind this page, so the first screen and every screen
-                after it agree about what a control looks like.
-            -->
-            <div class="mt-5 flex items-center justify-between">
+                <!--
+                    Operator controls, inside the card. They were floating
+                    underneath it, which left the card looking unfinished and
+                    the page with three separate things to look at instead of
+                    one. Same 44px targets as the shell behind this page.
+                -->
+                <div class="mt-7 flex items-center justify-between border-t border-edge pt-4">
                 <div class="flex gap-1.5">
                     <?php foreach (AM2_LOCALES as $loc): $on = am2_locale() === $loc; ?>
                         <!-- important suffix: am2-ui.css styles bare anchors with
@@ -306,6 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </svg>
                     </span>
                 </button>
+                </div>
             </div>
         </div>
     </main>
