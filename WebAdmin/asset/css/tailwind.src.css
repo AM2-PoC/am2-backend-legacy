@@ -367,3 +367,76 @@ tr[data-row-id]:focus-visible {
 }
 .am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
 .am2-chip:enabled:hover { border-color: var(--color-primary); }
+
+/*
+ * The roster on a narrow screen.
+ *
+ * The generic card mode prints every column's name beside its value, which for
+ * a unit produced a six-line form -- "PILIH", a checkbox, "UNIT", a call sign,
+ * and so on. A roster is scanned, not filled in. So this table opts out of the
+ * labels and lays a row out the way it would be read: who, then where, then
+ * what they are allowed to do, then the verbs.
+ */
+@media (max-width: 1023px) {
+    /* Stop being a table. tbody was laid out as a flex column while the
+       table element still used the table width algorithm, so every card was
+       sized to its content and the call sign wrapped three times inside a
+       card with room to spare. */
+    .am2-roster { display: block; width: 100%; }
+    .am2-roster thead { display: none; }
+
+    .am2-roster tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        padding: 0.75rem;
+    }
+
+    /* Three columns and four rows, said explicitly. Left to `auto` the first
+       column took its width from whatever the browser felt like, and the call
+       sign ended up a third of the way across the card. */
+    .am2-roster tr {
+        display: grid;
+        grid-template-columns: 1.5rem minmax(0, 1fr);
+        align-items: start;
+        gap: 0.5rem 0.75rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--am2-radius);
+        padding: 0.75rem;
+        background: var(--color-surface);
+    }
+
+    /* The column names belong to the head, which is not on screen here. */
+    .am2-roster td { display: block; padding: 0 !important; border: 0 !important; }
+    .am2-roster td::before { content: none !important; }
+
+    .am2-roster td[data-cell="select"]   { grid-column: 1; grid-row: 1 / span 4; width: auto; }
+    .am2-roster td[data-cell="unit"]     { grid-column: 2; grid-row: 1; }
+
+    /* Two columns, not three. A third column sized to the duplex chip was
+       taking width from the one that holds the call sign, and the name wrapped
+       three times inside a card that had room to spare. */
+    .am2-roster td[data-cell="channel"]  { grid-column: 2; grid-row: 2; }
+    .am2-roster td[data-cell="duplex"]   { grid-column: 2; grid-row: 3; }
+    .am2-roster td[data-cell="features"] { grid-column: 2; grid-row: 4; }
+
+    /* A call sign is the one thing on this card that must never be cut. The
+       truncation is right in a table column and wrong in a card, where the
+       line can simply wrap. */
+    .am2-roster td[data-cell="unit"] * {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .am2-roster td[data-cell="actions"] {
+        grid-column: 1 / -1;
+        margin-top: 0.25rem;
+        border-top: 1px solid var(--color-border) !important;
+        padding-top: 0.625rem !important;
+        text-align: end;
+    }
+
+    /* An empty state is one message, not a card with a checkbox. */
+    .am2-roster tr:has(td[colspan]) { display: block; border: 0; padding: 0; background: none; }
+}
