@@ -473,13 +473,25 @@ describe('probes may only name fixtures', () => {
     // a build where the guard it was testing for did not exist yet. The
     // assertion ran afterwards and could not undo it.
     const TESTS = '/home/am2deploy/am2-main/tests/contract';
-    const MUTATING = /new_password|action:\s*'(save|delete|update_password|update_feature|force_logout)'/;
+    // Panel pages dispatch on the presence of a field name, not an `action`
+    // value, so the gate has to know both shapes -- it skipped the file that
+    // actually caused a cross-file collision.
+    const MUTATING = new RegExp([
+        'new_password',
+        "action:\\s*'(save|delete|update_password|update_feature|force_logout)'",
+        '(save_user_channels|update_multi_access|save_channel_access|update_feature):',
+    ].join('|'));
 
     test('no mutating probe hardcodes a database id', () => {
         for (const f of fs.readdirSync(TESTS).filter((n) => n.endsWith('.test.mjs'))) {
             const src = fs.readFileSync(`${TESTS}/${f}`, 'utf8');
             if (!MUTATING.test(src)) continue;
-            const literals = [...src.matchAll(/admin_id:\s*['"`](\d+)['"`]/g)];
+            const literals = [
+                ...src.matchAll(/admin_id:\s*['"`](\d+)['"`]/g),
+                // A literal channel id names whatever real channel holds
+                // that sequence value on the production copy.
+                ...src.matchAll(/channels:\s*JSON\.stringify\(\[\s*\d/g),
+            ];
             assert.deepEqual(literals.map((m) => m[0]), [],
                 `${f}: resolve the target with ctAdminId('ct_...') instead of a literal id`);
         }

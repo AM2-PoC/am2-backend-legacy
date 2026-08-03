@@ -181,6 +181,18 @@ export function ctAdminId(username) {
     return row[0];
 }
 
+/**
+ * A fixture channel, by name. Channel ids are sequence values on a copy of
+ * production, so a literal id in a probe names whatever real channel happens
+ * to hold that number -- `1` is a live channel with real members on it.
+ */
+export function ctChannelId(name) {
+    guardCtTarget(name);
+    const row = sqlOne(`SELECT id FROM public.channels WHERE name = '${name}'`);
+    if (!row) throw new Error(`fixture channel ${name} is missing; run contract-test-fixtures.sh`);
+    return row[0];
+}
+
 /** Throw unless this names a fixture. Call it before mutating, not after. */
 export function guardCtTarget(value) {
     const v = String(value ?? '');
