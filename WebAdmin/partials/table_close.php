@@ -88,12 +88,12 @@ for ($i = 1; $i <= $pages; $i++) {
     -->
     <div data-bulk-bar hidden
          class="fixed inset-x-2 bottom-2 z-40 mx-auto flex w-auto max-w-[44rem] flex-col gap-1.5
-                rounded-card border border-edge bg-card p-1.5 shadow-panel
-                sm:inset-x-4 sm:bottom-4 sm:p-2">
+                rounded-card border border-edge bg-card p-1 shadow-panel
+                sm:inset-x-4 sm:bottom-4 sm:p-1.5">
 
         <p data-select-all-matching hidden
-           class="flex flex-wrap items-center justify-center gap-2 rounded-control bg-card-muted
-                  px-3 py-2 text-xs text-ink-muted">
+           class="flex flex-wrap items-center justify-center gap-1.5 rounded-control
+                  bg-card-muted px-2.5 py-1.5 text-[11px] text-ink-muted">
             <?= e('tbl.page_selected') ?>
             <button type="button"
                     class="font-mono text-[10px] uppercase tracking-[0.15em] text-brand underline
@@ -110,8 +110,8 @@ for ($i = 1; $i <= $pages; $i++) {
                  of forty pixels. The count sits with the control that clears
                  it, because they are the same thought. -->
             <div class="flex shrink-0 items-center gap-1.5">
-                <span class="whitespace-nowrap font-mono text-[10px] uppercase
-                             tracking-[0.15em] text-ink">
+                <span class="whitespace-nowrap ps-1.5 font-mono text-[9px] uppercase
+                             tracking-[0.12em] text-ink">
                     <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
                 </span>
 
@@ -129,11 +129,11 @@ for ($i = 1; $i <= $pages; $i++) {
                                 data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
                             <?php endforeach; ?>
                             aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
-                            class="grid h-10 w-10 shrink-0 place-items-center rounded-control border
-                                   font-mono text-[10px] font-semibold uppercase tracking-[0.15em]
+                            class="grid h-9 w-9 shrink-0 place-items-center rounded-control border
+                                   font-mono text-[9px] font-semibold uppercase tracking-[0.12em]
                                    transition-colors duration-[var(--duration-micro)]
                                    focus:outline-none focus-visible:ring-2
-                                   sm:flex sm:h-8 sm:w-auto sm:gap-2 sm:px-3
+                                   sm:flex sm:h-8 sm:w-auto sm:gap-1.5 sm:px-2.5
                                    <?= !empty($act['danger'])
                                        ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
                                        : 'border-edge text-ink hover:border-brand hover:text-brand focus-visible:ring-brand/60' ?>">
@@ -145,7 +145,7 @@ for ($i = 1; $i <= $pages; $i++) {
 
                 <button type="button" data-clear-selection
                         aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
-                        class="grid h-8 w-8 shrink-0 place-items-center rounded-control text-ink-subtle
+                        class="grid h-9 w-9 shrink-0 place-items-center rounded-control text-ink-subtle sm:h-8 sm:w-8
                                transition-colors duration-[var(--duration-micro)] hover:text-ink
                                focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
                     <?= am2_icon('close', 'h-4 w-4') ?>

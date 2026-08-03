@@ -390,10 +390,17 @@ tr[data-row-id]:focus-visible {
         padding: 0.75rem;
     }
 
+    /*
+     * Three columns: the checkbox, then two equal ones. Channel and duplex are
+     * both a word long and had a ruled row each, which spent a hundred and
+     * twenty pixels on three short values. Paired, they cost one row.
+     */
     .am2-roster tr {
         display: grid;
-        grid-template-columns: 1.25rem minmax(0, 1fr);
-        gap: 0 0.625rem;
+        grid-template-columns: 1.25rem 1fr 1fr;
+        /* No column gap: the rule above the paired cells has to read as one
+           line, and a gap cut a notch in it. Padding does the spacing. */
+        gap: 0;
         border: 1px solid var(--color-border);
         border-radius: var(--am2-radius);
         background: var(--color-surface);
@@ -405,39 +412,48 @@ tr[data-row-id]:focus-visible {
        label, and 167px of the 266px available for everything else. */
     .am2-roster td { display: block !important; border: 0 !important; }
 
-    /* Who. The headline of the card, so it carries no label -- a name does not
+    /* Who. The headline of the card, so it carries no label: a name does not
        need to be told it is a name. */
-    .am2-roster td[data-cell="select"] { grid-column: 1; grid-row: 1; padding: 0.75rem 0 0 0.75rem !important; }
-    .am2-roster td[data-cell="unit"]   { grid-column: 2; grid-row: 1; padding: 0.75rem 0.75rem 0.625rem 0 !important; }
+    .am2-roster td[data-cell="select"] {
+        grid-column: 1; grid-row: 1;
+        padding: 0.75rem 0 0 0.75rem !important;
+    }
+    .am2-roster td[data-cell="unit"] {
+        grid-column: 2 / span 2; grid-row: 1;
+        padding: 0.75rem 0.75rem 0.625rem 0 !important;
+    }
     .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
 
-    /*
-     * What. Three attributes, each named and each on its own line with a rule
-     * above it. Stripping the names left a card of loose chips -- HALF beside
-     * a warning beside three more chips, and nothing saying which was which.
-     */
+    /* What. The label sits above its value rather than beside it: a 4.5rem
+       gutter on a 390px screen is a sixth of the card spent on a word that
+       repeats on every row. */
+    .am2-roster td[data-cell="channel"] { grid-column: 2; grid-row: 2; }
+    .am2-roster td[data-cell="duplex"]  { grid-column: 3; grid-row: 2; }
+    .am2-roster td[data-cell="features"] {
+        grid-column: 2 / span 2; grid-row: 3;
+        padding-inline: 0 0.75rem !important;
+    }
+
     .am2-roster td[data-cell="channel"],
     .am2-roster td[data-cell="duplex"],
     .am2-roster td[data-cell="features"] {
-        grid-column: 1 / -1;
-        display: flex !important;
-        align-items: baseline;
-        gap: 0.75rem;
         border-top: 1px solid var(--color-border) !important;
-        padding: 0.5rem 0.75rem !important;
+        padding-block: 0.5rem 0.625rem !important;
     }
+    .am2-roster td[data-cell="channel"] { padding-inline: 0.75rem 0.625rem !important; }
+    .am2-roster td[data-cell="duplex"]  { padding-inline: 0 0.75rem !important; }
 
     .am2-roster td[data-cell="channel"]::before,
     .am2-roster td[data-cell="duplex"]::before,
     .am2-roster td[data-cell="features"]::before {
         content: attr(data-label) !important;
-        flex: 0 0 4.5rem;
+        display: block;
+        margin-bottom: 0.3125rem;
         font-family: var(--font-mono);
         font-size: 9px;
         text-transform: uppercase;
         letter-spacing: 0.15em;
         color: var(--color-text-subtle);
-        line-height: 1.6;
     }
 
     /* The verbs, on their own band at the foot of the card. */
@@ -445,7 +461,7 @@ tr[data-row-id]:focus-visible {
         grid-column: 1 / -1;
         border-top: 1px solid var(--color-border) !important;
         background: var(--color-surface-muted);
-        padding: 0.625rem 0.75rem !important;
+        padding: 0.5rem 0.625rem !important;
         text-align: end;
     }
 

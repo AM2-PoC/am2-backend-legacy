@@ -347,7 +347,7 @@ return [
     'usr.online_now'             => 'online now',
     'usr.last_seen'              => 'last seen :when',
     'usr.more_channels'          => '+:n more',
-    'usr.no_channel'             => 'no channel',
+    'usr.no_channel'             => 'None',
     'usr.on'                     => 'Turn on',
     'usr.off'                    => 'Turn off',
     'usr.empty_filtered'         => 'No units match this search.',
