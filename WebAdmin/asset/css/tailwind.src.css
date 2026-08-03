@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 /*
+ * Preline. The @source makes Tailwind scan Preline's own JS for the class
+ * names it applies at runtime -- without it, every class Preline adds on open
+ * is absent from the build and the component opens invisible. variants.css
+ * supplies the hs-* custom variants the markup keys off.
+ * Paths are relative to this file, which sits two levels under WebAdmin.
+ */
+@source "../../node_modules/preline/dist/*.js";
+@import "../../node_modules/preline/variants.css";
+
+/*
  * Self-hosted, so the panel does not reach a third party to render itself.
  * Variable weights: one file each instead of six.
  */

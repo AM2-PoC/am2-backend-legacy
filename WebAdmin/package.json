@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build:css": "tailwindcss -i asset/css/tailwind.src.css -o asset/css/am2-tailwind.css --minify",
+    "build:js": "esbuild asset/js/src/am2-ui.js --bundle --minify --format=iife --target=es2020 --ignore-annotations --outfile=asset/js/am2-ui.min.js",
+    "build": "npm run build:css && npm run build:js",
     "watch:css": "tailwindcss -i asset/css/tailwind.src.css -o asset/css/am2-tailwind.css --watch"
   },
   "keywords": [],
@@ -13,6 +15,11 @@
   "type": "commonjs",
   "dependencies": {
     "@tailwindcss/cli": "^4.2.4",
+    "motion": "^12.43.0",
+    "preline": "^4.2.0",
     "tailwindcss": "^4.2.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }
