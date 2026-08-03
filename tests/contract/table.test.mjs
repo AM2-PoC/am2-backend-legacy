@@ -93,3 +93,17 @@ describe('the roster renders a page, not the whole fleet', () => {
             `${elements} elements for one page of twenty rows plus the shell`);
     });
 });
+
+describe('a placeholder is not eaten by a shorter one', () => {
+    test('the roster footer says "dari 218", not "dari 20tal"', async () => {
+        // :to is a prefix of :total. Replacing in the caller's order
+        // substituted the shorter name first and left the tail of the longer
+        // one behind, on screen, in production.
+        const html = await (await get('/users.php', sup)).text();
+        assert.ok(!/tal\b/.test(html.replace(/[a-z-]*tal[a-z-]*/gi, (m) =>
+            (m.toLowerCase() === 'tal' ? m : ''))),
+            'a truncated placeholder reached the page');
+        assert.match(html, /Menampilkan 1–20 dari \d+/,
+            'the footer no longer reads as a sentence');
+    });
+});

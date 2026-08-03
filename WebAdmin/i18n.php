@@ -78,8 +78,14 @@ function t(string $key, array $replace = []): string
 {
     $catalogue = am2_catalogue();
     $text = $catalogue[$key] ?? $key;
-    foreach ($replace as $k => $v) {
-        $text = str_replace(':' . $k, (string) $v, $text);
+
+    // Longest name first. ':to' is a prefix of ':total', so replacing in the
+    // caller's order turned "dari :total" into "dari 20tal" on the roster
+    // footer -- a bug that only appears when one placeholder starts another.
+    $names = array_keys($replace);
+    usort($names, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
+    foreach ($names as $k) {
+        $text = str_replace(':' . $k, (string) $replace[$k], $text);
     }
     return $text;
 }
