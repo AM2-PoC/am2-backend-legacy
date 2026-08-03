@@ -69,16 +69,27 @@ describe('a toggle cannot leave the row lying', () => {
 describe('the roster renders a page, not the whole fleet', () => {
     test('one page of rows, not two hundred', async () => {
         const html = await (await get('/users.php', sup)).text();
-        const rows = (html.match(/data-row-id=/g) ?? []).length;
+        // Only the rows: every toggle inside a row carries data-row-id too,
+        // so counting the bare attribute counts five per row.
+        const rows = (html.match(/<tr[^>]*data-row-id=/g) ?? []).length;
         assert.ok(rows > 0, 'no rows carry data-row-id; the table runtime has nothing to select');
         assert.ok(rows <= 20, `${rows} rows in one response; the page size is 20`);
     });
 
-    test('the response stays under a third of a megabyte', async () => {
-        // It was 1,475kB, which is what made this the slowest page in the
-        // panel: 4,508 DOM nodes and 1.5s to DOMContentLoaded on a slow CPU.
+    test('the browser is handed a few hundred elements, not a few thousand', async () => {
+        // It was 4,508 DOM nodes and 1,475kB, which is what made this the
+        // slowest page in the panel: 1.5s to DOMContentLoaded on a slow CPU.
+        //
+        // Elements, not bytes: most of the bytes are the indentation of the
+        // markup, which gzip removes on the wire and which costs the browser
+        // nothing. What the browser pays for is nodes.
         const html = await (await get('/users.php', sup)).text();
-        assert.ok(html.length < 300_000,
-            `${Math.round(html.length / 1024)}kB of markup for one page of twenty`);
+        // 1,058 measured: the shell is about 450 of them and twenty rows with
+        // four toggles apiece are the rest. The ceiling is set from that with
+        // room to breathe -- it is here to catch a return to rendering the
+        // whole fleet, which was four and a half thousand.
+        const elements = (html.match(/<[a-zA-Z][^>]*>/g) ?? []).length;
+        assert.ok(elements < 1200,
+            `${elements} elements for one page of twenty rows plus the shell`);
     });
 });
