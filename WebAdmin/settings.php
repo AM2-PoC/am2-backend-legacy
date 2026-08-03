@@ -72,6 +72,39 @@ if (isset($_POST['upload_apk']) && isset($_FILES['apk_file'])) {
     }
 }
 
+/**
+ * A branch admin's own rows, as INSERT statements.
+ *
+ * pg_dump has no WHERE, so `-t public.users -t public.channels` handed a branch
+ * admin every branch's rows -- the whole table, under a filename that said it
+ * was theirs. Two tables bounded by the account's quota are small enough to
+ * build here, which also takes a shell call and a PGPASSWORD out of this page.
+ *
+ * $table and $where are literals from the two call sites below; only the
+ * parameters come from the request, and the values are quoted by PDO.
+ */
+function am2_export_rows(PDO $pdo, string $table, string $where, array $args): string
+{
+    $stmt = $pdo->prepare("SELECT * FROM {$table} WHERE {$where} ORDER BY 1");
+    $stmt->execute($args);
+
+    $sql = '';
+    foreach ($stmt as $row) {
+        $cols = implode(', ', array_map(fn ($c) => '"' . $c . '"', array_keys($row)));
+        $vals = implode(', ', array_map(function ($v) use ($pdo) {
+            if ($v === null) {
+                return 'NULL';
+            }
+            if (is_bool($v)) {
+                return $v ? 'TRUE' : 'FALSE';
+            }
+            return $pdo->quote((string) $v);
+        }, $row));
+        $sql .= "INSERT INTO {$table} ({$cols}) VALUES ({$vals});\n";
+    }
+    return $sql;
+}
+
 if (isset($_POST['export_db'])) {
     $timestamp = date('Ymd_His');
     $filename  = ($is_super ? 'FULL_BACKUP_' : 'BACKUP_' . strtoupper($admin_user) . '_')
@@ -80,16 +113,20 @@ if (isset($_POST['export_db'])) {
     header('Content-Type: application/octet-stream');
     header('Content-disposition: attachment; filename="' . $filename . '"');
 
-    putenv('PGPASSWORD=' . $password);
+    if ($is_super) {
+        putenv('PGPASSWORD=' . $password);
+        // -p was missing here and present in api_settings.php, so this dumped
+        // whatever cluster happened to answer on the default port.
+        passthru('pg_dump -h ' . $host . ' -p ' . $port . ' -U ' . $user
+               . ' -d ' . $dbname . ' -n public');
+        exit;
+    }
 
-    // -p was missing here and present in api_settings.php, so this dumped
-    // whatever cluster happened to answer on the default port.
-    $base = 'pg_dump -h ' . $host . ' -p ' . $port . ' -U ' . $user . ' -d ' . $dbname;
-    $command = $is_super
-        ? $base . ' -n public'
-        : $base . ' -t public.users -t public.channels --column-inserts';
-
-    passthru($command);
+    echo "-- AM2 backup\n";
+    echo '-- ' . $admin_user . ' · ' . date('Y-m-d H:i:s') . "\n";
+    echo "-- The rows belonging to this account, and no others.\n\n";
+    echo am2_export_rows($pdo, 'public.channels', 'created_by = ?', [$admin_id]);
+    echo am2_export_rows($pdo, 'public.users', 'admin_id = ?', [$admin_id]);
     exit;
 }
 
