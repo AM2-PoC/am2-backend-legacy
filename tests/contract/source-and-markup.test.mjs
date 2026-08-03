@@ -459,3 +459,31 @@ describe('motion rules that decay quietly', () => {
             'the looping animations must be switched off under reduced motion');
     });
 });
+
+describe('probes may only name fixtures', () => {
+    // Staging holds a copy of production. A probe that hardcoded admin_id=1
+    // overwrote the real superadmin's password hash, because it was run against
+    // a build where the guard it was testing for did not exist yet. The
+    // assertion ran afterwards and could not undo it.
+    const TESTS = '/home/am2deploy/am2-main/tests/contract';
+    const MUTATING = /new_password|action:\s*'(save|delete|update_password|update_feature|force_logout)'/;
+
+    test('no mutating probe hardcodes a database id', () => {
+        for (const f of fs.readdirSync(TESTS).filter((n) => n.endsWith('.test.mjs'))) {
+            const src = fs.readFileSync(`${TESTS}/${f}`, 'utf8');
+            if (!MUTATING.test(src)) continue;
+            const literals = [...src.matchAll(/admin_id:\s*['"`](\d+)['"`]/g)];
+            assert.deepEqual(literals.map((m) => m[0]), [],
+                `${f}: resolve the target with ctAdminId('ct_...') instead of a literal id`);
+        }
+    });
+
+    test('the fixture guard refuses a real account', async () => {
+        const { guardCtTarget } = await import('./helpers.mjs');
+        for (const real of ['superadmin', 'am²', '1', '']) {
+            assert.throws(() => guardCtTarget(real), /only ct_\* rows may be mutated/,
+                `guardCtTarget let "${real}" through`);
+        }
+        assert.equal(guardCtTarget('ct_super'), 'ct_super');
+    });
+});
