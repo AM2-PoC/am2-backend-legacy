@@ -29,7 +29,8 @@ for ($i = 1; $i <= $pages; $i++) {
 
     <footer class="flex flex-col gap-3 border-t border-edge px-4 py-3 sm:flex-row
                    sm:items-center sm:justify-between lg:px-5">
-        <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+        <p class="text-center font-mono text-[10px] uppercase tracking-[0.15em]
+                  text-ink-subtle sm:text-start">
             <?= e('tbl.showing', [
                 'from'  => number_format($from),
                 'to'    => number_format($to),
@@ -38,7 +39,8 @@ for ($i = 1; $i <= $pages; $i++) {
         </p>
 
         <?php if ($pages > 1): ?>
-            <nav class="flex items-center gap-1" aria-label="<?= e('tbl.pagination') ?>">
+            <nav class="flex flex-wrap items-center justify-center gap-1 sm:justify-end"
+                 aria-label="<?= e('tbl.pagination') ?>">
                 <a href="<?= htmlspecialchars(am2_table_qs(['p' => max(1, $page - 1)])) ?>"
                    <?= $page === 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>
                    class="grid h-9 w-9 place-items-center rounded-control border border-edge
@@ -85,9 +87,8 @@ for ($i = 1; $i <= $pages; $i++) {
         decides whether the next click is routine or irreversible.
     -->
     <div data-bulk-bar hidden
-         class="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-[min(92%,44rem)] flex-col gap-2
-                rounded-card border border-edge bg-card p-3 shadow-panel
-                lg:start-[calc(var(--am2-nav-w,17rem)/2)]">
+         class="fixed inset-x-3 bottom-3 z-40 mx-auto flex w-auto max-w-[46rem] flex-col gap-1.5
+                rounded-card border border-edge bg-card p-2 shadow-panel sm:inset-x-4">
 
         <p data-select-all-matching hidden
            class="flex flex-wrap items-center justify-center gap-2 rounded-control bg-card-muted
@@ -100,19 +101,23 @@ for ($i = 1; $i <= $pages; $i++) {
             </button>
         </p>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <span class="ms-1 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em] text-ink">
+        <div class="flex items-center gap-2">
+            <span class="ms-1 shrink-0 whitespace-nowrap font-mono text-[10px] uppercase
+                         tracking-[0.15em] text-ink">
                 <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
             </span>
 
-            <span class="flex flex-1 flex-wrap items-center justify-end gap-1.5">
+            <!-- One line. On a phone the verbs scroll sideways rather than
+                 stacking the bar into a third of the screen. -->
+            <span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto
+                         [scrollbar-width:none] sm:justify-end sm:overflow-visible">
                 <?php foreach ($bulkActions as $act): ?>
                     <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
                             <?php foreach (($act['data'] ?? []) as $k => $v): ?>
                                 data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
                             <?php endforeach; ?>
-                            class="h-10 rounded-control border px-3.5 font-mono text-[10px] font-semibold
-                                   uppercase tracking-[0.15em] transition-colors
+                            class="h-9 shrink-0 rounded-control border px-3 font-mono text-[10px]
+                                   font-semibold uppercase tracking-[0.15em] transition-colors
                                    duration-[var(--duration-micro)] focus:outline-none
                                    focus-visible:ring-2
                                    <?= !empty($act['danger'])
@@ -124,7 +129,7 @@ for ($i = 1; $i <= $pages; $i++) {
 
                 <button type="button" data-clear-selection
                         aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
-                        class="grid h-10 w-10 place-items-center rounded-control text-ink-subtle
+                        class="grid h-9 w-9 shrink-0 place-items-center rounded-control text-ink-subtle
                                transition-colors duration-[var(--duration-micro)] hover:text-ink
                                focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
                     <?= am2_icon('close', 'h-4 w-4') ?>
