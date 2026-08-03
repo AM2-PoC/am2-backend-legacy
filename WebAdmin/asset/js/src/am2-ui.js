@@ -18,7 +18,8 @@
  * behaviour for a console that has none of those. */
 import 'preline/plugins/overlay';    /* modal, and the mobile drawer */
 import 'preline/plugins/dropdown';   /* header menus, row actions      */
-import 'preline/plugins/collapse';   /* foldable navigation groups     */
+import 'preline/plugins/collapse';
+import 'preline/plugins/accordion';  /* foldable navigation groups     */
 import 'preline/plugins/tabs';
 import 'preline/plugins/tooltip';    /* also backs the popovers        */
 import 'preline/plugins/combobox';   /* search over units and channels */

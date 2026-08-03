@@ -7,6 +7,12 @@
  *
  */
 return [
+    'nav.menu' => 'Navigation menu',
+    'nav.account' => 'Account',
+    'brand.tagline' => 'Radio Control Centre',
+    'status.checking' => 'Checking relay',
+    'status.relay_up' => 'Relay up',
+    'status.transmitting' => 'transmitting',
     'common.retry' => 'Try again',
     'state.error_title' => 'Could not load this',
     'state.error_body' => 'The connection to the server dropped. What is on screen may no longer be true.',

@@ -247,3 +247,22 @@
         animation: none;
     }
 }
+
+/*
+ * The rail. Labels are hidden by a root class rather than by each element
+ * asking the sidebar how wide it is, so PHP can render the collapsed state on
+ * the first paint and the toggle is a single class flip afterwards.
+ */
+@media (min-width: 1024px) {
+    .am2-rail .am2-rail-hide { display: none; }
+    .am2-rail .am2-nav-item  { justify-content: center; padding-inline: 0; }
+    .am2-rail .am2-nav-child { padding-inline-start: 0; }
+}
+
+/* A child item is indented, which is the whole signal that it belongs to the
+ * one above it. */
+.am2-nav-child { padding-inline-start: 1.25rem; }
+
+/* Preline ships its sidebar with `transition-all`; these are the properties
+ * that actually change, so nothing else is dragged into the transition. */
+#am2-sidebar { transition-property: transform, width; }
