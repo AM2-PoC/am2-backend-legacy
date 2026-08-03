@@ -127,3 +127,51 @@ password → text → password; field names render as `["username","password"]`;
 dashboard; the error alert renders on a bad password; three rings animate
 normally and **zero** render under `prefers-reduced-motion: reduce`, with the
 form fields still at opacity 1. No console errors in either mode.
+
+## settings.php
+
+| Component | Tier | Preline doc | Used as | Note |
+|---|---|---|---|---|
+| Toggle Password | core | [toggle-password](https://preline.co/docs/toggle-password.html) | `data-hs-toggle-password='{"target": "#new_password"}'` on both fields | replaced a hand-written Font Awesome eye that swapped two icon classes and announced no pressed state |
+| Modal | core | [modal](https://preline.co/docs/modal.html) | `#am2-restore`, opened by `data-hs-overlay`, holding the whole restore form | no transition on the container: Preline re-adds `hidden` only after one ends, and a transition on a property that never changes never ends |
+| Card | core | [card](https://preline.co/docs/card.html) | every section, plus the three stat cards as links | the stat cards carry the same arrow affordance as the dashboard's, because they link the same way |
+| Alert | core | [alerts](https://preline.co/docs/alerts.html) | the POST result, `role="alert"` on failure and `role="status"` on success | a left border so the meaning does not rest on colour |
+| Progress | core | [progress](https://preline.co/docs/progress.html) | quota meters, `role="progressbar"` with aria-valuenow | only rendered where a ceiling exists; a superadmin has none, and the old card printed "100" beside "sisa UNLIMITED" |
+
+Contract kept exactly: `name="update_password"` with `new_password` and
+`confirm_password`, `name="export_db"`, `name="import_db"` with `sql_file`,
+`name="upload_apk"` with `apk_file`, `am2_csrf_field()` in all four POST forms,
+and `require_once 'auth.php'` ahead of `config.php`. Export stays a native form
+submit on purpose: the response to that POST is the dump itself, streamed by
+`passthru()`, so a `fetch()` would read it into memory and never hand it over.
+
+Motion here: `enterOnce()` staggers the stat cards and the alert, `countTo()`
+runs the three counts up once, `revealOnScroll()` brings in the two lower
+sections. Nothing loops, and nothing animates on the destructive controls --
+a red button that moves reads as an invitation.
+
+Behaviour changed on purpose, beyond the reskin:
+- `import_db` gained the superadmin guard that `api_settings.php` already had.
+  The page ran the same `psql` pipe with no role check, so a branch admin could
+  overwrite every branch's data.
+- Both `pg_dump` and `psql` now pass `-p $port`, which only the API did.
+- The restore no longer writes an audit row into `ptt_logs`. That table's
+  `user_id` is a foreign key to `users(id)` and its `channel_id` to
+  `channels(id)`; an admin username and channel `0` satisfy neither, so the
+  INSERT threw every time, was caught, and reported a restore that had already
+  overwritten the database as a failure. It goes to the server log instead,
+  beside the authorization refusals.
+
+Verified: `HSTogglePassword` flips `type` password → text; the restore dialog
+opens, keeps its submit disabled until the operator writes the confirmation
+word, closes on Escape with no backdrop left behind and the page still
+clickable, and clears the word when reopened; the title survives 390 and 768;
+no tap target under 40px; no horizontal overflow at 390; `:focus-visible`
+matches on the destructive button and paints a ring; every entrance element
+sits at opacity 1 under `prefers-reduced-motion: reduce`; ID and EN both
+render, and the confirmation word follows the locale. No console errors.
+
+Open, and not fixed here -- see the release notes: the page discards
+`shell_exec()`'s result and reports the restore as done whether or not `psql`
+applied anything, and `export_db` for a branch admin dumps `public.users` and
+`public.channels` whole, which is every branch's rows and not only its own.
