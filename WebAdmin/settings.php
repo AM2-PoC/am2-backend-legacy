@@ -114,6 +114,57 @@ function am2_update_state(): array
     return $state;
 }
 
+/**
+ * The other update channel: the radio app the units carry.
+ *
+ * There are two, and the panel only ever showed one. Admin Native reads
+ * update/admin_version.json through api_settings.php?action=check_update; the
+ * field app reads the app_versions table through the relay's /api/check-update
+ * and downloads from server/update/. The two share nothing -- not the
+ * directory, not the metadata, not even the shape of it -- and the docs say
+ * plainly not to merge them. So this reads the second one and shows it beside
+ * the first, rather than leaving an operator to assume the panel covers both.
+ */
+function am2_field_channel(PDO $pdo): array
+{
+    $dir = dirname(__DIR__) . '/server/update';
+    $out = [
+        'version' => null, 'changelog' => '', 'url' => '',
+        'files' => [], 'readable' => is_dir($dir),
+    ];
+
+    foreach (glob($dir . '/*.apk') ?: [] as $f) {
+        $out['files'][] = [
+            'name' => basename($f),
+            'size' => (int) filesize($f),
+            'time' => (int) filemtime($f),
+        ];
+    }
+    usort($out['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
+
+    // The relay answers from the table, so the table is what the devices are
+    // actually told -- version.json beside the APK is only a deployment note.
+    try {
+        $row = $pdo->query("SELECT version_name, release_notes FROM public.app_versions
+                            ORDER BY version_code DESC LIMIT 1")->fetch();
+        if ($row) {
+            $out['version'] = (string) $row['version_name'];
+            $out['changelog'] = (string) ($row['release_notes'] ?? '');
+        }
+    } catch (PDOException $e) {
+        error_log('AM2 settings field-channel: ' . $e->getMessage());
+    }
+
+    $json = $dir . '/version.json';
+    if (is_file($json) && is_readable($json)) {
+        $parsed = json_decode((string) file_get_contents($json), true);
+        if (is_array($parsed)) {
+            $out['url'] = (string) ($parsed['download_url'] ?? '');
+        }
+    }
+    return $out;
+}
+
 $upload_limit = min(
     am2_ini_bytes((string) ini_get('upload_max_filesize')),
     am2_ini_bytes((string) ini_get('post_max_size'))
@@ -361,6 +412,47 @@ $shelf_present = true;
 if (!empty($shelf['version']['download_url'])) {
     $shelf_target = basename((string) parse_url($shelf['version']['download_url'], PHP_URL_PATH));
     $shelf_present = in_array($shelf_target, array_column($shelf['files'], 'name'), true);
+}
+
+/** The file a channel points at, and whether it is actually there. */
+function am2_channel_target(string $url, array $files): array
+{
+    if ($url === '') {
+        return ['', true];
+    }
+    $name = basename((string) parse_url($url, PHP_URL_PATH));
+    return [$name, in_array($name, array_column($files, 'name'), true)];
+}
+
+$channels = [];
+if ($is_super) {
+    $field = am2_field_channel($pdo);
+    [$field_target, $field_present] = am2_channel_target($field['url'], $field['files']);
+
+    $channels[] = [
+        'label'     => t('set.channel_admin'),
+        'note'      => t('set.channel_admin_note'),
+        'version'   => $shelf['version']['version_name'] ?? null,
+        'changelog' => (string) ($shelf['version']['changelog'] ?? ''),
+        'url'       => (string) ($shelf['version']['download_url'] ?? ''),
+        'files'     => $shelf['files'],
+        'target'    => $shelf_target,
+        'present'   => $shelf_present,
+        'empty'     => t('set.no_version'),
+        'managed'   => true,
+    ];
+    $channels[] = [
+        'label'     => t('set.channel_field'),
+        'note'      => t('set.channel_field_note'),
+        'version'   => $field['version'],
+        'changelog' => $field['changelog'],
+        'url'       => $field['url'],
+        'files'     => $field['files'],
+        'target'    => $field_target,
+        'present'   => $field_present,
+        'empty'     => t('set.no_version_field'),
+        'managed'   => false,
+    ];
 }
 
 $pageTitle = t('set.heading');
@@ -656,78 +748,121 @@ include 'partials/shell.php';
             </h2>
         </header>
 
-        <div id="am2-shelf-version" class="border-b border-edge p-5">
-            <?php if ($shelf['version']): ?>
-                <div class="flex flex-wrap items-start gap-5">
-                    <div class="min-w-0 flex-1">
-                        <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
-                            <?= e('set.current_version') ?>
-                        </p>
-                        <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
-                            <?= htmlspecialchars((string) ($shelf['version']['version_name'] ?? '—')) ?>
-                        </p>
-                        <p class="mt-2 text-xs text-ink-muted">
-                            <?= htmlspecialchars((string) ($shelf['version']['changelog'] ?? '')) ?>
-                        </p>
+        <!--
+            Both channels, side by side. Admin Native and the field app are
+            served from different directories with different metadata and are
+            told about by different endpoints; showing one and calling the card
+            "Distribusi aplikasi" implied the panel covered both.
+        -->
+        <div id="am2-shelf-version" class="grid gap-5 border-b border-edge p-5 lg:grid-cols-2">
+            <?php foreach ($channels as $ch): ?>
+                <section class="rounded-control border border-edge p-4">
+                    <header class="flex items-baseline justify-between gap-3">
+                        <h3 class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink">
+                            <?= htmlspecialchars($ch['label']) ?>
+                        </h3>
+                        <?php if (!$ch['managed']): ?>
+                            <span class="shrink-0 rounded-control border border-edge px-1.5 font-mono
+                                         text-[9px] uppercase tracking-[0.1em] text-ink-subtle">
+                                <?= e('set.channel_readonly') ?>
+                            </span>
+                        <?php endif; ?>
+                    </header>
+                    <p class="mt-1 text-xs text-ink-muted"><?= htmlspecialchars($ch['note']) ?></p>
 
-                        <div class="mt-3 flex items-center gap-2">
-                            <code id="am2-shelf-url"
-                                  class="min-w-0 flex-1 truncate rounded-control border border-edge
-                                         bg-card-muted px-2.5 py-2 font-mono text-[11px] text-ink-muted"
-                                  data-url="<?= htmlspecialchars((string) ($shelf['version']['download_url'] ?? '')) ?>">
-                                <?= htmlspecialchars((string) ($shelf['version']['download_url'] ?? '')) ?>
-                            </code>
-                            <button type="button" id="am2-copy-url"
-                                    class="grid h-11 w-11 shrink-0 place-items-center rounded-control
-                                           border border-edge text-ink-subtle transition-colors
-                                           duration-[var(--duration-micro)] hover:border-brand
-                                           hover:text-brand focus:outline-none focus-visible:ring-2
-                                           focus-visible:ring-brand/60"
-                                    aria-label="<?= e('set.copy_url') ?>" title="<?= e('set.copy_url') ?>">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                                     stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"
-                                     aria-hidden="true">
-                                    <rect x="9" y="9" width="12" height="12" rx="2"/>
-                                    <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
-                                </svg>
-                            </button>
+                    <?php if ($ch['version'] !== null && $ch['version'] !== ''): ?>
+                        <div class="mt-4 flex items-start gap-4">
+                            <div class="min-w-0 flex-1">
+                                <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                    <?= e('set.current_version') ?>
+                                </p>
+                                <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
+                                    <?= htmlspecialchars((string) $ch['version']) ?>
+                                </p>
+                                <?php if ($ch['changelog'] !== ''): ?>
+                                    <p class="mt-2 text-xs text-ink-muted">
+                                        <?= htmlspecialchars($ch['changelog']) ?>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+
+                            <?php if ($ch['url'] !== ''): ?>
+                                <!-- The code is drawn client-side, and clicking it
+                                     opens the same code large enough to scan from
+                                     across a room. -->
+                                <figure class="shrink-0 text-center">
+                                    <button type="button" data-hs-overlay="#am2-qr-zoom"
+                                            data-qr="<?= htmlspecialchars($ch['url']) ?>"
+                                            data-qr-label="<?= htmlspecialchars($ch['label']) ?>"
+                                            aria-haspopup="dialog"
+                                            aria-label="<?= e('set.zoom_qr') ?>" title="<?= e('set.zoom_qr') ?>"
+                                            class="grid h-[104px] w-[104px] place-items-center rounded-control
+                                                   border border-edge bg-white p-1.5 text-slate-950
+                                                   transition-colors duration-[var(--duration-micro)]
+                                                   hover:border-brand focus:outline-none
+                                                   focus-visible:ring-2 focus-visible:ring-brand/60"></button>
+                                    <figcaption class="mt-1.5 font-mono text-[9px] uppercase
+                                                       tracking-[0.15em] text-ink-subtle">
+                                        <?= e('set.scan_to_install') ?>
+                                    </figcaption>
+                                </figure>
+                            <?php endif; ?>
                         </div>
-                    </div>
 
-                    <!-- Drawn client-side from the URL above. -->
-                    <figure class="shrink-0 text-center">
-                        <div id="am2-shelf-qr"
-                             class="grid h-[132px] w-[132px] place-items-center rounded-control
-                                    border border-edge bg-white p-2 text-slate-950"></div>
-                        <figcaption class="mt-1.5 font-mono text-[9px] uppercase
-                                           tracking-[0.15em] text-ink-subtle">
-                            <?= e('set.scan_to_install') ?>
-                        </figcaption>
-                    </figure>
-                </div>
+                        <?php if ($ch['url'] !== ''): ?>
+                            <div class="mt-3 flex items-center gap-2">
+                                <code class="min-w-0 flex-1 truncate rounded-control border border-edge
+                                             bg-card-muted px-2.5 py-2 font-mono text-[11px] text-ink-muted"
+                                      data-url="<?= htmlspecialchars($ch['url']) ?>">
+                                    <?= htmlspecialchars($ch['url']) ?>
+                                </code>
+                                <button type="button" data-copy-url="<?= htmlspecialchars($ch['url']) ?>"
+                                        class="grid h-11 w-11 shrink-0 place-items-center rounded-control
+                                               border border-edge text-ink-subtle transition-colors
+                                               duration-[var(--duration-micro)] hover:border-brand
+                                               hover:text-brand focus:outline-none focus-visible:ring-2
+                                               focus-visible:ring-brand/60"
+                                        aria-label="<?= e('set.copy_url') ?>" title="<?= e('set.copy_url') ?>">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                                         stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"
+                                         aria-hidden="true">
+                                        <rect x="9" y="9" width="12" height="12" rx="2"/>
+                                        <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        <?php endif; ?>
 
-                <?php if ($shelf_target !== '' && !$shelf_present): ?>
-                    <p class="mt-4 flex items-start gap-2 rounded-control border border-warn/40
-                              bg-warn/5 px-3 py-2.5 text-xs text-warn">
-                        <?= am2_icon('alert', 'h-4 w-4') ?>
-                        <span><?= e('set.version_missing', ['file' => $shelf_target]) ?></span>
-                    </p>
-                <?php endif; ?>
-            <?php else: ?>
-                <p class="text-sm text-ink-muted"><?= e('set.no_version') ?></p>
-            <?php endif; ?>
+                        <?php if ($ch['target'] !== '' && !$ch['present']): ?>
+                            <p class="mt-3 flex items-start gap-2 rounded-control border border-warn/40
+                                      bg-warn/5 px-3 py-2.5 text-xs text-warn">
+                                <?= am2_icon('alert', 'h-4 w-4') ?>
+                                <span><?= e('set.version_missing', ['file' => $ch['target']]) ?></span>
+                            </p>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <p class="mt-4 flex items-start gap-2 rounded-control border border-warn/40
+                                  bg-warn/5 px-3 py-2.5 text-xs text-warn">
+                            <?= am2_icon('alert', 'h-4 w-4') ?>
+                            <span><?= htmlspecialchars($ch['empty']) ?></span>
+                        </p>
+                    <?php endif; ?>
 
-            <?php if (!$shelf['exists']): ?>
-                <p class="mt-4 flex items-start gap-2 rounded-control border border-bad/40
-                          bg-bad/5 px-3 py-2.5 text-xs text-bad">
+                    <?php if (!$ch['managed']): ?>
+                        <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                            <?= $ch['files']
+                                ? e('set.shelf_count', ['n' => count($ch['files'])])
+                                : e('set.shelf_empty') ?>
+                        </p>
+                    <?php endif; ?>
+                </section>
+            <?php endforeach; ?>
+
+            <?php if (!$shelf['exists'] || !$shelf['writable']): ?>
+                <p class="flex items-start gap-2 rounded-control border border-bad/40
+                          bg-bad/5 px-3 py-2.5 text-xs text-bad lg:col-span-2">
                     <?= am2_icon('alert', 'h-4 w-4') ?>
-                    <span><?= e('set.folder_missing') ?></span>
-                </p>
-            <?php elseif (!$shelf['writable']): ?>
-                <p class="mt-4 flex items-start gap-2 rounded-control border border-bad/40
-                          bg-bad/5 px-3 py-2.5 text-xs text-bad">
-                    <?= am2_icon('alert', 'h-4 w-4') ?>
-                    <span><?= e('set.folder_readonly') ?></span>
+                    <span><?= !$shelf['exists'] ? e('set.folder_missing') : e('set.folder_readonly') ?></span>
                 </p>
             <?php endif; ?>
         </div>
@@ -1049,6 +1184,36 @@ include 'partials/shell.php';
     </div>
 <?php endif; ?>
 
+<?php if ($is_super): ?>
+    <!--
+        The code, large. A 104px square is enough to prove it is there and not
+        enough to scan across a control room, which is exactly when it is used.
+    -->
+    <div id="am2-qr-zoom" role="dialog" tabindex="-1" aria-labelledby="am2-qr-zoom-label"
+         class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
+                bg-slate-950/60 backdrop-blur-sm">
+        <div data-am2-panel
+             class="am2-surface mx-auto mt-[8vh] w-[92%] max-w-sm overflow-hidden rounded-card p-6 text-center">
+            <h2 id="am2-qr-zoom-label" class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+                <?= e('set.scan_to_install') ?>
+            </h2>
+            <p data-qr-zoom-label class="mt-1 text-sm font-semibold text-ink"></p>
+            <div data-qr-zoom class="mx-auto mt-4 grid h-[288px] w-[288px] place-items-center
+                        rounded-control border border-edge bg-white p-3 text-slate-950"></div>
+            <code data-qr-zoom-url
+                  class="mt-4 block truncate rounded-control border border-edge bg-card-muted
+                         px-2.5 py-2 font-mono text-[11px] text-ink-muted"></code>
+            <button type="button" data-hs-overlay="#am2-qr-zoom"
+                    class="mt-4 h-11 w-full rounded-control border border-edge font-mono text-[10px]
+                           font-semibold uppercase tracking-[0.15em] text-ink-muted transition-colors
+                           duration-[var(--duration-micro)] hover:text-ink focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-brand/60">
+                <?= e('set.close') ?>
+            </button>
+        </div>
+    </div>
+<?php endif; ?>
+
 <?php include 'partials/shell_end.php'; ?>
 
 <script>
@@ -1089,9 +1254,10 @@ include 'partials/shell.php';
         window.AM2.enterOnce('[data-kpi]');
         window.AM2.revealOnScroll('[data-reveal]');
 
-        const box = $('am2-shelf-qr');
-        const link = $('am2-shelf-url');
-        if (box && link?.dataset.url) box.appendChild(window.AM2.qr(link.dataset.url, 116));
+        // One per channel, and each one opens itself larger on click.
+        document.querySelectorAll('[data-qr]').forEach((btn) => {
+            btn.appendChild(window.AM2.qr(btn.dataset.qr, 92));
+        });
     });
 
     /* ---- Drop zones ---------------------------------------------------
@@ -1132,21 +1298,36 @@ include 'partials/shell.php';
     }
 
     /* ---- Release shelf ------------------------------------------------ */
-    const url = $('am2-shelf-url');
+    document.querySelectorAll('[data-copy-url]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(btn.dataset.copyUrl);
+                window.AM2?.toast(T.copied);
+            } catch {
+                // Clipboard needs a secure context and permission; selecting
+                // the text is the fallback that always works.
+                const code = btn.previousElementSibling;
+                if (!code) return;
+                const r = document.createRange();
+                r.selectNodeContents(code);
+                const sel = getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r);
+            }
+        });
+    });
 
-    $('am2-copy-url')?.addEventListener('click', async (e) => {
-        try {
-            await navigator.clipboard.writeText(url.dataset.url);
-            window.AM2?.toast(T.copied);
-        } catch {
-            // Clipboard needs a secure context and permission; selecting the
-            // text is the fallback that always works.
-            const r = document.createRange();
-            r.selectNodeContents(url);
-            const sel = getSelection();
-            sel.removeAllRanges();
-            sel.addRange(r);
-        }
+    // The large code is drawn on open, not eight times on load.
+    const zoom = $('am2-qr-zoom');
+    document.querySelectorAll('[data-qr]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!zoom) return;
+            const box = zoom.querySelector('[data-qr-zoom]');
+            box.textContent = '';
+            box.appendChild(window.AM2.qr(btn.dataset.qr, 264));
+            zoom.querySelector('[data-qr-zoom-label]').textContent = btn.dataset.qrLabel;
+            zoom.querySelector('[data-qr-zoom-url]').textContent = btn.dataset.qr;
+        });
     });
 
     const apkDetail = $('am2-apk-detail');
