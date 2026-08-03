@@ -102,29 +102,46 @@ for ($i = 1; $i <= $pages; $i++) {
             </button>
         </p>
 
-        <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        <!-- One row at every width. Five glyphs and a count fit a 390px
+             phone with room to spare, so there is nothing to stack. -->
+        <div class="flex items-center gap-2">
 
             <!-- Always visible, and on a phone this is the whole bar: one row
                  of forty pixels. The count sits with the control that clears
                  it, because they are the same thought. -->
-            <div class="flex items-center gap-2 sm:shrink-0">
+            <div class="flex shrink-0 items-center gap-1.5">
                 <span class="whitespace-nowrap font-mono text-[10px] uppercase
                              tracking-[0.15em] text-ink">
                     <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
                 </span>
 
-                <!-- Sideways scrolling would hide half the verbs behind a
-                     gesture nothing announces. They stack above the bar
-                     instead, where a thumb can reach all of them. -->
-                <button type="button" data-bulk-more aria-expanded="false"
-                        class="h-8 rounded-control border border-edge px-2.5 font-mono text-[10px]
-                               font-semibold uppercase tracking-[0.15em] text-ink transition-colors
-                               duration-[var(--duration-micro)] hover:border-brand hover:text-brand
-                               sm:hidden">
-                    <?= e('tbl.actions') ?>
-                </button>
+            </div>
 
-                <span class="flex-1 sm:hidden"></span>
+            <!-- Icons on a phone, words from sm up. Five verbs fit a narrow
+                 row when each is a glyph, so nothing has to be folded away
+                 behind a control that says AKSI and nothing about what is
+                 inside it. -->
+            <span data-bulk-verbs
+                  class="flex flex-1 items-center justify-end gap-1 sm:gap-1.5">
+                <?php foreach ($bulkActions as $act): ?>
+                    <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
+                            <?php foreach (($act['data'] ?? []) as $k => $v): ?>
+                                data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
+                            <?php endforeach; ?>
+                            aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
+                            class="grid h-10 w-10 shrink-0 place-items-center rounded-control border
+                                   font-mono text-[10px] font-semibold uppercase tracking-[0.15em]
+                                   transition-colors duration-[var(--duration-micro)]
+                                   focus:outline-none focus-visible:ring-2
+                                   sm:flex sm:h-8 sm:w-auto sm:gap-2 sm:px-3
+                                   <?= !empty($act['danger'])
+                                       ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
+                                       : 'border-edge text-ink hover:border-brand hover:text-brand focus-visible:ring-brand/60' ?>">
+                        <?= am2_icon($act['icon'] ?? 'chevron', 'h-4 w-4') ?>
+                        <span class="hidden sm:inline"><?= e($act['key']) ?></span>
+                    </button>
+                <?php endforeach; ?>
+            </span>
 
                 <button type="button" data-clear-selection
                         aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
@@ -133,27 +150,6 @@ for ($i = 1; $i <= $pages; $i++) {
                                focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
                     <?= am2_icon('close', 'h-4 w-4') ?>
                 </button>
-            </div>
-
-            <span data-bulk-verbs
-                  class="hidden flex-col items-stretch gap-1.5 sm:flex sm:flex-1 sm:flex-row
-                         sm:items-center sm:justify-end">
-                <?php foreach ($bulkActions as $act): ?>
-                    <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
-                            <?php foreach (($act['data'] ?? []) as $k => $v): ?>
-                                data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
-                            <?php endforeach; ?>
-                            class="h-10 w-full rounded-control border px-3 font-mono text-[10px]
-                                   font-semibold uppercase tracking-[0.15em] transition-colors
-                                   duration-[var(--duration-micro)] focus:outline-none
-                                   focus-visible:ring-2 sm:h-8 sm:w-auto
-                                   <?= !empty($act['danger'])
-                                       ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
-                                       : 'border-edge text-ink hover:border-brand hover:text-brand focus-visible:ring-brand/60' ?>">
-                        <?= e($act['key']) ?>
-                    </button>
-                <?php endforeach; ?>
-            </span>
         </div>
     </div>
 <?php endif; ?>
