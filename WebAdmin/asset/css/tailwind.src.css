@@ -99,13 +99,8 @@
     border-radius: 9999px;
     border: 1px solid var(--color-primary);
     opacity: 0;
-    animation: am2-emit 4.8s ease-out infinite;
-    animation-delay: var(--delay, 0s);
-}
-@keyframes am2-emit {
-    0%   { transform: scale(1);   opacity: 0.55; }
-    70%  { opacity: 0.06; }
-    100% { transform: scale(3.4); opacity: 0; }
+    /* Geometry only. The travel is Motion's -- see emit() in am2-ui.js. Two
+       owners on one transform is how an animation ends up fighting itself. */
 }
 [x-cloak] { display: none !important; }
 

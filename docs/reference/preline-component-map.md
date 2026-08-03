@@ -100,3 +100,30 @@ Verified in the browser, not inferred: `HSOverlay`, `HSDropdown` and
 labels hidden; the account dropdown opens; folding a group takes the visible
 links from 8 to 5; the palette opens on Ctrl+K with 11 entries; and the mobile
 drawer opens with a backdrop, locks body scroll and closes on Escape.
+
+### login.php
+
+| Preline component | Free | Docs | Adapted from | AM2 changes |
+|---|---|---|---|---|
+| Card | core | [card](https://preline.co/docs/card.html) | bordered surface with header and body padding | holds the form, which previously sat on the bare background and read as a page that had not finished rendering |
+| Input | core | [input](https://preline.co/docs/input.html) | field + label + focus ring | 48px controls, monospace value text because a username and a password are identifiers |
+| Toggle Password | core | [toggle-password](https://preline.co/docs/toggle-password.html) | `data-hs-toggle-password='{"target": "#password"}'`, icons swapped on `hs-password-active` | replaced the hand-rolled Alpine reveal outright, which is what makes login the first Alpine-free page |
+| Alert | core | [alerts](https://preline.co/docs/alerts.html) | soft alert with leading icon | `role="alert"`, and a left border so the meaning does not rest on colour alone |
+
+Contract kept exactly: `method="POST"` with no `action`, `name="username"`,
+`name="password"`, `id="username"`, `id="password"`, `type="submit"`,
+`id="themeToggle"`, the `?lang=` links, and the PHP block above the view
+(lines 1-58: session, throttle, `session_regenerate_id`) untouched.
+
+Motion here: `enterOnce()` staggers the four form blocks at 35ms, `toast()`
+brings in the error alert, and `emit()` drives the three rings leaving the
+mark. The rings were CSS keyframes before; they are Motion now so that one
+owner holds the transform, and reduced motion is a branch rather than a media
+query cancelling an animation in flight.
+
+Verified: `HSTogglePassword` is a function; the password type goes
+password → text → password; field names render as `["username","password"]`;
+`method=POST action=null`; a keyboard-only sign-in with Enter reaches the
+dashboard; the error alert renders on a bad password; three rings animate
+normally and **zero** render under `prefers-reduced-motion: reduce`, with the
+form fields still at opacity 1. No console errors in either mode.
