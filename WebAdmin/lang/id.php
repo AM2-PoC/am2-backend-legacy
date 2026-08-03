@@ -347,7 +347,7 @@ return [
     'usr.online_now'             => 'online sekarang',
     'usr.last_seen'              => 'terakhir :when',
     'usr.more_channels'          => '+:n lagi',
-    'usr.no_channel'             => 'tanpa channel',
+    'usr.no_channel'             => 'Tidak ada',
     'usr.on'                     => 'Nyalakan',
     'usr.off'                    => 'Matikan',
     'usr.empty_filtered'         => 'Tidak ada unit yang cocok dengan pencarian ini.',
