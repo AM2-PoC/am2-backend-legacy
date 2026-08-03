@@ -457,14 +457,14 @@ include 'partials/shell.php';
                     <tr data-row-id="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                         class="transition-colors hover:bg-card-muted">
 
-                        <td data-label="<?= e('tbl.select') ?>" class="w-10 px-4 align-middle lg:ps-5">
+                        <td data-cell="select" data-label="<?= e('tbl.select') ?>" class="w-10 px-4 align-middle lg:ps-5">
                             <input type="checkbox" data-select
                                    aria-label="<?= e('usr.select_unit', ['unit' => $uid]) ?>"
                                    class="h-4 w-4 cursor-pointer rounded border-edge-strong text-brand
                                           focus:ring-brand/40">
                         </td>
 
-                        <td data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle">
+                        <td data-cell="unit" data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle">
                             <span class="flex items-start gap-2.5">
                                 <span data-presence
                                       class="mt-1.5 h-2 w-2 shrink-0 rounded-full <?= $online ? 'bg-ok' : 'bg-edge-strong' ?>"
@@ -486,7 +486,7 @@ include 'partials/shell.php';
                             </span>
                         </td>
 
-                        <td data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
+                        <td data-cell="channel" data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($primary): ?>
                                 <span class="block truncate text-sm text-ink"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
                                 <?php if (count($chans) > 1): ?>
@@ -503,7 +503,7 @@ include 'partials/shell.php';
                             <?php endif; ?>
                         </td>
 
-                        <td data-label="<?= e('usr.features') ?>" class="px-4 py-2.5 align-middle">
+                        <td data-cell="features" data-label="<?= e('usr.features') ?>" class="px-4 py-2.5 align-middle">
                             <div class="flex flex-wrap gap-1.5">
                                 <?php
                                 $base = 'am2-chip';
@@ -530,7 +530,7 @@ include 'partials/shell.php';
                             </div>
                         </td>
 
-                        <td data-label="<?= e('usr.duplex') ?>" class="px-4 py-2.5 align-middle">
+                        <td data-cell="duplex" data-label="<?= e('usr.duplex') ?>" class="px-4 py-2.5 align-middle">
                             <?php
                             $dBase = 'am2-chip';
                             $dOn  = 'border-accent bg-accent/10 text-accent';
@@ -556,7 +556,7 @@ include 'partials/shell.php';
                             </button>
                         </td>
 
-                        <td data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
+                        <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
                             <span class="inline-flex items-center gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
@@ -677,16 +677,17 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     the row being changed is still in view. Below lg it becomes a sheet.
 -->
 <div id="am2-edit-unit" role="dialog" tabindex="-1" aria-labelledby="am2-edit-label" class="<?= $ovl ?>">
-    <div data-am2-panel
-         class="am2-surface ms-auto flex h-full w-full max-w-md flex-col rounded-none
-                border-s border-edge sm:w-[26rem]">
-        <form method="POST" class="flex h-full flex-col">
+    <!-- A card in the middle, like the channel dialogue. A drawer for a
+         two-field form put the controls where nothing else on this page puts
+         them. -->
+    <div data-am2-panel class="<?= $card ?>">
+        <form method="POST">
             <?= am2_csrf_field() ?>
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-edit-label" class="text-base font-semibold text-ink"><?= e('usr.edit_title') ?></h2>
                 <p data-edit-unit class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
             </header>
-            <div class="flex-1 space-y-4 overflow-y-auto p-5">
+            <div class="space-y-4 p-5">
                 <input type="hidden" name="edit_id" id="edit_id" value="">
                 <div>
                     <label for="edit_name" class="<?= $labelCls ?>"><?= e('usr.name') ?></label>

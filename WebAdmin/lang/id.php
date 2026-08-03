@@ -370,4 +370,6 @@ return [
     'usr.bulk_feature_title'     => 'Izin fitur',
     'usr.bulk_done'              => ':ok berhasil, :failed gagal',
     'tbl.select'                => 'Pilih',
+    'tbl.dense'                 => 'Rapat',
+    'tbl.normal'                => 'Normal',
 ];

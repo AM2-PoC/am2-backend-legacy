@@ -267,8 +267,67 @@ function filtered(tbody) {
 }
 
 /** Toast in from the edge, out faster. */
-function toast(el) {
-    move(el, { opacity: [0, 1], y: [12, 0] }, { duration: T.pop, ease: EASE.enter });
+/**
+ * Say what just happened.
+ *
+ * This used to take an element and animate it, which meant every call that
+ * passed a sentence -- every save, every refusal, every bulk result -- did
+ * nothing at all. Silently: the string was treated as an element, and animating
+ * a string is a no-op. Elements are still accepted so the pages that hand it
+ * one keep working.
+ */
+function toastRoot() {
+    let root = document.getElementById('am2-toasts');
+    if (root) return root;
+    root = document.createElement('div');
+    root.id = 'am2-toasts';
+    // Above the bulk bar, clear of the safe area, and never in the way of a
+    // thumb: bottom centre on a phone, bottom right on a desk.
+    root.className = 'pointer-events-none fixed inset-x-0 bottom-20 z-90 flex flex-col '
+        + 'items-center gap-2 px-4 sm:inset-x-auto sm:end-6 sm:bottom-6 sm:items-end';
+    root.setAttribute('aria-live', 'polite');
+    document.body.appendChild(root);
+    return root;
+}
+
+function toast(what, ok = true) {
+    if (what instanceof Element) {
+        move(what, { opacity: [0, 1], y: [12, 0] }, { duration: T.pop, ease: EASE.enter });
+        return;
+    }
+
+    const text = String(what ?? '').trim();
+    if (!text) return;
+
+    const el = document.createElement('div');
+    el.setAttribute('role', ok ? 'status' : 'alert');
+    // Theme comes from the tokens, so light and dark need no second rule.
+    el.className = 'pointer-events-auto flex max-w-[min(92vw,26rem)] items-start gap-2.5 '
+        + 'rounded-control border bg-card px-3.5 py-2.5 text-sm text-ink shadow-panel '
+        + (ok ? 'border-ok/40 border-s-2 border-s-ok' : 'border-bad/40 border-s-2 border-s-bad');
+
+    const mark = document.createElement('span');
+    mark.className = 'mt-px shrink-0 font-mono text-xs ' + (ok ? 'text-ok' : 'text-bad');
+    mark.textContent = ok ? '✓' : '✕';
+    mark.setAttribute('aria-hidden', 'true');
+
+    const body = document.createElement('span');
+    body.className = 'min-w-0 flex-1';
+    // textContent: the message can carry a database error, which is text.
+    body.textContent = text;
+
+    el.append(mark, body);
+    toastRoot().appendChild(el);
+
+    if (reduced) {
+        setTimeout(() => el.remove(), 4200);
+        return;
+    }
+    animate(el, { opacity: [0, 1], y: [10, 0] }, { duration: T.pop, ease: EASE.enter });
+    setTimeout(() => {
+        animate(el, { opacity: 0, y: 6 }, { duration: T.exit, ease: EASE.exit })
+            .finished.then(() => el.remove());
+    }, 4000);
 }
 
 /**

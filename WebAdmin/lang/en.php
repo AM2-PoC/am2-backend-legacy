@@ -370,4 +370,6 @@ return [
     'usr.bulk_feature_title'     => 'Feature permissions',
     'usr.bulk_done'              => ':ok succeeded, :failed failed',
     'tbl.select'                => 'Select',
+    'tbl.dense'                 => 'Compact',
+    'tbl.normal'                => 'Normal',
 ];

@@ -296,6 +296,8 @@ function setupTable(table) {
         const dense = !table.classList.contains('am2-dense');
         table.classList.toggle('am2-dense', dense);
         this.setAttribute('aria-pressed', dense ? 'true' : 'false');
+        const label = this.querySelector('[data-density-label]');
+        if (label) label.textContent = dense ? label.dataset.dense : label.dataset.normal;
         document.cookie = `am2_density=${dense ? 'compact' : 'normal'};path=/;max-age=31536000;samesite=lax`;
     });
 

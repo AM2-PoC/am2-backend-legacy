@@ -93,17 +93,17 @@ $curChip = (string) ($_GET['chip'] ?? '');
         <?php endif; ?>
 
         <div class="flex shrink-0 items-center gap-3">
+            <!-- It was three stacked lines, which is a menu everywhere else on
+                 the web. A control nobody can name is a control nobody uses. -->
             <button type="button" data-density
                     aria-pressed="<?= $dense ? 'true' : 'false' ?>"
-                    title="<?= e('tbl.density') ?>" aria-label="<?= e('tbl.density') ?>"
-                    class="grid h-11 w-11 place-items-center rounded-control border border-edge
-                           text-ink-subtle transition-colors duration-[var(--duration-micro)]
-                           hover:border-brand hover:text-brand focus:outline-none
-                           focus-visible:ring-2 focus-visible:ring-brand/60">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                     stroke-linecap="round" class="h-4 w-4" aria-hidden="true">
-                    <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
-                </svg>
+                    title="<?= e('tbl.density') ?>"
+                    class="h-11 rounded-control border border-edge px-3 font-mono text-[10px]
+                           uppercase tracking-[0.15em] text-ink-subtle transition-colors
+                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
+                <span data-density-label data-dense="<?= e('tbl.dense') ?>"
+                      data-normal="<?= e('tbl.normal') ?>"><?= $dense ? e('tbl.dense') : e('tbl.normal') ?></span>
             </button>
             <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e($countKey ?? 'tbl.rows', ['n' => number_format($total)]) ?>
@@ -117,7 +117,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
         it was wrong on the log page once.
     -->
     <div class="max-h-[calc(100dvh-20rem)] overflow-auto">
-        <table class="data-table w-full text-sm">
+        <table class="data-table am2-roster w-full text-sm">
             <thead class="sticky top-0 z-10 bg-card-muted text-left font-mono text-[10px]
                           uppercase tracking-[0.15em] text-ink-subtle">
                 <tr>
