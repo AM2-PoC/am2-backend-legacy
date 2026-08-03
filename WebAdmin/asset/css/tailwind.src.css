@@ -407,7 +407,11 @@ tr[data-row-id]:focus-visible {
     }
 
     /* The column names belong to the head, which is not on screen here. */
-    .am2-roster td { display: block; padding: 0 !important; border: 0 !important; }
+    /* display:block needs the !important too. Without it the card mode's own
+       rule won and every cell stayed a two-column grid -- a 90px column
+       holding a label that was hidden, and 167px of the 266px available for
+       everything else. Measured, after guessing at it four times. */
+    .am2-roster td { display: block !important; padding: 0 !important; border: 0 !important; }
     .am2-roster td::before { content: none !important; }
 
     .am2-roster td[data-cell="select"]   { grid-column: 1; grid-row: 1 / span 4; width: auto; }

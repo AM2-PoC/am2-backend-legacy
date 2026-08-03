@@ -381,9 +381,16 @@ $columns = [
 ];
 $pageSize = AM2_USER_PAGE;
 
-// The page's primary verb, beside its title, where every other page puts it.
-$pageActions = '<button type="button" data-hs-overlay="#am2-add-unit"'
-    . ' class="h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+/*
+ * The page's own verb, handed to the table's toolbar.
+ *
+ * It was in the shell's header slot, which is where the application's
+ * navigation lives -- theme, language, the account. A button that creates a
+ * unit is not navigation, and putting it up there meant it sat beside the
+ * search box on every page whether or not the page could create anything.
+ */
+$tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('usr.add') . '</button>';

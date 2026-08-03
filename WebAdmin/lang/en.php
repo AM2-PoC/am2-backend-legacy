@@ -327,7 +327,6 @@ return [
     'set.err_denied'            => 'Access denied.',
     // Tables
     'tbl.rows'                  => ':n rows',
-    'tbl.density'               => 'Row density',
     'tbl.select_page'           => 'Select everything on this page',
     'tbl.selected'              => 'selected',
     'tbl.clear_selection'       => 'Clear the selection',
@@ -370,6 +369,5 @@ return [
     'usr.bulk_feature_title'     => 'Feature permissions',
     'usr.bulk_done'              => ':ok succeeded, :failed failed',
     'tbl.select'                => 'Select',
-    'tbl.dense'                 => 'Compact',
-    'tbl.normal'                => 'Normal',
+    'tbl.actions'               => 'Actions',
 ];
