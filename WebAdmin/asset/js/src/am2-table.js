@@ -145,6 +145,12 @@ function setupTable(table) {
     function clearSelection() {
         state.ids.clear();
         state.all = false;
+        const v = bar?.querySelector('[data-bulk-verbs]');
+        if (v && window.matchMedia('(max-width: 639px)').matches) {
+            v.classList.remove('flex');
+            v.classList.add('hidden');
+            bar?.querySelector('[data-bulk-more]')?.setAttribute('aria-expanded', 'false');
+        }
         paint();
     }
 
@@ -239,9 +245,20 @@ function setupTable(table) {
         }
     }
 
+    const verbs = bar?.querySelector('[data-bulk-verbs]');
+    const more = bar?.querySelector('[data-bulk-more]');
+
     bar?.addEventListener('click', (e) => {
         if (e.target.closest('[data-select-all-matching]')) { state.all = true; paint(); }
         if (e.target.closest('[data-clear-selection]')) clearSelection();
+
+        // Below sm the verbs are folded away, so the bar is one row until
+        // somebody asks for them.
+        if (e.target.closest('[data-bulk-more]')) {
+            const open = verbs.classList.toggle('flex');
+            verbs.classList.toggle('hidden', !open);
+            more.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
     });
 
     document.querySelectorAll('[data-bulk]').forEach((btn) => {
@@ -284,21 +301,6 @@ function setupTable(table) {
             const tr = rows()[cursor];
             if (tr) toggleRow(tr.dataset.rowId, !state.ids.has(tr.dataset.rowId));
         }
-    });
-
-    /*
-     * Density. A console is read at a distance, and at a glance -- forty
-     * pixels a row fits half again as many units on a screen, forty-eight is
-     * easier to hit with a thumb. The choice is remembered beside the sidebar
-     * rail's, so the panel does not forget it between pages.
-     */
-    table.querySelector('[data-density]')?.addEventListener('click', function () {
-        const dense = !table.classList.contains('am2-dense');
-        table.classList.toggle('am2-dense', dense);
-        this.setAttribute('aria-pressed', dense ? 'true' : 'false');
-        const label = this.querySelector('[data-density-label]');
-        if (label) label.textContent = dense ? label.dataset.dense : label.dataset.normal;
-        document.cookie = `am2_density=${dense ? 'compact' : 'normal'};path=/;max-age=31536000;samesite=lax`;
     });
 
     paint();

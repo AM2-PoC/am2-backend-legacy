@@ -327,7 +327,6 @@ return [
     'set.err_denied'            => 'Akses ditolak.',
     // Tables
     'tbl.rows'                  => ':n baris',
-    'tbl.density'               => 'Kerapatan baris',
     'tbl.select_page'           => 'Pilih semua di halaman ini',
     'tbl.selected'              => 'dipilih',
     'tbl.clear_selection'       => 'Batalkan pilihan',
@@ -370,6 +369,5 @@ return [
     'usr.bulk_feature_title'     => 'Izin fitur',
     'usr.bulk_done'              => ':ok berhasil, :failed gagal',
     'tbl.select'                => 'Pilih',
-    'tbl.dense'                 => 'Rapat',
-    'tbl.normal'                => 'Normal',
+    'tbl.actions'               => 'Aksi',
 ];

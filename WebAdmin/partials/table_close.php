@@ -87,8 +87,9 @@ for ($i = 1; $i <= $pages; $i++) {
         decides whether the next click is routine or irreversible.
     -->
     <div data-bulk-bar hidden
-         class="fixed inset-x-3 bottom-3 z-40 mx-auto flex w-auto max-w-[46rem] flex-col gap-1.5
-                rounded-card border border-edge bg-card p-2 shadow-panel sm:inset-x-4">
+         class="fixed inset-x-2 bottom-2 z-40 mx-auto flex w-auto max-w-[44rem] flex-col gap-1.5
+                rounded-card border border-edge bg-card p-1.5 shadow-panel
+                sm:inset-x-4 sm:bottom-4 sm:p-2">
 
         <p data-select-all-matching hidden
            class="flex flex-wrap items-center justify-center gap-2 rounded-control bg-card-muted
@@ -101,39 +102,57 @@ for ($i = 1; $i <= $pages; $i++) {
             </button>
         </p>
 
-        <div class="flex items-center gap-2">
-            <span class="ms-1 shrink-0 whitespace-nowrap font-mono text-[10px] uppercase
-                         tracking-[0.15em] text-ink">
-                <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
-            </span>
+        <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
 
-            <!-- One line. On a phone the verbs scroll sideways rather than
-                 stacking the bar into a third of the screen. -->
-            <span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto
-                         [scrollbar-width:none] sm:justify-end sm:overflow-visible">
+            <!-- Always visible, and on a phone this is the whole bar: one row
+                 of forty pixels. The count sits with the control that clears
+                 it, because they are the same thought. -->
+            <div class="flex items-center gap-2 sm:shrink-0">
+                <span class="whitespace-nowrap font-mono text-[10px] uppercase
+                             tracking-[0.15em] text-ink">
+                    <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
+                </span>
+
+                <!-- Sideways scrolling would hide half the verbs behind a
+                     gesture nothing announces. They stack above the bar
+                     instead, where a thumb can reach all of them. -->
+                <button type="button" data-bulk-more aria-expanded="false"
+                        class="h-8 rounded-control border border-edge px-2.5 font-mono text-[10px]
+                               font-semibold uppercase tracking-[0.15em] text-ink transition-colors
+                               duration-[var(--duration-micro)] hover:border-brand hover:text-brand
+                               sm:hidden">
+                    <?= e('tbl.actions') ?>
+                </button>
+
+                <span class="flex-1 sm:hidden"></span>
+
+                <button type="button" data-clear-selection
+                        aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
+                        class="grid h-8 w-8 shrink-0 place-items-center rounded-control text-ink-subtle
+                               transition-colors duration-[var(--duration-micro)] hover:text-ink
+                               focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
+                    <?= am2_icon('close', 'h-4 w-4') ?>
+                </button>
+            </div>
+
+            <span data-bulk-verbs
+                  class="hidden flex-col items-stretch gap-1.5 sm:flex sm:flex-1 sm:flex-row
+                         sm:items-center sm:justify-end">
                 <?php foreach ($bulkActions as $act): ?>
                     <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
                             <?php foreach (($act['data'] ?? []) as $k => $v): ?>
                                 data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
                             <?php endforeach; ?>
-                            class="h-9 shrink-0 rounded-control border px-3 font-mono text-[10px]
+                            class="h-10 w-full rounded-control border px-3 font-mono text-[10px]
                                    font-semibold uppercase tracking-[0.15em] transition-colors
                                    duration-[var(--duration-micro)] focus:outline-none
-                                   focus-visible:ring-2
+                                   focus-visible:ring-2 sm:h-8 sm:w-auto
                                    <?= !empty($act['danger'])
                                        ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
                                        : 'border-edge text-ink hover:border-brand hover:text-brand focus-visible:ring-brand/60' ?>">
                         <?= e($act['key']) ?>
                     </button>
                 <?php endforeach; ?>
-
-                <button type="button" data-clear-selection
-                        aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
-                        class="grid h-9 w-9 shrink-0 place-items-center rounded-control text-ink-subtle
-                               transition-colors duration-[var(--duration-micro)] hover:text-ink
-                               focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
-                    <?= am2_icon('close', 'h-4 w-4') ?>
-                </button>
             </span>
         </div>
     </div>
