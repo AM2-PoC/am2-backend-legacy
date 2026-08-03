@@ -29,6 +29,7 @@ import 'preline/plugins/accordion';        /* foldable navigation groups    */
 import 'preline/plugins/toggle-password';  /* login, and the password card  */
 import { animate, stagger, inView } from 'motion';
 import qrcode from 'qrcode-generator';
+import { initTables } from './am2-table.js';
 
 /* Durations, in seconds because that is what Motion takes. Graded by how far
  * a thing travels: a colour change is over before it is noticed, a drawer
@@ -293,7 +294,18 @@ function emit(selector) {
     });
 }
 
+/*
+ * Tables wire themselves. A page supplies markup and data attributes and
+ * writes no JavaScript at all, so the three roster pages cannot drift apart
+ * by each growing its own copy of selection or of a toggle.
+ */
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initTables(), { once: true });
+} else {
+    initTables();
+}
+
 window.AM2 = {
-    enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr,
+    enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr, initTables,
     prefersReducedMotion, move, T, EASE, STAGGER,
 };
