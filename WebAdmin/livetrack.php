@@ -29,6 +29,17 @@ include 'partials/shell.php';
         <?= e('track.transmitting') ?>
     </div>
 
+    <!-- Brings the panel back on desktop once it has been collapsed. -->
+    <button type="button" id="panelRestore" hidden
+            class="absolute right-4 top-4 z-30 hidden h-11 items-center gap-2 rounded-control
+                   border border-edge bg-card px-3 font-mono text-[10px] uppercase
+                   tracking-[0.15em] text-ink shadow-pop lg:flex"
+            aria-controls="unitPanel" aria-expanded="false"
+            aria-label="<?= e('track.units') ?>">
+        <?= am2_icon('users', 'h-4 w-4') ?>
+        <span id="panelRestoreCount">0</span>
+    </button>
+
     <!-- Opens the panel below lg, where it is a sheet rather than a column. -->
     <button type="button" id="panelToggle" aria-expanded="false" aria-controls="unitPanel"
             class="absolute bottom-4 right-4 z-30 flex h-12 items-center gap-2 rounded-card
@@ -60,6 +71,16 @@ include 'partials/shell.php';
                 <span id="count-online" class="text-ink">0</span>
                 <span class="text-ink-subtle"><?= e('rail.online') ?></span>
             </span>
+            <!-- Desktop gets the same escape the phone has: the panel covers a
+                 third of the map, and sometimes the map is the point. -->
+            <button type="button" id="panelCollapse"
+                    class="hidden h-8 w-8 place-items-center rounded-control text-ink-subtle
+                           transition-colors duration-[var(--duration-micro)]
+                           hover:bg-card-muted hover:text-ink lg:grid"
+                    aria-controls="unitPanel" aria-expanded="true"
+                    aria-label="<?= e('track.collapse') ?>" title="<?= e('track.collapse') ?>">
+                <span id="panelCollapseIcon"><?= am2_icon('expand', 'h-4 w-4') ?></span>
+            </button>
         </header>
 
         <div class="border-b border-edge p-3">
@@ -160,6 +181,7 @@ include 'partials/shell.php';
         $('tx-indicator').hidden = !txFound;
         window.AM2?.countTo($('count-online'), userCache.length);
         $('count-online-badge').textContent = String(userCache.length);
+        $('panelRestoreCount').textContent = String(userCache.length);
     }
 
     function renderList() {
@@ -250,6 +272,21 @@ include 'partials/shell.php';
     toggle.addEventListener('click', () => {
         panel.classList.contains('translate-y-[110%]') ? openPanel() : closePanel();
     });
+
+    // Desktop collapse. Translating rather than hiding keeps Motion's job and
+    // Preline's separate -- this panel is not an overlay, so nothing else owns
+    // its visibility.
+    const collapse = $('panelCollapse');
+    const restore = $('panelRestore');
+    const setCollapsed = (on) => {
+        panel.classList.toggle('lg:translate-x-[calc(100%+1.5rem)]', on);
+        collapse.setAttribute('aria-expanded', on ? 'false' : 'true');
+        restore.hidden = !on;
+        restore.setAttribute('aria-expanded', on ? 'false' : 'true');
+    };
+    collapse.addEventListener('click', () => setCollapsed(
+        !panel.classList.contains('lg:translate-x-[calc(100%+1.5rem)]')));
+    restore.addEventListener('click', () => setCollapsed(false));
 
     $('unitSearch').addEventListener('input', renderList);
 

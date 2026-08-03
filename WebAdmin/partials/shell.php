@@ -109,7 +109,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 <aside id="am2-sidebar" role="dialog" tabindex="-1" aria-label="<?= e('nav.menu') ?>"
        data-am2-drawer
        class="hs-overlay [--auto-close:lg] hs-overlay-open:translate-x-0
-              -translate-x-full lg:translate-x-0 lg:block hidden
+              -translate-x-full lg:translate-x-0 lg:flex hidden
               fixed inset-y-0 start-0 z-60 flex w-[272px] flex-col
               border-e border-edge bg-card
               <?= $rail ? 'lg:w-[72px]' : 'lg:w-[272px]' ?>">

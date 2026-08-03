@@ -7,6 +7,7 @@
  * comments and keys are English; Indonesian text lives only in this file.
  */
 return [
+    'track.collapse' => 'Sembunyikan panel',
     'track.lede' => 'Posisi unit secara real-time',
     'track.units' => 'Monitoring unit',
     'track.search' => 'Cari unit...',
