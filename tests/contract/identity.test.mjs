@@ -7,7 +7,8 @@
 // about itself, only a key-bearing caller may.
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
-import { BASE, HOST, asSuper, asBranchA, get, postForm, json, sql } from './helpers.mjs';
+import { BASE, HOST, asSuper, asBranchA, get, postForm, json, sql,
+         ctAdminId, adminPasswordHash, restoreAdminPasswordHash } from './helpers.mjs';
 
 // Run this file against a build where the hole is still open and the escalation
 // probe succeeds -- an actual superadmin account, with a password written in
@@ -17,12 +18,13 @@ after(() => {
 });
 
 /** A branch session, with an escalation attempt bolted on. */
-const CLAIM = 'admin_id=1&role=superadmin';
+// Resolved rather than literal, so this can never name a real row.
+const CLAIM = () => `admin_id=${ctAdminId('ct_super')}&role=superadmin`;
 
 describe('identity is the server\'s to decide', () => {
     test('a branch session cannot export the database by claiming superadmin', async () => {
         const cookie = await asBranchA();
-        const res = await get(`/api_settings.php?action=export_db&${CLAIM}`, cookie);
+        const res = await get(`/api_settings.php?action=export_db&${CLAIM()}`, cookie);
 
         assert.strictEqual(res.status, 403, 'export_db must refuse a branch admin');
         const body = await res.text();
@@ -32,7 +34,7 @@ describe('identity is the server\'s to decide', () => {
 
     test('a branch session cannot reach the admin panel by claiming superadmin', async () => {
         const cookie = await asBranchA();
-        const res = await get(`/api_admin_panel.php?${CLAIM}`, cookie);
+        const res = await get(`/api_admin_panel.php?${CLAIM()}`, cookie);
         assert.strictEqual(res.status, 403);
     });
 
@@ -46,12 +48,28 @@ describe('identity is the server\'s to decide', () => {
     });
 
     test('a branch session cannot reset another admin\'s password', async () => {
+        // The target is resolved from the fixture, never hardcoded. This probe
+        // used to send admin_id=1, which on staging is the real superadmin --
+        // and when it was run against a build without the guard, it changed
+        // that account's password. The assertion could not prevent it: by then
+        // the request had already been served.
+        const target = ctAdminId('ct_super');
+        const before = adminPasswordHash('ct_super');
         const cookie = await asBranchA();
-        // admin_id 1 is a superadmin on the fixture data; the caller is not it.
-        const res = await postForm('/api_settings.php', cookie, {
-            action: 'update_password', admin_id: '1', new_password: 'probe-should-never-apply',
-        });
-        assert.strictEqual(res.status, 403);
+        try {
+            const res = await postForm('/api_settings.php', cookie, {
+                action: 'update_password',
+                admin_id: String(target),
+                new_password: 'probe-should-never-apply',
+            });
+            assert.strictEqual(res.status, 403);
+            assert.strictEqual(adminPasswordHash('ct_super'), before,
+                'the hash changed, so the request was served');
+        } finally {
+            // Unconditional: if the guard ever regresses, the fixture is still
+            // repaired and the next run can sign in.
+            restoreAdminPasswordHash('ct_super', before);
+        }
     });
 
     // Sandwiched between two honest calls: other files in the suite edit this
@@ -69,7 +87,7 @@ describe('identity is the server\'s to decide', () => {
     }
 
     test('the chart ignores a claimed identity and answers for the session', async () => {
-        await chartUnaffectedBy(CLAIM);
+        await chartUnaffectedBy(CLAIM());
     });
 
     test('a superadmin session still reaches the admin panel', async () => {
@@ -100,7 +118,7 @@ describe('KNOWN OPEN — closes when AM2_API_AUTH_MODE=enforce', () => {
     // thrown until the app ships a key; until then this test records the hole
     // rather than pretending it is shut. Do not delete it — change it.
     test('an anonymous caller can still claim superadmin while the mode is log', async () => {
-        const res = await fetch(`${BASE}/api_admin_panel.php?${CLAIM}`, {
+        const res = await fetch(`${BASE}/api_admin_panel.php?${CLAIM()}`, {
             headers: { Host: HOST },
         });
         const mode = (process.env.AM2_API_AUTH_MODE || 'log').toLowerCase();
