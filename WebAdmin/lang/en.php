@@ -7,6 +7,12 @@
  *
  */
 return [
+    'track.lede' => 'Unit positions in real time',
+    'track.units' => 'Unit monitoring',
+    'track.search' => 'Search units...',
+    'track.empty' => 'No active units',
+    'track.transmitting' => 'Transmitting',
+    'track.channel' => 'Channel',
     'logs.pagination' => "Log pagination",
     'logs.count' => "Showing :from–:to of :total most recent",
     'logs.paused_browsing' => "Paused \u2014 page 2+",
