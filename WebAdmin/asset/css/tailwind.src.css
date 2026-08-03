@@ -336,3 +336,13 @@
 /* A marker with no label is only its dot, so it must not reserve label space. */
 .custom-marker-bare { width: 16px !important; height: 16px !important; }
 .custom-marker-bare .marker-label { display: none; }
+
+/* A selected row, said with the background and not only with a ticked box.
+   A checkbox is 16px of evidence for a decision that can affect two hundred
+   units; the row itself has to carry it. */
+.am2-row-selected { background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
+.am2-row-selected:hover { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
+tr[data-row-id]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
