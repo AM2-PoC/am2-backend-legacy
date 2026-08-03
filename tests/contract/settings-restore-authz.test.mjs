@@ -16,7 +16,8 @@
 import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    asSuper, asBranchA, get, csrfToken, readSrc, sql, sqlOne, guardCtTarget, BASE, HOST,
+    asSuper, asBranchA, asBranchB, get, postForm, csrfToken, readSrc, sql, sqlOne,
+    guardCtTarget, BASE, HOST,
 } from './helpers.mjs';
 
 const FIXTURE = 'ct_channel_a';
@@ -175,5 +176,66 @@ describe('settings.php restore reports what psql actually did', () => {
             'a restore that was rolled back was reported as done');
         assert.match(html, /Pemulihan dibatalkan/, 'the operator was not told it failed');
         assert.match(html, /ERROR/, 'the refusal gives no reason to act on');
+    });
+});
+
+describe("settings.php export is the caller's own rows", () => {
+    // pg_dump has no WHERE, so `-t public.users -t public.channels` gave a
+    // branch admin every branch's rows under a filename bearing its own name.
+    // Read-only throughout: an export changes nothing, so there is nothing to
+    // put back.
+    let branchA, branchB, sup;
+    before(async () => {
+        branchA = await asBranchA();
+        branchB = await asBranchB();
+        sup = await asSuper();
+    });
+
+    const exportOf = async (cookie) =>
+        (await postForm('/settings.php', cookie, { export_db: '1' })).text();
+
+    test('a branch export carries that branch and no other', async () => {
+        const a = await exportOf(branchA);
+        const b = await exportOf(branchB);
+
+        assert.ok(a.includes("'CT_A1'"), "branch A's export is missing its own unit");
+        assert.ok(!a.includes("'CT_B1'"), "branch A's export carries branch B's unit");
+        assert.ok(b.includes("'CT_B1'"), "branch B's export is missing its own unit");
+        assert.ok(!b.includes("'CT_A1'"), "branch B's export carries branch A's unit");
+    });
+
+    test('a branch export is still restorable SQL', async () => {
+        const a = await exportOf(branchA);
+        assert.match(a, /^INSERT INTO public\.channels \(/m, 'no channel rows in the backup');
+        assert.match(a, /^INSERT INTO public\.users \(/m, 'no user rows in the backup');
+    });
+
+    test('a superadmin still gets a real pg_dump', async () => {
+        // Only the first chunk: the full dump is megabytes and the point is the
+        // shape, not the contents.
+        const res = await postForm('/settings.php', sup, { export_db: '1' });
+        assert.match(res.headers.get('content-type'), /octet-stream/);
+        const head = new TextDecoder().decode(
+            (await res.body.getReader().read()).value ?? new Uint8Array());
+        assert.match(head, /PostgreSQL database dump/, 'the full backup is no longer a pg_dump');
+    });
+
+    test('the branch path does not shell out at all', () => {
+        // The whole point of building it here: no pg_dump, no PGPASSWORD, and
+        // no table name that a WHERE cannot reach.
+        // Comments are stripped first: the note explaining why the whole-table
+        // dump was wrong is not the whole-table dump, and a guard that trips on
+        // its own explanation is one people learn to route around.
+        const src = readSrc('settings.php');
+        const code = src.replace(/\/\*[\s\S]*?\*\//g, '')
+                        .replace(/^\s*\/\/.*$/gm, '')
+                        .replace(/<!--[\s\S]*?-->/g, '');
+        assert.ok(!/-t public\.users/.test(code),
+            'the whole-table dump is back, and it is every branch\'s rows');
+        const i = code.indexOf("if (isset($_POST['export_db']))");
+        assert.ok(i > 0, 'the export branch is gone');
+        const branch = code.slice(i, code.indexOf('am2_export_rows($pdo', i));
+        assert.match(branch, /if \(\$is_super\)/,
+            'pg_dump must be reachable only for a superadmin');
     });
 });
