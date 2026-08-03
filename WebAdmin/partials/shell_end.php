@@ -13,9 +13,8 @@
     new had to be exposed for it.
 -->
 <div id="am2-palette" role="dialog" tabindex="-1" aria-labelledby="am2-palette-label"
-     class="hs-overlay hs-overlay-open:opacity-100 pointer-events-none fixed inset-0 z-80
-            hidden size-full overflow-y-auto opacity-0
-            transition-opacity duration-[var(--duration-modal)]">
+     class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
+            bg-slate-950/40 backdrop-blur-sm">
     <div data-am2-panel
          class="pointer-events-auto mx-auto mt-[12vh] w-[92%] max-w-xl overflow-hidden
                 am2-surface rounded-card">
@@ -62,6 +61,9 @@
         content.classList.toggle('lg:ps-[272px]', !rail);
         document.documentElement.classList.toggle('am2-rail', rail);
         railBtn.setAttribute('aria-expanded', rail ? 'false' : 'true');
+        // The icon is the only thing left saying which way this goes.
+        const icon = document.getElementById('am2-rail-icon');
+        if (icon) icon.style.transform = rail ? 'rotate(180deg)' : '';
         document.cookie = 'am2_nav=' + (rail ? 'rail' : 'wide')
             + ';path=/;max-age=31536000;samesite=lax';
     });
@@ -227,11 +229,38 @@
 
     compute();
 
+    // Preline still owns open and closed -- these only call it. Its own Escape
+    // handling covers overlays opened through a data-hs-overlay trigger, and an
+    // overlay opened from script was not registered as the active one, so the
+    // palette opened and could not be closed by any means at all.
+    const palette = document.getElementById('am2-palette');
+    const paletteOpen = () => palette && !palette.classList.contains('hidden');
+
+    // Capture phase. Preline's accessibility manager registers its own keydown
+    // on document and consumes Escape for whichever overlay it considers
+    // active -- which is never one that script opened. Listening on the bubble
+    // meant this handler was never reached, and the palette could not be
+    // closed by any means.
     window.addEventListener('keydown', (e) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
             e.preventDefault();
-            window.HSOverlay?.open(document.getElementById('am2-palette'));
+            if (paletteOpen()) {
+                window.HSOverlay?.close(palette);
+            } else {
+                document.querySelector('header [data-hs-overlay="#am2-palette"]')?.click();
+            }
+            return;
         }
+        if (e.key === 'Escape' && paletteOpen()) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.HSOverlay?.close(palette);
+        }
+    }, true);
+
+    // Clicking the backdrop, which means anywhere that is not the panel.
+    palette?.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-am2-panel]')) window.HSOverlay?.close(palette);
     });
 })();
 </script>
