@@ -137,13 +137,38 @@ elseif ($method == 'POST') {
             exit;
         }
         $file = $_FILES['sql_file']['tmp_name'];
-        try {
-            putenv("PGPASSWORD=" . $password);
-            $command = "psql -h " . $host . " -p " . $port . " -U " . $user . " -d " . $dbname . " < " . $file;
-            shell_exec($command);
+        putenv("PGPASSWORD=" . $password);
+
+        // Same two flags as settings.php, for the same reason: psql exits 0
+        // with every statement rejected, and a half-applied restore is worse
+        // than one that refuses. success used to be a constant.
+        $command = "psql -v ON_ERROR_STOP=1 --single-transaction"
+                 . " -h " . $host . " -p " . $port . " -U " . $user
+                 . " -d " . $dbname . " < " . $file . " 2>&1";
+
+        $output = [];
+        $status = 1;
+        exec($command, $output, $status);
+
+        error_log(sprintf(
+            'AM2 api_settings RESTORE by=%d from=%s status=%d',
+            $caller_id,
+            am2_client_ip(),
+            $status
+        ));
+
+        if ($status === 0) {
             echo json_encode(['success' => true, 'message' => 'Database berhasil dipulihkan']);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => 'Restore gagal: ' . am2_safe_error($e, 'api_settings')]);
+        } else {
+            $reason = '';
+            foreach ($output as $line) {
+                if (stripos($line, 'ERROR') !== false) { $reason = $line; break; }
+            }
+            echo json_encode([
+                'success' => false,
+                'message' => 'Restore dibatalkan, tidak ada data yang berubah. '
+                           . mb_substr(trim($reason), 0, 200),
+            ]);
         }
     }
 }
