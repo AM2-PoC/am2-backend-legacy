@@ -18,7 +18,7 @@
             transition-opacity duration-[var(--duration-modal)]">
     <div data-am2-panel
          class="pointer-events-auto mx-auto mt-[12vh] w-[92%] max-w-xl overflow-hidden
-                rounded-card border border-edge bg-card shadow-2xl">
+                am2-surface rounded-card">
         <div class="flex items-center gap-3 border-b border-edge px-4">
             <span class="text-ink-subtle"><?= am2_icon('search', 'h-4 w-4') ?></span>
             <label id="am2-palette-label" for="am2-palette-input" class="sr-only">

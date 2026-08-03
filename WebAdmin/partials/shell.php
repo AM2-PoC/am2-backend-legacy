@@ -234,7 +234,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
             </button>
 
             <div class="hs-dropdown-menu hs-dropdown-open:opacity-100 z-70 hidden w-56 opacity-0
-                        rounded-panel border border-edge bg-card p-1.5 shadow-lg
+                        rounded-panel border border-edge bg-card p-1.5 shadow-pop
                         transition-opacity duration-[var(--duration-pop)]"
                  role="menu" aria-orientation="vertical" aria-labelledby="am2-account">
 

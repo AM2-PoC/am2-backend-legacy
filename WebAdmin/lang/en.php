@@ -7,6 +7,8 @@
  *
  */
 return [
+    'login.eyebrow' => 'Administrator access',
+    'login.wordmark_note' => 'Radio network operations console',
     'nav.menu' => 'Navigation menu',
     'nav.account' => 'Account',
     'brand.tagline' => 'Radio Control Centre',
