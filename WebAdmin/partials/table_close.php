@@ -86,13 +86,21 @@ for ($i = 1; $i <= $pages; $i++) {
         hesitate. It states the count first: the number is the thing that
         decides whether the next click is routine or irreversible.
     -->
+    <!--
+        A pill the width of what is in it, not a strip the width of the screen.
+        inset-x pinned both edges, so w-auto could never shrink: the bar was
+        374px on a phone and 704px on a desk to hold about 330px of controls.
+        Both insets zero with width:max-content and margin auto, which centres
+        it without a transform -- a transform makes a containing block, and the
+        bar would have anchored to whatever ancestor had one.
+    -->
     <div data-bulk-bar hidden
-         class="fixed inset-x-2 bottom-2 z-40 mx-auto flex w-auto max-w-[44rem] flex-col gap-1.5
-                rounded-card border border-edge bg-card p-1 shadow-panel
-                sm:inset-x-4 sm:bottom-4 sm:p-1.5">
+         class="fixed inset-x-0 bottom-2 z-40 mx-auto flex w-fit max-w-[calc(100vw-1rem)]
+                flex-col gap-1.5 rounded-card border border-edge bg-card p-1
+                shadow-panel sm:bottom-4 sm:p-1.5">
 
         <p data-select-all-matching hidden
-           class="flex flex-wrap items-center justify-center gap-1.5 rounded-control
+           class="flex max-w-full flex-wrap items-center justify-center gap-1.5 rounded-control
                   bg-card-muted px-2.5 py-1.5 text-[11px] text-ink-muted">
             <?= e('tbl.page_selected') ?>
             <button type="button"
@@ -130,15 +138,13 @@ for ($i = 1; $i <= $pages; $i++) {
                             <?php endforeach; ?>
                             aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
                             class="grid h-9 w-9 shrink-0 place-items-center rounded-control border
-                                   font-mono text-[9px] font-semibold uppercase tracking-[0.12em]
                                    transition-colors duration-[var(--duration-micro)]
-                                   focus:outline-none focus-visible:ring-2
-                                   sm:flex sm:h-8 sm:w-auto sm:gap-1.5 sm:px-2.5
+                                   focus:outline-none focus-visible:ring-2 sm:h-8 sm:w-8
                                    <?= !empty($act['danger'])
                                        ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
                                        : 'border-edge text-ink hover:border-brand hover:text-brand focus-visible:ring-brand/60' ?>">
                         <?= am2_icon($act['icon'] ?? 'chevron', 'h-4 w-4') ?>
-                        <span class="hidden sm:inline"><?= e($act['key']) ?></span>
+                        <span class="sr-only"><?= e($act['key']) ?></span>
                     </button>
                 <?php endforeach; ?>
             </span>
