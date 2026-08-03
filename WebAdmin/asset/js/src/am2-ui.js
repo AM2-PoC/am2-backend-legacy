@@ -23,6 +23,7 @@ import 'preline/plugins/accordion';  /* foldable navigation groups     */
 import 'preline/plugins/tabs';
 import 'preline/plugins/tooltip';    /* also backs the popovers        */
 import 'preline/plugins/combobox';   /* search over units and channels */
+import 'preline/plugins/toggle-password';
 import { animate, stagger, inView } from 'motion';
 
 /* Durations, in seconds because that is what Motion takes. Graded by how far
@@ -217,7 +218,30 @@ function toast(el) {
     move(el, { opacity: [0, 1], y: [12, 0] }, { duration: T.pop, ease: EASE.enter });
 }
 
+/**
+ * The rings leaving the login mark. Motion owns this outright rather than
+ * sharing it with a CSS keyframe, so reduced motion is a branch here instead
+ * of a media query trying to cancel an animation mid-flight.
+ *
+ * It is the one looping animation on that page, and it depicts the product:
+ * a signal leaving a transmitter.
+ */
+function emit(selector) {
+    const rings = [...document.querySelectorAll(selector)];
+    if (!rings.length || reduced) {
+        // Under reduced motion the rings simply are not there. A static ring
+        // would read as a border nobody asked for.
+        rings.forEach((el) => { el.style.display = 'none'; });
+        return;
+    }
+    rings.forEach((el, i) => {
+        animate(el,
+            { transform: ['scale(1)', 'scale(3.4)'], opacity: [0.55, 0.06, 0] },
+            { duration: 4.8, ease: 'easeOut', repeat: Infinity, delay: i * 1.6 });
+    });
+}
+
 window.AM2 = {
-    enterOnce, countTo, revealOnScroll, filtered, toast,
+    enterOnce, countTo, revealOnScroll, filtered, toast, emit,
     prefersReducedMotion, move, T, EASE, STAGGER,
 };
