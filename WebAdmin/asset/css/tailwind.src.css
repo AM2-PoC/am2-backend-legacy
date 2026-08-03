@@ -269,9 +269,28 @@
  * one above it. */
 .am2-nav-child { padding-inline-start: 1.25rem; }
 
-/* Preline ships its sidebar with `transition-all`; these are the properties
- * that actually change, so nothing else is dragged into the transition. */
-#am2-sidebar { transition-property: transform, width; }
+/*
+ * No transition below lg, and this is load-bearing rather than cosmetic.
+ *
+ * Preline destroys an overlay's backdrop only after the overlay's own
+ * transition ends, and its helper waits whenever transition-property is
+ * anything but `none`. The drawer transitioned a property that does not change
+ * when it opens or closes, so the wait never ended: `hidden` was never
+ * restored, destroyBackdrop() was never reached, and a full-screen backdrop
+ * stayed over the page at full opacity swallowing every click.
+ *
+ * From lg up the sidebar is a static column that Preline never opens or
+ * closes, so the rail can transition its width freely.
+ */
+#am2-sidebar { transition-property: none; }
+
+@media (min-width: 1024px) {
+    #am2-sidebar {
+        transition-property: width;
+        transition-duration: var(--duration-drawer);
+        transition-timing-function: var(--ease-enter);
+    }
+}
 
 /*
  * The login brand panel. It was bg-slate-950 whatever the theme, so light mode

@@ -176,8 +176,14 @@ describe('a form is not an authorization', () => {
             'channels[]': [CH_A],
             default_channel: CH_A,
         });
+        // Reports both states on failure. This assertion has failed
+        // intermittently, roughly one run in five; one cause was found and
+        // fixed (a cleanup hook in this file clearing a unit another file was
+        // using) and whatever remains has not reproduced since. Until it does,
+        // the message has to carry enough to identify it.
         assert.deepStrictEqual(membership(OTHER_TENANT_UNIT), before,
-            'another tenant\'s unit must be untouched');
+            `another tenant's unit must be untouched. before=${JSON.stringify(before)} `
+            + `after=${JSON.stringify(membership(OTHER_TENANT_UNIT))}`);
     });
 
     test('a branch admin cannot grant a channel it does not hold', async () => {

@@ -112,7 +112,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
               -translate-x-full lg:translate-x-0 lg:block hidden
               fixed inset-y-0 start-0 z-60 flex w-[272px] flex-col
               border-e border-edge bg-card
-              transition-[transform,width] duration-[var(--duration-drawer)] ease-enter
               <?= $rail ? 'lg:w-[72px]' : 'lg:w-[272px]' ?>">
 
     <!-- Brand. In the rail only the mark survives; the wordmark is the first
@@ -127,17 +126,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <?= e('brand.tagline') ?>
             </p>
         </div>
-        <!-- Collapse sits with the thing it collapses. Icon only: a label
-             here would be the first casualty of the rail it operates. -->
-        <button type="button" id="am2-rail-toggle"
-                class="hidden h-11 w-11 shrink-0 place-items-center rounded-control
-                       text-ink-subtle transition-colors duration-[var(--duration-micro)]
-                       hover:bg-card-muted hover:text-ink lg:grid"
-                aria-controls="am2-sidebar" aria-expanded="<?= $rail ? 'false' : 'true' ?>"
-                aria-label="<?= e('nav.collapse') ?>" title="<?= e('nav.collapse') ?>">
-            <span id="am2-rail-icon"><?= am2_icon($rail ? 'expand' : 'collapse', 'h-4 w-4') ?></span>
-        </button>
-
         <button type="button" data-hs-overlay="#am2-sidebar"
                 class="grid h-11 w-11 place-items-center rounded-control text-ink-subtle
                        hover:bg-card-muted hover:text-ink lg:hidden"
@@ -235,12 +223,28 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 
     <header class="sticky top-0 z-40 border-b border-edge bg-card/90 backdrop-blur-md">
         <div class="flex h-16 items-center gap-3 px-4 lg:px-6">
+            <!--
+                One control in one place: left of the page title, at every
+                width, with the same icon. Below lg it opens the drawer through
+                Preline's own trigger; from lg up it collapses the rail. Two
+                elements because the drawer must be opened by Preline rather
+                than from script.
+            -->
             <button type="button" data-hs-overlay="#am2-sidebar"
-                    class="grid h-11 w-11 place-items-center rounded-control text-ink-muted
+                    class="grid h-11 w-11 shrink-0 place-items-center rounded-control text-ink-muted
                            transition-colors duration-[var(--duration-micro)]
                            hover:bg-card-muted hover:text-ink lg:hidden"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-sidebar"
-                    aria-label="<?= e('nav.open_menu') ?>"><?= am2_icon('menu') ?></button>
+                    aria-label="<?= e('nav.open_menu') ?>"><?= am2_icon('collapse', 'h-[18px] w-[18px]') ?></button>
+
+            <button type="button" id="am2-rail-toggle"
+                    class="hidden h-11 w-11 shrink-0 place-items-center rounded-control text-ink-muted
+                           transition-colors duration-[var(--duration-micro)]
+                           hover:bg-card-muted hover:text-ink lg:grid"
+                    aria-controls="am2-sidebar" aria-expanded="<?= $rail ? 'false' : 'true' ?>"
+                    aria-label="<?= e('nav.collapse') ?>" title="<?= e('nav.collapse') ?>">
+                <span id="am2-rail-icon"><?= am2_icon($rail ? 'expand' : 'collapse') ?></span>
+            </button>
 
             <div class="min-w-0 flex-1">
                 <h1 class="truncate text-base font-semibold tracking-tight text-ink">
@@ -341,6 +345,13 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                                                  : 'border-edge text-ink-subtle!' ?>"><?= strtoupper($loc) ?></a>
                         <?php endforeach; ?>
                     </div>
+                    <a href="settings.php" role="menuitem"
+                       class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
+                              no-underline! text-ink-muted! transition-colors
+                              duration-[var(--duration-micro)] hover:bg-card-muted hover:text-ink!">
+                        <?= am2_icon('sliders', 'h-4 w-4') ?><span><?= e('nav.settings') ?></span>
+                    </a>
+                    <div class="my-1 h-px bg-edge"></div>
                     <a href="logout.php" role="menuitem"
                        class="flex h-11 w-full items-center gap-3 rounded-control px-2.5 text-sm
                               no-underline! text-bad! transition-colors duration-[var(--duration-micro)]
