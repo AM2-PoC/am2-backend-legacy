@@ -118,39 +118,26 @@ elseif ($method == 'POST') {
             $stmtUser->execute([$user_id]);
             $target_name = $stmtUser->fetchColumn() ?: "ID: $user_id";
 
-            $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$user_id]);
-
-            $logChannels = [];
+            // The same call the panel makes, so the default channel and each
+            // permission are decided in one place rather than two that drifted.
+            $result = am2_set_user_channels(
+                $pdo, (string) $user_id, $selected_channels, $default_channel_id, $permissions_input
+            );
 
             if (!empty($selected_channels)) {
-                if (!$default_channel_id || !in_array($default_channel_id, $selected_channels)) {
-                    $default_channel_id = $selected_channels[0];
-                }
-
-                $stmtIns = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, ?)");
                 $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
-
+                $logChannels = [];
                 foreach ($selected_channels as $ch_id) {
-                    $is_default = ($ch_id == $default_channel_id);
-                    $perm = ($permissions_input[$ch_id] ?? '') === 'RX' ? 'RX' : 'FULL DUPLEX';
-
-                    $stmtIns->execute([$user_id, $ch_id, $is_default ? 'true' : 'false', $perm]);
-
-                    if ($is_default) {
-                        $pdo->prepare("UPDATE public.users SET last_channel_id = ? WHERE id = ?")->execute([$ch_id, $user_id]);
-                    }
-
                     $stmtChName->execute([$ch_id]);
                     $logChannels[] = [
                         'name'    => (string) $stmtChName->fetchColumn(),
-                        'default' => (bool) $is_default,
-                        'perm'    => $perm,
+                        'default' => ((string) $ch_id === (string) $result['default']),
+                        'perm'    => $result['permissions'][(string) $ch_id] ?? 'FULL DUPLEX',
                     ];
                 }
                 $logCode   = 'access.update';
                 $logParams = ['name' => $target_name, 'channels' => $logChannels, 'via' => 'mobile'];
             } else {
-                $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$user_id]);
                 $logCode   = 'access.revoke';
                 $logParams = ['name' => $target_name, 'via' => 'mobile'];
             }
