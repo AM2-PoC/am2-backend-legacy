@@ -1,0 +1,115 @@
+#
+# Bring up AM2 without a server: Postgres, Redis, the PHP panel and the
+# WebSocket relay, seeded with synthetic sample data. Never a copy of
+# anything real -- see infra/docker/seed/02-seed.sql for exactly what is in
+# it, and docs/how-to/run-locally-with-docker.md for how to use it.
+#
+# This does not replace staging. Local answers "does the code work"; staging
+# answers "does it work in the real conditions" -- the Cloudflare cache, the
+# proxy-built X-Forwarded-For, OPcache, TLS, real data volume, a real
+# handset. Every one of those has produced a real defect during this
+# project's work and none of them reproduce here.
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up --build
+#   open http://localhost:8080, sign in as demo_super / devpassword123
+#
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: am2
+      POSTGRES_USER: am2
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-am2devpass}
+    volumes:
+      - am2_db_data:/var/lib/postgresql/data
+      # Postgres only runs these on the very first start, when the data
+      # directory is empty -- so re-seeding means `docker compose down -v`
+      # first, not editing these files and restarting.
+      - ./infra/docker/seed:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U am2 -d am2"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  relay:
+    build:
+      context: .
+      dockerfile: infra/docker/relay.Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DB_USER: am2
+      DB_HOST: db
+      DB_NAME: am2
+      DB_PASSWORD: ${DB_PASSWORD:-am2devpass}
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379
+      AM2_API_KEY: ${AM2_API_KEY:-dev-local-key}
+      AM2_API_AUTH_MODE: log
+      AM2_CORS_ORIGINS: http://localhost:${WEBADMIN_PORT:-8080}
+    volumes:
+      # The source is live-editable; node_modules is not shared with the
+      # host, so an image built for Linux/arm64 or amd64 never collides with
+      # whatever the host's own npm install produced.
+      - ./server:/app
+      - am2_relay_node_modules:/app/node_modules
+      - am2_relay_update:/app/update
+    ports:
+      - "${RELAY_PORT:-5000}:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  webadmin:
+    build:
+      context: .
+      dockerfile: infra/docker/webadmin.Dockerfile
+    environment:
+      AM2_DB_HOST: db
+      AM2_DB_PORT: 5432
+      AM2_DB_NAME: am2
+      AM2_DB_USER: am2
+      AM2_DB_PASSWORD: ${DB_PASSWORD:-am2devpass}
+      AM2_TIMEZONE: Asia/Jakarta
+      AM2_NODE_URL: http://relay:5000
+      AM2_API_KEY: ${AM2_API_KEY:-dev-local-key}
+      AM2_API_AUTH_MODE: log
+      AM2_THROTTLE_DIR: /tmp/am2-login-throttle
+    volumes:
+      - ./WebAdmin:/var/www/html
+      - am2_webadmin_update:/var/www/html/update
+    ports:
+      - "${WEBADMIN_PORT:-8080}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+
+volumes:
+  am2_db_data:
+  am2_relay_node_modules:
+  am2_relay_update:
+  am2_webadmin_update:
