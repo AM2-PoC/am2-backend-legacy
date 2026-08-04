@@ -159,3 +159,45 @@ describe('settings.php keeps the ids its script writes into', () => {
             'a file input was replaced by a drop zone');
     });
 });
+
+/*
+ * Alpine is gone.
+ *
+ * It came out one page at a time, and each page that landed left the runtime
+ * loading for the ones that had not -- so "no Alpine on this page" was true
+ * long before "no Alpine" was. This is the assertion that the last of it left:
+ * no directive in any template, no gate in the shell, no file to load.
+ */
+describe('no Alpine residue', () => {
+    const pages = fs.readdirSync(SRC)
+        .filter((f) => f.endsWith('.php'))
+        .concat(fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`)
+            .filter((f) => f.endsWith('.php')));
+
+    test('no template carries an Alpine directive', () => {
+        // Comments stripped first: a note about why Alpine left is not Alpine,
+        // and a guard that trips on its own explanation is one people learn to
+        // route around.
+        const bad = [];
+        for (const page of pages) {
+            const code = readSrc(page)
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/^\s*\/\/.*$/gm, '');
+            if (/\sx-(data|show|model|text|cloak|transition)[=\s>]|\s@click[=.]|\s:class=/.test(code)) {
+                bad.push(page);
+            }
+        }
+        assert.deepEqual(bad, [], `Alpine markup came back in: ${bad.join(', ')}`);
+    });
+
+    test('the shell no longer gates on $pageUsesAlpine', () => {
+        assert.ok(!readSrc('partials/shell_end.php').includes('pageUsesAlpine'),
+            'the gate is back, so some page is asking for the runtime again');
+    });
+
+    test('the runtime is not shipped', () => {
+        assert.ok(!fs.existsSync(`${SRC}/asset/js/alpine.min.js`),
+            'alpine.min.js is being served again');
+    });
+});
