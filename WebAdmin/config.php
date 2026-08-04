@@ -169,13 +169,6 @@ function am2_api_identity(): array
     ];
 }
 
-/** True when the caller is a superadmin, as established by am2_api_identity(). */
-function am2_api_is_super(): bool
-{
-    [, $role] = am2_api_identity();
-    return strtolower($role) === 'superadmin';
-}
-
 /**
  * Stop a caller that is not a superadmin. Returns true when the response has
  * been written and the endpoint must exit.

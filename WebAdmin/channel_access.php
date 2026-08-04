@@ -270,19 +270,6 @@ function am2_set_channel_members(
 }
 
 /**
- * Refuse ids this admin does not own. Returns the offending id, or null.
- */
-function am2_first_foreign_user(PDO $pdo, $adminId, $adminRole, array $userIds): ?string
-{
-    foreach ($userIds as $uid) {
-        if (!am2_admin_owns_user($pdo, $adminId, $adminRole, (string) $uid)) {
-            return (string) $uid;
-        }
-    }
-    return null;
-}
-
-/**
  * The same, for channels. `channels` has no admin_id: an admin may act on a
  * channel it created, or one delegated to it through admin_managed_channels,
  * which is exactly the pair of conditions channels.php lists the page with.

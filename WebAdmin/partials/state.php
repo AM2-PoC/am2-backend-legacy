@@ -49,27 +49,3 @@ function am2_state(string $variant, string $title, string $body = '', ?string $a
     return $html . '</div>';
 }
 
-/**
- * Rows the same shape as the ones being fetched.
- *
- * A spinner in the middle of a table tells the reader that something is
- * happening; it does not tell them what is coming. These do.
- */
-function am2_skeleton_rows(int $rows = 5, int $cols = 4): string
-{
-    $html = '<tbody aria-hidden="true">';
-    for ($r = 0; $r < $rows; $r++) {
-        $html .= '<tr class="border-b border-edge">';
-        for ($c = 0; $c < $cols; $c++) {
-            // Uneven widths: a column of identical bars reads as a pattern
-            // rather than as text that has not arrived.
-            $w = [70, 45, 85, 55, 60][($r + $c) % 5];
-            $html .= '<td class="px-4 py-3 lg:px-5">'
-                   . '<span class="am2-skeleton block h-3" style="width:' . $w . '%"></span>'
-                   . '</td>';
-        }
-        $html .= '</tr>';
-    }
-    return $html . '</tbody>';
-}
-
