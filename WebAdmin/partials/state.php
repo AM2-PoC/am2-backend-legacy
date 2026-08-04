@@ -73,12 +73,3 @@ function am2_skeleton_rows(int $rows = 5, int $cols = 4): string
     return $html . '</tbody>';
 }
 
-/** A retry button that re-runs an Alpine method. */
-function am2_retry_button(string $call): string
-{
-    return '<button type="button" @click="' . htmlspecialchars($call, ENT_QUOTES) . '"'
-         . ' class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px]'
-         . ' uppercase tracking-[0.15em] text-ink-muted transition-colors duration-[var(--duration-micro)]'
-         . ' hover:border-brand hover:text-brand">'
-         . e('common.retry') . '</button>';
-}
