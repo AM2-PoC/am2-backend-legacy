@@ -111,21 +111,20 @@ elseif ($method == 'POST') {
         $channels = array_unique(array_filter($channels));
 
         try {
-            $pdo->beginTransaction();
-            $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$u_id]);
-
-            if (!empty($channels)) {
-                $stmt = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, 'FULL DUPLEX')");
-                foreach ($channels as $idx => $ch_id) {
-                    $is_default = ($idx === 0);
-                    $stmt->execute([$u_id, $ch_id, $is_default ? 'true' : 'false']);
-                    if ($is_default) {
-                        $pdo->prepare("UPDATE public.users SET last_channel_id = ? WHERE id = ?")->execute([$ch_id, $u_id]);
-                    }
-                }
-            } else {
-                $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$u_id]);
+            // A form is not an authorization: the ids arrive over POST, and this
+            // path never checked them against who is asking. The panel has.
+            if (am2_first_foreign_channel($pdo, $admin_id, $admin_role, $channels) !== null) {
+                echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+                exit;
             }
+
+            $pdo->beginTransaction();
+
+            // The same call the panel makes. What it replaces deleted every
+            // membership and rebuilt it as FULL DUPLEX with the first entry as
+            // default -- so re-saving a list from the app reset every
+            // permission and moved where the unit comes up.
+            am2_set_user_channels($pdo, (string) $u_id, $channels);
 
             $pdo->commit();
             syncUserChannels($u_id);

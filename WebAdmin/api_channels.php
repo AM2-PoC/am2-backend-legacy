@@ -114,17 +114,37 @@ elseif ($method == 'POST') {
         $selected_users = json_decode($_POST['users'] ?? '[]', true);
         try {
             $pdo->beginTransaction();
-            if ($admin_role === 'superadmin') {
-                $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ?")->execute([$ch_id]);
-            } else {
-                $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ? AND user_id IN (SELECT id FROM public.users WHERE admin_id = ?)")->execute([$ch_id, $admin_id]);
+
+            // Only the units this admin owns may be added or dropped; a shared
+            // channel keeps another tenant's units on it either way.
+            $scope = null;
+            if ($admin_role !== 'superadmin') {
+                $stmtScope = $pdo->prepare("SELECT id FROM public.users WHERE admin_id = ?");
+                $stmtScope->execute([$admin_id]);
+                $scope = array_map('strval', array_column($stmtScope->fetchAll(), 'id'));
+
+                if (array_diff(array_map('strval', $selected_users), $scope)) {
+                    throw new RuntimeException('Akses ditolak');
+                }
             }
-            if (!empty($selected_users)) {
-                $stmt_ins = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, 'false', 'FULL DUPLEX')");
-                foreach ($selected_users as $u_id) { $stmt_ins->execute([$u_id, $ch_id]); }
-            }
+
+            $stmtOld = $pdo->prepare("SELECT user_id FROM public.user_channels WHERE channel_id = ?");
+            $stmtOld->execute([$ch_id]);
+            $oldMembers = $stmtOld->fetchAll(PDO::FETCH_COLUMN);
+
+            // The same call the panel makes. What it replaces wrote
+            // is_default='false' and 'FULL DUPLEX' for every member, so editing
+            // a channel from the app stripped the default off every unit on it
+            // and handed transmit rights to receive-only ones.
+            am2_set_channel_members($pdo, (string) $ch_id, $selected_users, $scope);
+
             $pdo->commit();
-            foreach ($selected_users as $uid) { syncUserChannels($uid); }
+
+            // Everyone whose membership could have moved, not just the ones
+            // that stayed: a unit dropped from the channel needs the news too.
+            foreach (array_unique(array_merge($oldMembers, $selected_users)) as $uid) {
+                syncUserChannels($uid);
+            }
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
