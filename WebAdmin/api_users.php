@@ -98,20 +98,12 @@ elseif ($method == 'POST') {
         try {
             $pdo->beginTransaction();
             if ($action == 'add') {
-                $pass_hash = password_hash($password, PASSWORD_BCRYPT);
-                $stmt = $pdo->prepare("INSERT INTO public.users (id, name, password, role, status, admin_id, created_at, updated_at) VALUES (?, ?, ?, 'user', 'offline', ?, NOW(), NOW())");
-                $stmt->execute([$id, $name, $pass_hash, $admin_id]);
-
-                $stmt_p = $pdo->prepare("INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, duplex_mode, updated_at) VALUES (?, false, false, false, 'HALF DUPLEX', NOW())");
-                $stmt_p->execute([$id]);
+                // The same call the panel makes. This copy never wrote
+                // created_by, so a unit registered from the app was attributed
+                // to nobody at all.
+                am2_create_user($pdo, $id, $name, $password, $admin_id);
             } else {
-                $sql = "UPDATE public.users SET name = ?, updated_at = NOW() WHERE id = ?";
-                $params = [$name, $id];
-                if (!empty($password)) {
-                    $sql = "UPDATE public.users SET name = ?, password = ?, updated_at = NOW() WHERE id = ?";
-                    $params = [$name, password_hash($password, PASSWORD_BCRYPT), $id];
-                }
-                $pdo->prepare($sql)->execute($params);
+                am2_update_user($pdo, $id, $name, (string) $password, $admin_id);
             }
 
             // The panel has always recorded these. This path did not, so a unit
@@ -226,9 +218,21 @@ elseif ($method == 'POST') {
         }
 
         try {
-            $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
+            // Was a bare DELETE with no transaction and no log. The trigger on
+            // public.users reads created_by to decide whose activity a removal
+            // was, so without the line am2_delete_user() writes first, the
+            // record named whoever created the unit rather than whoever
+            // removed it.
+            $pdo->beginTransaction();
+            $oldName = am2_delete_user($pdo, (string) $id, $admin_id);
+            am2_log($pdo, $admin_id, 'DELETE_USER', 'user.delete',
+                    ['name' => $oldName, 'id' => $id, 'via' => 'mobile'], 'users', (string) $id);
+            $pdo->commit();
             echo json_encode(['success' => true]);
-        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]); }
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
+        }
     }
 }
 ?>
