@@ -27,11 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
     try {
         $pdo->beginTransaction();
         
-        $stmt = $pdo->prepare("INSERT INTO public.users (id, name, password, role, status, admin_id, created_by, created_at, updated_at) VALUES (?, ?, ?, 'user', 'offline', ?, ?, NOW(), NOW())");
-        $stmt->execute([$id, $name, $pass, $current_admin_id, $current_admin_id]);
-        
-        $stmt_p = $pdo->prepare("INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, updated_at) VALUES (?, false, false, false, NOW())");
-        $stmt_p->execute([$id]);
+        am2_create_user($pdo, $id, $name, $_POST['password'], $current_admin_id);
 
         am2_log($pdo, $current_admin_id, 'CREATE_USER', 'user.create',
                 ['name' => $name, 'id' => $id], 'users', $id);
@@ -131,14 +127,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
     $edit_name = strtoupper(trim($_POST['edit_name']));
     try {
         $pdo->beginTransaction();
-        if (!empty($_POST['edit_password'])) {
-            $hashed = password_hash($_POST['edit_password'], PASSWORD_BCRYPT);
-            $pdo->prepare("UPDATE public.users SET name = ?, password = ?, created_by = ?, updated_at = NOW() WHERE id = ?")->execute([$edit_name, $hashed, $current_admin_id, $edit_id]);
-            $logCode = 'user.password';
-        } else {
-            $pdo->prepare("UPDATE public.users SET name = ?, created_by = ?, updated_at = NOW() WHERE id = ?")->execute([$edit_name, $current_admin_id, $edit_id]);
-            $logCode = 'user.rename';
-        }
+        $newPassword = (string) ($_POST['edit_password'] ?? '');
+        am2_update_user($pdo, (string) $edit_id, $edit_name, $newPassword, $current_admin_id);
+        $logCode = $newPassword === '' ? 'user.rename' : 'user.password';
 
         am2_log($pdo, $current_admin_id, 'UPDATE_USER', $logCode,
                 ['id' => $edit_id, 'name' => $edit_name], 'users', $edit_id);
@@ -161,12 +152,7 @@ if (isset($_POST['delete_user'])) {
     $del_id = $_POST['delete_user'];
     try {
         $pdo->beginTransaction();
-        $stmtN = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
-        $stmtN->execute([$del_id]);
-        $old_name = $stmtN->fetchColumn();
-
-        $pdo->prepare("UPDATE public.users SET created_by = ? WHERE id = ?")->execute([$current_admin_id, $del_id]);
-        $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$del_id]);
+        $old_name = am2_delete_user($pdo, (string) $del_id, $current_admin_id);
 
         am2_log($pdo, $current_admin_id, 'DELETE_USER', 'user.delete',
                 ['name' => $old_name, 'id' => $del_id], 'users', $del_id);
