@@ -173,7 +173,11 @@
 
     --duration-micro: 140ms;   /* hover, focus, checked        */
     --duration-pop: 160ms;     /* dropdown, popover, tooltip   */
-    --duration-modal: 180ms;   /* dialog, command palette      */
+    /* No --duration-modal: Motion owns the dialogue timing now (T.modal
+       in am2-ui.js). It was read only by the x-transition attributes on
+       the pages that have since been rebuilt, and Tailwind drops a theme
+       variable nothing references -- so the declaration survived as a
+       second copy of a number that no longer had a reader. */
     --duration-drawer: 220ms;  /* sidebar rail, mobile drawer  */
     --duration-page: 150ms;    /* full-page view transition    */
     --duration-exit: 120ms;

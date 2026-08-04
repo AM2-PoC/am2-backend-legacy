@@ -461,8 +461,11 @@ describe('motion rules that decay quietly', () => {
 
     test('the built stylesheet carries the motion tokens', () => {
         const css = fs.readFileSync(`${SRC}/asset/css/am2-tailwind.css`, 'utf8');
+        // --duration-modal is deliberately absent: Motion owns the dialogue
+        // timing, and the token's only readers were the x-transition
+        // attributes on the pages that have since been rebuilt.
         for (const token of ['--ease-enter', '--ease-exit', '--duration-drawer',
-                             '--duration-modal', 'am2-skeleton', 'prefers-reduced-motion']) {
+                             '--duration-micro', 'am2-skeleton', 'prefers-reduced-motion']) {
             assert.ok(css.includes(token), `the build dropped ${token}`);
         }
     });
