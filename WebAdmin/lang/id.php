@@ -370,4 +370,6 @@ return [
     'usr.bulk_done'              => ':ok berhasil, :failed gagal',
     'tbl.select'                => 'Pilih',
     'tbl.actions'               => 'Aksi',
+    'usr.no_channel_short'       => 'Tanpa channel',
+    'usr.open_detail'            => 'Lihat detail unit :unit',
 ];
