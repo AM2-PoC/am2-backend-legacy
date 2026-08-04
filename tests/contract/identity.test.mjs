@@ -127,7 +127,7 @@ describe('KNOWN OPEN — closes when AM2_API_AUTH_MODE=enforce', () => {
                 'in enforce mode an anonymous caller must be refused');
         } else {
             assert.strictEqual(res.status, 200,
-                'log mode is deliberately permissive; this is the gap R3 documented');
+                'log mode is deliberately permissive; this is the documented gap');
         }
     });
 });

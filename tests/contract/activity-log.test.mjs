@@ -1,4 +1,4 @@
-// The activity log, after R8: written as an event, rendered as a sentence.
+// The activity log: written as an event, rendered as a sentence.
 //
 // The failure this file exists for is quiet. Every entry used to be one
 // Indonesian string built where it was written, so the Logs page could only
