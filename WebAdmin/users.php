@@ -475,7 +475,7 @@ include 'partials/shell.php';
                         </td>
 
                         <td data-cell="unit" data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle">
-                            <span class="flex items-start gap-2.5">
+                            <span class="flex items-start gap-2.5 lg:gap-2.5">
                                 <span data-presence
                                       class="mt-1.5 h-2 w-2 shrink-0 rounded-full <?= $online ? 'bg-ok' : 'bg-edge-strong' ?>"
                                       aria-hidden="true"></span>
@@ -487,12 +487,52 @@ include 'partials/shell.php';
                                                      text-[9px] uppercase tracking-[0.1em] text-bad">TX</span>
                                     </span>
                                     <span class="block truncate text-sm text-ink-muted"><?= htmlspecialchars((string) $u['name']) ?></span>
-                                    <span data-seen class="block font-mono text-[10px] text-ink-subtle">
+                                    <!-- Desktop: the freshness, because channel
+                                         has a column of its own. -->
+                                    <span data-seen class="hidden font-mono text-[10px] text-ink-subtle lg:block">
                                         <?= $online
                                             ? e('usr.online_now')
                                             : ($seen ? e('usr.last_seen', ['when' => date('d M H:i', $seen)]) : '') ?>
                                     </span>
+
+                                    <!--
+                                        Narrow: one line, and a fault outranks a
+                                        fact on it. A unit with no default
+                                        channel cannot talk to anyone, so it says
+                                        that rather than saying nothing where the
+                                        channel would have been.
+                                    -->
+                                    <span data-summary class="block text-xs lg:hidden">
+                                        <?php if (!$primary): ?>
+                                            <span class="text-warn"><?= e('usr.no_channel_short') ?></span>
+                                        <?php else: ?>
+                                            <span class="text-ink-muted"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                        <?php endif; ?>
+                                        <span class="text-ink-subtle"> ·
+                                            <?= $online
+                                                ? e('usr.online_now')
+                                                : ($seen ? htmlspecialchars(date('d M H:i', $seen)) : '—') ?>
+                                        </span>
+                                    </span>
                                 </span>
+
+                                <!-- Everything else about this unit is one tap
+                                     away, and the chevron is what says so. -->
+                                <button type="button" data-open-sheet
+                                        data-hs-overlay="#am2-unit-sheet"
+                                        data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
+                                        aria-haspopup="dialog"
+                                        aria-label="<?= e('usr.open_detail', ['unit' => $uid]) ?>"
+                                        class="ms-auto grid h-9 w-7 shrink-0 place-items-center rounded-control
+                                               text-ink-subtle transition-colors
+                                               duration-[var(--duration-micro)] hover:text-brand
+                                               focus:outline-none focus-visible:ring-2
+                                               focus-visible:ring-brand/60 lg:hidden">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                                         class="h-4 w-4" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                                </button>
                             </span>
                         </td>
 
@@ -831,6 +871,52 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     </div>
 </div>
 
+<!--
+    The unit sheet.
+
+    It holds no copy of anything: on open, the row's own cells are moved into
+    it and moved back when it closes. One set of toggles, one set of handlers,
+    and a control that works in the sheet is the control that works in the
+    table -- the alternative was rendering every attribute twice for twenty
+    rows and hoping the two stayed in step.
+-->
+<div id="am2-unit-sheet" role="dialog" tabindex="-1" aria-labelledby="am2-sheet-label"
+     class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
+            bg-slate-950/50 backdrop-blur-sm lg:hidden">
+    <div data-am2-panel
+         class="am2-surface fixed inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto
+                rounded-t-card border-b-0">
+        <header class="flex items-start justify-between gap-3 border-b border-edge px-5 py-4">
+            <span class="min-w-0">
+                <span id="am2-sheet-label" data-sheet-unit
+                      class="block truncate font-mono text-base font-semibold text-ink"></span>
+                <span data-sheet-name class="block truncate text-sm text-ink-muted"></span>
+            </span>
+            <button type="button" data-hs-overlay="#am2-unit-sheet"
+                    aria-label="<?= e('ch.cancel') ?>"
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-control text-ink-subtle
+                           transition-colors duration-[var(--duration-micro)] hover:text-ink">
+                <?= am2_icon('close', 'h-4 w-4') ?>
+            </button>
+        </header>
+
+        <div class="divide-y divide-edge">
+            <?php foreach ([['channel', 'usr.channel'], ['duplex', 'usr.duplex'],
+                            ['features', 'usr.features']] as [$slot, $label]): ?>
+                <div class="flex items-baseline gap-4 px-5 py-3.5">
+                    <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                                 text-ink-subtle"><?= e($label) ?></span>
+                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap gap-1.5"></span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <footer data-slot="actions"
+                class="flex flex-wrap items-center justify-end gap-2 border-t border-edge
+                       bg-card-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"></footer>
+    </div>
+</div>
+
 <?php include 'partials/shell_end.php'; ?>
 
 <script>
@@ -983,6 +1069,47 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         form.submit();
         form.remove();
     }
+
+    /*
+     * The unit sheet borrows the row's own cells rather than copying them.
+     *
+     * A copy would mean twenty rows rendering every toggle twice and two sets
+     * of handlers that have to agree forever. Moving the nodes means the
+     * control in the sheet is the control in the table: the same element, the
+     * same state, the same listener. They go home when the sheet closes.
+     */
+    const sheet = $('am2-unit-sheet');
+    const SLOTS = ['channel', 'duplex', 'features', 'actions'];
+    let borrowed = [];
+
+    function returnBorrowed() {
+        for (const { node, home } of borrowed) home.appendChild(node);
+        borrowed = [];
+    }
+
+    document.querySelectorAll('[data-open-sheet]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!sheet) return;
+            returnBorrowed();
+
+            const tr = btn.closest('tr[data-row-id]');
+            sheet.querySelector('[data-sheet-unit]').textContent = btn.dataset.unit;
+            sheet.querySelector('[data-sheet-name]').textContent = btn.dataset.name;
+
+            for (const name of SLOTS) {
+                const td = tr.querySelector(`[data-cell="${name}"]`);
+                const slot = sheet.querySelector(`[data-slot="${name}"]`);
+                if (!td || !slot) continue;
+                while (td.firstChild) {
+                    borrowed.push({ node: td.firstChild, home: td });
+                    slot.appendChild(td.firstChild);
+                }
+            }
+        });
+    });
+
+    // Preline owns the closing; this only puts the furniture back.
+    sheet?.addEventListener('close.hs.overlay', returnBorrowed);
 
     /**
      * The roster is live. The same endpoint the shell polls and the map reads,

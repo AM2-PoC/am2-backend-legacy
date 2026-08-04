@@ -370,4 +370,6 @@ return [
     'usr.bulk_done'              => ':ok succeeded, :failed failed',
     'tbl.select'                => 'Select',
     'tbl.actions'               => 'Actions',
+    'usr.no_channel_short'       => 'No channel',
+    'usr.open_detail'            => 'Open details for unit :unit',
 ];
