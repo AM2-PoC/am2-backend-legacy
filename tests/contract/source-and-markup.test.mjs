@@ -336,7 +336,7 @@ describe('alpine expressions in attributes', () => {
     // This guard has caught the json_encode-in-an-attribute bug three times, so
     // it follows the migration rather than being pinned to one page. It asserts
     // over whichever pages still render an Alpine expression into an attribute,
-    // and once none do -- which is the end state R7 is walking towards -- it
+    // and once none do -- which is the end state this work walks towards -- it
     // asserts that instead, so it never quietly passes on an empty set.
     const ALPINE_ATTR = /(?:x-text|x-show|:class|:disabled)="([^"]*)"/g;
 

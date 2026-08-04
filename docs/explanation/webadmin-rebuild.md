@@ -1,4 +1,4 @@
-# R7 — WebAdmin di atas Preline UI, Motion, dan Tailwind v4
+# WebAdmin di atas Preline UI, Motion, dan Tailwind v4
 
 Status: **selesai**. Alpine, Bootstrap, dan seluruh referensi CDN sudah tidak ada
 di WebAdmin. Enam halaman panel berjalan di atas satu shell, satu bundle, dan
@@ -14,12 +14,12 @@ menjadi risiko. Angka di sini hasil pengukuran terhadap staging pada 4 Agustus
 
 | Halaman | Sebelum | Sesudah |
 |---|---|---|
-| `dashboard.php` | shell lama | shell R7 |
+| `dashboard.php` | shell lama | shell baru |
 | `settings.php` | Alpine | Preline + Motion |
 | `users.php` | Alpine, render seluruh roster | rangka tabel, paginasi server |
 | `channels.php` | Alpine, filter di browser | rangka tabel, paginasi server |
 | `user_access.php` | Alpine, agregat tanpa paginasi | rangka tabel, dua query |
-| `admin_panel.php` | Bootstrap + Font Awesome, layout sendiri | shell R7 |
+| `admin_panel.php` | Bootstrap + Font Awesome, layout sendiri | shell baru |
 | `login.php` | — | Preline (`hs-toggle-password`) |
 
 Dihapus karena tidak dirujuk apa pun, dan di dalamnya seluruh sisa tag CDN:
@@ -169,9 +169,9 @@ sini akan lebih buruk daripada mengakui celahnya.
 
 ### Tes
 
-189 tes kontrak, 45 suite, semuanya hijau. Tumbuh dari 140 di awal R7.
+189 tes kontrak, 45 suite, semuanya hijau. Tumbuh dari 140 di awal pekerjaan ini.
 
-Guard yang ditambahkan di R7 dan sudah dibuktikan bisa merah:
+Guard yang ditambahkan bersama pekerjaan ini dan sudah dibuktikan bisa merah:
 
 - tidak ada direktif Alpine di template mana pun, tidak ada gate di shell, tidak
   ada `alpine.min.js` yang dikirim
