@@ -125,6 +125,47 @@ describe('sql injection via a column name', () => {
 });
 
 describe('authorization on the api twins', () => {
+    /*
+     * Editing a unit is the branch that sets a password, and it had no
+     * ownership check at all while delete and update_feature each had one. A
+     * branch admin could rename and reset the password of any unit in the
+     * deployment by naming its id.
+     *
+     * Recorded rather than refused, like every other tenant check here: the
+     * deployment runs with AM2_API_AUTH_MODE=log, so am2_api_authz_denied()
+     * writes the line and lets the request continue. The assertion is on the
+     * line, which is the part this file controls; the mode is an operational
+     * decision, and identity.test.mjs documents that gap.
+     */
+    test('editing another tenant\'s unit is recorded', async () => {
+        const { postForm } = await import('./helpers.mjs');
+        const before = fs.statSync('/var/log/apache2/am2_staging_error.log').size;
+
+        await postForm('/api_users.php?admin_id=6&role=admin', null, {
+            action: 'edit', id: 'CT_B1_DOES_NOT_EXIST', name: 'X', password: 'x',
+        });
+        await new Promise((r) => setTimeout(r, 300));
+
+        const after = fs.readFileSync('/var/log/apache2/am2_staging_error.log', 'utf8').slice(before);
+        assert.match(after, /reason=edit-foreign-user/,
+            'a cross-tenant edit passed without leaving a trace');
+    });
+
+    test('setting another tenant unit\'s channels is recorded', async () => {
+        const { postForm } = await import('./helpers.mjs');
+        const before = fs.statSync('/var/log/apache2/am2_staging_error.log').size;
+
+        await postForm('/api_users.php?admin_id=6&role=admin', null, {
+            action: 'save_user_channels', id: 'CT_B1_DOES_NOT_EXIST',
+            u_id: 'CT_B1_DOES_NOT_EXIST', channels: JSON.stringify([]),
+        });
+        await new Promise((r) => setTimeout(r, 300));
+
+        const after = fs.readFileSync('/var/log/apache2/am2_staging_error.log', 'utf8').slice(before);
+        assert.match(after, /reason=channels-foreign-user/,
+            'a cross-tenant membership rewrite passed without leaving a trace');
+    });
+
     test('a cross-branch mutation is at least recorded', async () => {
         const { postForm } = await import('./helpers.mjs');
         const before = fs.statSync('/var/log/apache2/am2_staging_error.log').size;
