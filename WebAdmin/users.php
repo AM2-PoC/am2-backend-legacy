@@ -33,8 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         $stmt_p = $pdo->prepare("INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, updated_at) VALUES (?, false, false, false, NOW())");
         $stmt_p->execute([$id]);
 
-        $stmtLog = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'CREATE_USER', ?, NOW())");
-        $stmtLog->execute([$current_admin_id, "Mendaftarkan user baru: $name (ID: $id)"]);
+        am2_log($pdo, $current_admin_id, 'CREATE_USER', 'user.create',
+                ['name' => $name, 'id' => $id], 'users', $id);
         
         $pdo->commit();
         $success_msg = "User $name (User: $id) berhasil didaftarkan.";
@@ -102,11 +102,14 @@ if (isset($_POST['update_feature'])) {
         $status_label = ($val === 'true') ? 'MENGAKTIFKAN' : 'MENONAKTIFKAN';
     }
 
+    // The catalog key for each switch, not its Indonesian name: the log
+    // entry is rendered in whatever language is being read, so the name of
+    // the feature has to travel as a key too.
     $feature_names = [
-        'enable_maps' => 'Fitur Lokasi/Maps',
-        'enable_p2p' => 'Fitur P2P Chat',
-        'enable_ptt_video' => 'Fitur PTT Video',
-        'duplex_mode' => 'Mode Duplex'
+        'enable_maps'      => '@log.f_maps',
+        'enable_p2p'       => '@log.f_p2p',
+        'enable_ptt_video' => '@log.f_video',
+        'duplex_mode'      => '@log.f_duplex',
     ];
 
     if (!array_key_exists($feature, $feature_names)) {
@@ -132,8 +135,19 @@ if (isset($_POST['update_feature'])) {
                            DO UPDATE SET $feature = EXCLUDED.$feature, updated_at = NOW()";
             $pdo->prepare($sql_upsert)->execute([$u_id]);
 
-            $stmtLogFeat = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'UPDATE_FEATURE', ?, NOW())");
-            $stmtLogFeat->execute([$current_admin_id, "$status_label " . $feature_names[$feature] . " untuk: $target_name ($u_id)"]);
+            // Three events wearing one name. Turning a switch on, turning it
+            // off and moving a unit between half and full duplex read as three
+            // different sentences, and only the first two are even the same
+            // shape -- the third has no on or off, it has a mode.
+            $logParams = ['name' => $target_name, 'id' => $u_id];
+            if ($feature === 'duplex_mode') {
+                $logCode = 'feature.duplex';
+                $logParams['mode'] = $val;
+            } else {
+                $logCode = ($val === 'true') ? 'feature.enable' : 'feature.disable';
+                $logParams['feature'] = $feature_names[$feature];
+            }
+            am2_log($pdo, $current_admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', $u_id);
 
             $p = $pdo->prepare("SELECT * FROM public.user_app_permissions WHERE user_id = ?");
             $p->execute([$u_id]);
@@ -165,13 +179,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         if (!empty($_POST['edit_password'])) {
             $hashed = password_hash($_POST['edit_password'], PASSWORD_BCRYPT);
             $pdo->prepare("UPDATE public.users SET name = ?, password = ?, created_by = ?, updated_at = NOW() WHERE id = ?")->execute([$edit_name, $hashed, $current_admin_id, $edit_id]);
-            $ket = "Update nama & password user: $edit_id ($edit_name)";
+            $logCode = 'user.password';
         } else {
             $pdo->prepare("UPDATE public.users SET name = ?, created_by = ?, updated_at = NOW() WHERE id = ?")->execute([$edit_name, $current_admin_id, $edit_id]);
-            $ket = "Update nama user: $edit_id ke $edit_name";
+            $logCode = 'user.rename';
         }
 
-        $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'UPDATE_USER', ?, NOW())")->execute([$current_admin_id, $ket]);
+        am2_log($pdo, $current_admin_id, 'UPDATE_USER', $logCode,
+                ['id' => $edit_id, 'name' => $edit_name], 'users', $edit_id);
 
         $pdo->commit();
         $success_msg = "Data $edit_id diperbarui.";
@@ -198,7 +213,8 @@ if (isset($_POST['delete_user'])) {
         $pdo->prepare("UPDATE public.users SET created_by = ? WHERE id = ?")->execute([$current_admin_id, $del_id]);
         $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$del_id]);
 
-        $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'DELETE_USER', ?, NOW())")->execute([$current_admin_id, "Menghapus user: $old_name ($del_id)"]);
+        am2_log($pdo, $current_admin_id, 'DELETE_USER', 'user.delete',
+                ['name' => $old_name, 'id' => $del_id], 'users', $del_id);
 
         $pdo->commit();
         // The bulk path asks over fetch and cannot follow a redirect into a

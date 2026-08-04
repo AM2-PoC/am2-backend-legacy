@@ -82,8 +82,12 @@ elseif ($method == 'POST') {
             $pdo->prepare($sqlKick)->execute([$user_id]);
 
             if ($current_admin_id) {
-                $stmtLog = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'FORCE_LOGOUT', ?, NOW())");
-                $stmtLog->execute([$current_admin_id, "Memutus paksa koneksi user: $target_name (via Mobile)"]);
+                // Same event as the panel's, with where it came from as a
+                // parameter. It used to be the string " (via Mobile)" glued
+                // onto the end of the sentence, which meant the two could not
+                // be grouped and neither could be translated.
+                am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
+                        ['name' => $target_name, 'via' => 'mobile'], 'users', (string) $user_id);
             }
 
             $pdo->commit();
@@ -116,7 +120,7 @@ elseif ($method == 'POST') {
 
             $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$user_id]);
 
-            $channel_names_added = [];
+            $logChannels = [];
 
             if (!empty($selected_channels)) {
                 if (!$default_channel_id || !in_array($default_channel_id, $selected_channels)) {
@@ -137,18 +141,23 @@ elseif ($method == 'POST') {
                     }
 
                     $stmtChName->execute([$ch_id]);
-                    $c_name = $stmtChName->fetchColumn();
-                    $channel_names_added[] = $c_name . ($is_default ? " (Utama)" : "") . " [$perm]";
+                    $logChannels[] = [
+                        'name'    => (string) $stmtChName->fetchColumn(),
+                        'default' => (bool) $is_default,
+                        'perm'    => $perm,
+                    ];
                 }
-                $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
+                $logCode   = 'access.update';
+                $logParams = ['name' => $target_name, 'channels' => $logChannels, 'via' => 'mobile'];
             } else {
                 $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$user_id]);
-                $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
+                $logCode   = 'access.revoke';
+                $logParams = ['name' => $target_name, 'via' => 'mobile'];
             }
 
             if ($current_admin_id) {
-                $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'UPDATE_ACCESS', ?, NOW())");
-                $stmtLogAccess->execute([$current_admin_id, $keterangan_log . " (via Mobile)"]);
+                am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                        'users', (string) $user_id);
             }
 
             $pdo->commit();
