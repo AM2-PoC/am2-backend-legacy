@@ -61,8 +61,12 @@ $curChip = (string) ($_GET['chip'] ?? '');
             <?php endforeach; ?>
             <span class="pointer-events-none absolute inset-y-0 start-0 grid w-10 place-items-center
                          text-ink-subtle"><?= am2_icon('search', 'h-4 w-4') ?></span>
+            <!-- A placeholder is not a label. It leaves as soon as there is
+                 anything to read, so a screen reader reaching a half-typed
+                 search finds a text box called nothing at all. -->
             <input name="search" type="search" data-table-search
                    value="<?= htmlspecialchars((string) ($_GET['search'] ?? '')) ?>"
+                   aria-label="<?= e($searchPlaceholder ?? 'search.placeholder') ?>"
                    placeholder="<?= e($searchPlaceholder ?? 'search.placeholder') ?>"
                    class="h-11 w-full rounded-control border border-edge bg-card ps-10 pe-3 text-sm
                           text-ink transition-colors duration-[var(--duration-micro)]

@@ -80,7 +80,11 @@ describe('form field names are the API', () => {
     });
 
     test('array-shaped fields keep their bracket syntax', () => {
-        assert.match(readSrc('channels.php'), /name=["']users\[\]["']/);
+        // channels.php builds its unit list in the browser, so the bracket
+        // lives in the object handed to the request rather than in a name=
+        // attribute. Same field, same PHP branch reading $_POST['users'],
+        // different end to check.
+        assert.match(readSrc('channels.php'), /['"`]users\[\]['"`]\s*:/);
         assert.match(readSrc('user_access.php'), /name=["']channels\[\]["']/);
         // permissions[<channelId>] is a keyed array, read as $permissions_input[$ch_id].
         assert.match(readSrc('user_access.php'), /name=["']permissions\[/);

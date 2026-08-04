@@ -214,6 +214,11 @@ return [
     'acc.kick_prompt' => ':who will be signed out and must sign in again.',
     'acc.bulk_done' => ':ok succeeded, :failed failed',
 
+    'set.apk_label' => 'APK file',
+
+    'ch.loading_units' => 'Loading units…',
+    'ch.units_failed' => 'Could not load the unit list. Close and open again.',
+
     'adm.heading' => 'Admin authority',
     'adm.lede' => 'Access and quota for branch admins',
     'adm.search' => 'Search usernames',
