@@ -64,12 +64,6 @@ WebAdmin/BACKUP_*.sql
 **/.idea/shelf/
 **/.idea/caches/
 **/.idea/libraries/
-.env
-.env.*
-*.env
-*.env.*
-WebAdmin/.env
-WebAdmin/.env.*
 WebAdmin/config.php.bak.*
 
 # Symlink runtime deployment (menunjuk /var/www/am2/shared, khusus host)
