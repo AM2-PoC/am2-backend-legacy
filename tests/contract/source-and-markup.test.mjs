@@ -18,7 +18,7 @@ describe('form field names are the API', () => {
     // Asserting only one end lets a rename of the other pass unnoticed.
     const submitted = {
         'users.php':        ['add_user', 'edit_user'],
-        'channels.php':     ['add_channel', 'save_channel_access', 'edit_channel'],
+        'channels.php':     ['add_channel', 'edit_channel', 'delete_channel'],
         'user_access.php':  ['update_multi_access'],
         'admin_panel.php':  ['save_admin', 'update_delegation'],
         'settings.php':     ['update_password', 'export_db', 'import_db', 'upload_apk'],
@@ -28,6 +28,11 @@ describe('form field names are the API', () => {
     // so the second end to check is the append call.
     const scripted = {
         'users.php': ['save_user_channels', 'update_feature'],
+        // The access roster left the form when the page moved onto the shared
+        // table frame: one dialogue now serves a single channel and a
+        // selection, and a selection cannot be a form submit. Same field name,
+        // same PHP branch, different end to check.
+        'channels.php': ['save_channel_access', 'export_selected'],
     };
 
     for (const [file, names] of Object.entries(submitted)) {
@@ -52,8 +57,13 @@ describe('form field names are the API', () => {
                 // helper that appends. What matters is that the literal field
                 // name still appears in the code that builds the request, so
                 // renaming one side of the pair breaks this.
+                // append(), the local add() that wraps it, or an object key
+                // handed to a helper that appends. An export answers with a
+                // file, so it is built as a real form and never touches
+                // FormData -- pinning only append() would have left that
+                // branch unpinned.
                 const built = new RegExp(
-                    `append\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
+                    `(?:append|add)\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
                 assert.ok(built,
                     `${file}: nothing posts ${n} — the branch is now unreachable`);
             }
