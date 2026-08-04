@@ -79,6 +79,22 @@ elseif ($method == 'POST') {
             exit;
         }
 
+        /*
+         * Editing had no ownership check at all.
+         *
+         * update_feature and delete each grew one; this branch never did, and
+         * it is the branch that sets a unit's password. A branch admin could
+         * rename and reset the password of any unit in the deployment,
+         * including another tenant's, by naming its id. Adding is exempt: a
+         * unit that does not exist yet cannot belong to anybody, and it is
+         * created under the caller's own admin_id below.
+         */
+        if ($action === 'edit'
+                && !am2_admin_owns_user($pdo, $admin_id, $admin_role, $id)
+                && am2_api_authz_denied('edit-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
             if ($action == 'add') {
@@ -98,6 +114,17 @@ elseif ($method == 'POST') {
                 $pdo->prepare($sql)->execute($params);
             }
 
+            // The panel has always recorded these. This path did not, so a unit
+            // created or renamed from the app left no trace at all.
+            if ($action === 'add') {
+                am2_log($pdo, $admin_id, 'CREATE_USER', 'user.create',
+                        ['name' => $name, 'id' => $id, 'via' => 'mobile'], 'users', $id);
+            } else {
+                am2_log($pdo, $admin_id, 'UPDATE_USER',
+                        empty($password) ? 'user.rename' : 'user.password',
+                        ['id' => $id, 'name' => $name, 'via' => 'mobile'], 'users', $id);
+            }
+
             $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'User berhasil ' . ($action == 'add' ? 'ditambahkan' : 'diperbarui')]);
         } catch (PDOException $e) {
@@ -109,6 +136,15 @@ elseif ($method == 'POST') {
         $u_id = $_POST['u_id'] ?? '';
         $channels = json_decode($_POST['channels'] ?? '[]', true) ?: [];
         $channels = array_unique(array_filter($channels));
+
+        // Both halves of the question. The channels were checked when this
+        // moved onto the shared writer; the unit itself still was not, so a
+        // branch admin could rewrite another tenant's membership using
+        // channels it legitimately owns.
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $u_id)
+                && am2_api_authz_denied('channels-foreign-user')) {
+            exit;
+        }
 
         try {
             // A form is not an authorization: the ids arrive over POST, and this
