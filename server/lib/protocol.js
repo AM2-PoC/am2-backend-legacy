@@ -123,21 +123,21 @@ function attachProtocol(server) {
                             const uid = String(user.id);
 
                             if (!(await bcrypt.compare(data.password?.trim() || "", user.password))) {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Password Salah" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password" } }));
                             }
 
                             const now = new Date();
                             if (user.admin_status && user.admin_status !== 'active') {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Akun Instansi Nonaktif" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency account is inactive" } }));
                             }
                             if (user.admin_expired_at && new Date(user.admin_expired_at) < now) {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Masa Aktif Instansi Habis" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency subscription has expired" } }));
                             }
 
                             if (!user.last_channel_id || !user.last_channel_slug) {
                                 return ws.send(JSON.stringify({
                                     type: 'login_error',
-                                    data: { message: "Login Gagal: Admin belum menentukan Channel Default untuk Anda." }
+                                    data: { message: "Login failed: the admin has not set a default channel for you." }
                                 }));
                             }
 
@@ -149,7 +149,7 @@ function attachProtocol(server) {
                             if (channelCheck.rows.length === 0) {
                                 return ws.send(JSON.stringify({
                                     type: 'login_error',
-                                    data: { message: "Login Gagal: Anda tidak memiliki akses ke Channel Default tersebut." }
+                                    data: { message: "Login failed: you do not have access to that default channel." }
                                 }));
                             }
 
@@ -163,7 +163,7 @@ function attachProtocol(server) {
                                 if (!isGracePeriod && user.current_device_id && user.current_device_id !== providedDeviceId) {
                                     return ws.send(JSON.stringify({
                                         type: 'login_error',
-                                        data: { message: "Akun sedang digunakan di perangkat lain. Harap logout terlebih dahulu." }
+                                        data: { message: "This account is signed in on another device. Please sign out there first." }
                                     }));
                                 }
 
@@ -180,7 +180,7 @@ function attachProtocol(server) {
                             if (pendingDisconnects.has(uid)) {
                                 clearTimeout(pendingDisconnects.get(uid));
                                 pendingDisconnects.delete(uid);
-                                console.log(`[Re-entry] User ${uid} kembali sebelum timeout.`);
+                                console.log(`[Re-entry] User ${uid} reconnected before the grace period ended.`);
                             }
 
                             ws.sessionUser = user;
@@ -216,7 +216,7 @@ function attachProtocol(server) {
                                 }
                             }));
                         } else {
-                            ws.send(JSON.stringify({ type: 'login_error', data: { message: "User Tidak Terdaftar" } }));
+                            ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered" } }));
                         }
                     } catch (err) {
                         console.error("❌ Login Error:", err.message);
@@ -315,7 +315,7 @@ function attachProtocol(server) {
                     if (ws.duplex_mode === 'HALF DUPLEX' && speakers && speakers.size > 0) {
                         return ws.send(JSON.stringify({
                             type: 'ptt_error',
-                            data: { message: "Gagal Bicara: Jalur sedang digunakan (Half Duplex)." }
+                            data: { message: "Cannot transmit: channel is busy (Half Duplex)." }
                         }));
                     }
 

@@ -67,7 +67,7 @@ function registerRoutes(app) {
                     release_notes = EXCLUDED.release_notes
             `, [version_code, version_name, force_update || false, release_notes || '']);
 
-            res.json({ success: true, message: `Versi ${version_name} berhasil didaftarkan.` });
+            res.json({ success: true, message: `Version ${version_name} registered successfully.` });
         } catch (err) {
             res.status(500).json({ success: false, error: err.message });
         }
@@ -116,7 +116,7 @@ function registerRoutes(app) {
                         if (isExpired || isInactive) {
                             ws.send(JSON.stringify({
                                 type: 'force_logout',
-                                data: { message: "Masa aktif instansi/admin telah berakhir atau dinonaktifkan." }
+                                data: { message: "The agency/admin account has expired or been deactivated." }
                             }));
                             await pool.query("UPDATE public.users SET status = 'offline', current_device_id = NULL WHERE id = $1", [uid]);
                             setTimeout(() => ws.terminate(), 500);
@@ -181,7 +181,7 @@ function registerRoutes(app) {
         try {
             await pool.query("UPDATE public.channels SET display_name = $1 WHERE id = $2", [display_name, channelId]);
             await broadcastChannelNameChange(channelId);
-            res.json({ success: true, message: "Nama channel diperbarui dan disinkronkan." });
+            res.json({ success: true, message: "Channel name updated and synced." });
         } catch (err) {
             res.status(500).json({ success: false, error: err.message });
         }
@@ -275,7 +275,7 @@ function registerRoutes(app) {
 
             await broadcastChannelUpdate(uid);
 
-            res.json({ success: true, message: "Izin berhasil diperbarui." });
+            res.json({ success: true, message: "Permission updated successfully." });
         } catch (err) {
             res.status(500).json({ success: false, error: err.message });
         }
@@ -291,15 +291,15 @@ function registerRoutes(app) {
             if (targetWs) {
                 targetWs.send(JSON.stringify({
                     type: 'force_logout',
-                    data: { message: "Sesi Anda telah diakhiri oleh administrator." }
+                    data: { message: "Your session was ended by an administrator." }
                 }));
                 setTimeout(() => {
                     targetWs.terminate();
                     activeConnections.delete(uid);
                 }, 500);
-                return res.json({ success: true, message: `User ${uid} berhasil dikeluarkan.` });
+                return res.json({ success: true, message: `User ${uid} was signed out.` });
             }
-            res.json({ success: true, message: "User sudah offline, status database telah direset." });
+            res.json({ success: true, message: "User was already offline; database status was reset." });
         } catch (err) {
             console.error("❌ Force Logout API Error:", err.message);
             res.status(500).json({ success: false, error: err.message });

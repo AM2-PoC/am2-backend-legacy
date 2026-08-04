@@ -45,7 +45,7 @@ const broadcastChannelUpdate = async (userId) => {
                                 enable_ptt_video: ws.enable_ptt_video,
                                 duplex_mode: ws.duplex_mode,
                                 is_rx_only: ws.is_rx_only,
-                                message: "Izin bicara diperbarui secara realtime."
+                                message: "Your permissions were updated in realtime."
                             }
                         }));
                     }

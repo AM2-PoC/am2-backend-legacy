@@ -46,14 +46,14 @@ const connectRedis = async () => {
 
 /** Logs older than 30 days. The activity log's free-text rows age out here. */
 const runCleanup = async () => {
-    console.log('🧹 Menjalankan pembersihan log otomatis (30 Hari)...');
+    console.log('🧹 Running automatic log cleanup (30 days)...');
     try {
         // Hapus log aktivitas PTT (Push/Release/Login)
         const pttRes = await pool.query("DELETE FROM public.ptt_logs WHERE event_time < NOW() - INTERVAL '30 days'");
         // Hapus log aktivitas Admin
         const adminRes = await pool.query("DELETE FROM public.admin_activity_logs WHERE waktu < NOW() - INTERVAL '30 days'");
 
-        console.log(`✅ Cleanup Selesai: Terhapus ${pttRes.rowCount} PTT Logs & ${adminRes.rowCount} Admin Logs.`);
+        console.log(`✅ Cleanup complete: removed ${pttRes.rowCount} PTT logs & ${adminRes.rowCount} admin logs.`);
     } catch (err) {
         console.error('❌ Cleanup Error:', err.message);
     }
