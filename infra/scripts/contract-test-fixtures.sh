@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R2 fixtures: dedicated accounts in am2_staging for the contract tests.
+# Fixtures: dedicated accounts in am2_staging for the contract tests.
 # Never touches existing rows. Idempotent. Staging database only.
 set -euo pipefail
 
