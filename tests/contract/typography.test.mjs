@@ -8,8 +8,12 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const SRC = process.env.CT_SRC_DIR || new URL('../../WebAdmin/', import.meta.url).pathname.replace(/^\//, '');
+// fileURLToPath, not .pathname with the leading slash stripped: that turned
+// /home/.../WebAdmin/ into a relative path and every read was ENOENT unless the
+// process happened to be running from /.
+const SRC = process.env.CT_SRC_DIR || fileURLToPath(new URL('../../WebAdmin/', import.meta.url));
 const readSrc = (file) => fs.readFileSync(SRC + file, 'utf8');
 
 describe('typography contract', () => {
