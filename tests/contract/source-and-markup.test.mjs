@@ -6,7 +6,7 @@
 // assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, get, readSrc, SRC, serverSrc } from './helpers.mjs';
+import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
 
 let sup;
@@ -121,6 +121,27 @@ describe('the node relay contract', () => {
             assert.ok(src.includes(`/api/admin/${r}`), `route ${r} disappeared`);
         }
         assert.ok(src.includes('/api/check-update'));
+    });
+
+    test('the relay stays split by concern', () => {
+        // 1048 lines held the protocol, the state, the database and the
+        // routes. Each of those grew into the others because there was no
+        // edge to stop at; this is the edge.
+        const wiring = fs.readFileSync(SERVER_JS, 'utf8');
+
+        assert.ok(!/app\.(get|post|put|delete)\s*\(/.test(wiring),
+            'a route handler is back in server.js — endpoints belong in lib/routes.js');
+        assert.ok(!/wss\.on\s*\(\s*['"`]connection/.test(wiring),
+            'the connection handler is back in server.js — the protocol belongs in lib/protocol.js');
+        assert.ok(!/new Pool\s*\(/.test(wiring),
+            'the pool is back in server.js — persistence belongs in lib/db.js');
+        assert.ok(!/new Map\s*\(\)/.test(wiring),
+            'in-process state is back in server.js — it belongs in lib/state.js');
+
+        // Wiring only: requiring, mounting, listening.
+        const lines = wiring.split('\n').filter((l) => l.trim() && !l.trim().startsWith('//')).length;
+        assert.ok(lines < 200,
+            `server.js is ${lines} lines of code; it is meant to be wiring, not a place to put things`);
     });
 
     test('websocket message types the field app depends on still exist', () => {
