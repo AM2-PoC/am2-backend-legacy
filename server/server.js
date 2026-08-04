@@ -116,7 +116,7 @@ attachProtocol(server);
 
 server.listen(PORT, () => {
     console.log(`\n--------------------------------------------`);
-    console.log(`🚀 PTT SERVER VERSI: 1.1 (RESILIENT CONNECT)`);
+    console.log(`🚀 PTT SERVER VERSION: 1.1 (RESILIENT CONNECT)`);
     console.log(`🕒 Timezone  : Asia/Jakarta`);
     console.log(`🔄 Reconnect : Enabled (${DISCONNECT_GRACE_PERIOD/1000}s Grace Period)`);
     console.log(`--------------------------------------------\n`);

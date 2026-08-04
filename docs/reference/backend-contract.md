@@ -450,16 +450,18 @@ header("Location: login.php");
 | `GET /` | `246` | health | — | `200` `text/html` `<h1>PTT Server</h1>...` | — |
 | `GET /update/*` (static) | `59-66` | **APK** | — | file; `.apk` gets `application/vnd.android.package-archive` + `Content-Disposition: attachment; filename="update.apk"` | 404 |
 | `GET /api/check-update` | `252` | **APK** | — | see below | `404` / `500` |
-| `POST /api/admin/set-app-version` | `277` | admin (**no PHP caller found**) | JSON `version_code:int, version_name:string, force_update:bool?, release_notes:string?` | `{success:true, message:"Versi <name> berhasil didaftarkan."}` | `500 {success:false,error}` |
+| `POST /api/admin/set-app-version` | `277` | admin (**no PHP caller found**) | JSON `version_code:int, version_name:string, force_update:bool?, release_notes:string?` | `{success:true, message:"Version <name> registered successfully."}` | `500 {success:false,error}` |
 | `GET /api/admin/sync-channels` | `297` | **panel + APK-admin** | query `userId` | `{success:true, message:"Sync command sent to user."}` | `400 {error:"userId is required"}`, `500 {success:false,error}` |
 | `POST /api/admin/refresh-branch-permissions` | `308` | **panel only** | JSON `adminId` | `{success:true, message:"Updated N users in branch."}` | `400 {error:"adminId is required"}`, `500 {error}` |
 | `POST /api/admin/update-user-profile` | `372` | admin APK (**no PHP caller**) | JSON `userId, name` | `{success:true, message:"User profile updated and synced."}` | `400 {error:"userId and name are required"}`, `500 {error}` |
-| `POST /api/admin/update-channel` | `398` | admin APK (**no PHP caller**) | JSON `channelId, display_name` | `{success:true, message:"Nama channel diperbarui dan disinkronkan."}` | `500 {success:false,error}` |
+| `POST /api/admin/update-channel` | `398` | admin APK (**no PHP caller**) | JSON `channelId, display_name` | `{success:true, message:"Channel name updated and synced."}` | `500 {success:false,error}` |
 | `POST /api/admin/assign-channel` | `409` | admin APK (**no PHP caller**) | JSON `userId, channelId, permission?` (default `'TX'`) | `{success:true, message:"Channel assigned & synced."}` | `500 {success:false,error}` |
 | `POST /api/admin/remove-channel` | `426` | admin APK (**no PHP caller**) | JSON `userId, channelId` | `{success:true, message:"Channel access removed & synced realtime."}` | `500 {success:false,error}` |
 | `POST /api/admin/update-permissions` | `442` | **panel + APK-admin** | JSON `userId, enable_maps, enable_p2p, enable_ptt_video, duplex_mode` | `{success:true, message:"Permissions updated successfully."}` | `500 {success:false,error}` |
-| `POST /api/admin/set-permission` | `486` | admin APK (**no PHP caller**) | JSON `userId, channelId, permission` | `{success:true, message:"Izin berhasil diperbarui."}` | `500 {success:false,error}` |
-| `POST /api/admin/force-logout` | `503` | **panel + APK-admin** | JSON `userId` | `{success:true, message:"User <id> berhasil dikeluarkan."}` or `{success:true, message:"User sudah offline, status database telah direset."}` | `500 {success:false,error}` |
+| `POST /api/admin/set-permission` | `486` | admin APK (**no PHP caller**) | JSON `userId, channelId, permission` | `{success:true, message:"Permission updated successfully."}` | `500 {success:false,error}` |
+| `POST /api/admin/force-logout` | `503` | **panel + APK-admin** | JSON `userId` | `{success:true, message:"User <id> was signed out."}` or `{success:true, message:"User was already offline; database status was reset."}` | `500 {success:false,error}` |
+
+> The relay's response text was translated to English on 2026-08-05 (was Indonesian); the rows above reflect the current wording. Line numbers in this table predate the server.js split into server/lib/{state,db,broadcast,routes,protocol}.js and are not re-verified here.
 
 `GET /api/check-update` response (`server.js:261-268`):
 ```js

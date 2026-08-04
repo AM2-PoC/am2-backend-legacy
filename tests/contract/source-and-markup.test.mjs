@@ -123,6 +123,27 @@ describe('the node relay contract', () => {
         assert.ok(src.includes('/api/check-update'));
     });
 
+    test('the relay speaks English on the wire and in its own console', () => {
+        // Scoped to what actually reaches someone: a data.message the field
+        // app displays verbatim, an HTTP `message`/`error` field, or a
+        // console.* line that ends up in journalctl. Code comments are not
+        // in scope here -- protocol.js and routes.js still narrate their own
+        // logic in Indonesian, which nobody but the next reader ever sees.
+        const src = serverSrc();
+        const words = /\b(yang|dan|atau|tidak|sudah|telah|akan|dengan|untuk|dari|harap|gagal|berhasil|diperbarui|dikeluarkan|instansi|salah|nonaktif|kembali|masa aktif)\b/i;
+
+        const bad = [];
+        for (const m of src.matchAll(/(?:message|error)\s*:\s*[`'"][^`'"]*[`'"]/g)) {
+            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
+        }
+        for (const m of src.matchAll(/console\.(log|error|warn)\([^)]*\)/g)) {
+            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
+        }
+
+        assert.deepEqual(bad, [],
+            `Indonesian text reached a wire message or a console line:\n${bad.join('\n')}`);
+    });
+
     test('the relay stays split by concern', () => {
         // 1048 lines held the protocol, the state, the database and the
         // routes. Each of those grew into the others because there was no
