@@ -883,6 +883,7 @@ include 'partials/shell.php';
                             bg-card-muted/40 px-4 py-6 text-center transition-colors
                             duration-[var(--duration-micro)]">
                     <p class="text-sm text-ink-muted"><?= e('set.drop_apk') ?></p>
+                    <label for="apk_file" class="sr-only"><?= e('set.apk_label') ?></label>
                     <input id="apk_file" type="file" name="apk_file" accept=".apk" required
                            class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
                                   border border-edge bg-card text-sm text-ink-muted

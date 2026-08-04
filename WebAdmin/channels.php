@@ -66,6 +66,27 @@ if (isset($_GET['ajax_action'])) {
         echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
         exit;
     }
+
+    /*
+     * The units this admin may put on a channel.
+     *
+     * Asked for when the dialogue is first opened, not rendered into every
+     * page. Two hundred and eighteen units is thirteen hundred elements and
+     * a third of a megabyte of markup, carried on every visit to a page that
+     * shows eight channels -- and it grows with the fleet, so the page gets
+     * slower as the deployment succeeds.
+     */
+    if ($_GET['ajax_action'] === 'list_units') {
+        if ($is_super) {
+            $stmt = $pdo->query("SELECT id, name FROM public.users WHERE role = 'user' ORDER BY name ASC");
+        } else {
+            $stmt = $pdo->prepare("SELECT id, name FROM public.users
+                                   WHERE role = 'user' AND admin_id = ? ORDER BY name ASC");
+            $stmt->execute([$current_admin_id]);
+        }
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        exit;
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_channel'])) {
@@ -361,13 +382,14 @@ $count_owned = (int) $split['owned'];
 // distinction that does not exist at that level.
 $count_delegated = $is_super ? 0 : (int) $split['delegated'];
 
+// Only how many. The list itself is fetched when the dialogue opens.
 if ($is_super) {
-    $stmt_u = $pdo->query("SELECT id, name FROM public.users WHERE role = 'user' ORDER BY name ASC");
+    $managed_total = (int) $pdo->query("SELECT COUNT(*) FROM public.users WHERE role = 'user'")->fetchColumn();
 } else {
-    $stmt_u = $pdo->prepare("SELECT id, name FROM public.users WHERE role = 'user' AND admin_id = ? ORDER BY name ASC");
+    $stmt_u = $pdo->prepare("SELECT COUNT(*) FROM public.users WHERE role = 'user' AND admin_id = ?");
     $stmt_u->execute([$current_admin_id]);
+    $managed_total = (int) $stmt_u->fetchColumn();
 }
-$managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <?php
 $pageTitle = t('ch.heading');
@@ -708,28 +730,18 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                 <?= e('ch.select_all') ?>
             </label>
             <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
-                <span data-access-count class="tabular-nums text-ink-muted">0</span> / <?= count($managed_users) ?>
+                <span data-access-count class="tabular-nums text-ink-muted">0</span> / <?= $managed_total ?>
             </span>
         </div>
 
+        <!-- Filled on first open. Empty here on purpose: see the list_units
+             endpoint above for why the roster is not rendered into the page. -->
         <div class="min-h-0 flex-1 overflow-y-auto px-5 py-3">
-            <?php if (!$managed_users): ?>
+            <?php if ($managed_total === 0): ?>
                 <p class="py-8 text-center text-sm text-ink-muted"><?= e('ch.no_units_available') ?></p>
             <?php else: ?>
-                <ul class="space-y-1">
-                    <?php foreach ($managed_users as $u): ?>
-                        <li>
-                            <label class="flex h-11 cursor-pointer items-center gap-3 rounded-control px-2
-                                          transition-colors duration-[var(--duration-micro)] hover:bg-card-muted">
-                                <input type="checkbox" data-unit-pick name="users[]"
-                                       value="<?= htmlspecialchars((string) $u['id'], ENT_QUOTES, 'UTF-8') ?>"
-                                       class="h-4 w-4 rounded border-edge-strong text-brand focus:ring-brand/40">
-                                <span class="min-w-0 flex-1 truncate text-sm text-ink"><?= htmlspecialchars((string) $u['name']) ?></span>
-                                <span class="font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars((string) $u['id']) ?></span>
-                            </label>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+                <p data-unit-status class="py-8 text-center text-sm text-ink-muted"><?= e('ch.loading_units') ?></p>
+                <ul data-unit-list class="space-y-1"></ul>
             <?php endif; ?>
         </div>
 
@@ -840,6 +852,58 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     const scopeLabel = (n) => (n === 1 ? T.one : T.many.replace(':n', String(n)));
 
     const picks = () => [...document.querySelectorAll('[data-unit-pick]')];
+
+    /*
+     * The unit list, fetched once and kept. Every path that opens the dialogue
+     * awaits this first, so nothing can tick a box that is not there yet.
+     */
+    const unitList = document.querySelector('[data-unit-list]');
+    let unitsReady = null;
+
+    function loadUnits() {
+        if (unitsReady) return unitsReady;
+        unitsReady = (async () => {
+            if (!unitList) return;
+            const res = await fetch('channels.php?ajax_action=list_units',
+                { headers: { Accept: 'application/json' } });
+            const units = await res.json();
+
+            const frag = document.createDocumentFragment();
+            for (const u of units) {
+                const li = document.createElement('li');
+                const label = document.createElement('label');
+                label.className = 'flex h-11 cursor-pointer items-center gap-3 rounded-control px-2'
+                    + ' transition-colors duration-[var(--duration-micro)] hover:bg-card-muted';
+
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.dataset.unitPick = '';
+                box.value = String(u.id);
+                box.className = 'h-4 w-4 rounded border-edge-strong text-brand focus:ring-brand/40';
+
+                const name = document.createElement('span');
+                name.className = 'min-w-0 flex-1 truncate text-sm text-ink';
+                name.textContent = u.name ?? '';
+
+                const id = document.createElement('span');
+                id.className = 'font-mono text-[10px] text-ink-subtle';
+                id.textContent = String(u.id);
+
+                label.append(box, name, id);
+                li.appendChild(label);
+                frag.appendChild(li);
+            }
+            unitList.appendChild(frag);
+            document.querySelector('[data-unit-status]')?.remove();
+        })().catch(() => {
+            // Let the next open try again rather than leaving a dialogue that
+            // is permanently empty and says nothing about why.
+            unitsReady = null;
+            const status = document.querySelector('[data-unit-status]');
+            if (status) status.textContent = <?= json_encode(t('ch.units_failed'), JSON_UNESCAPED_UNICODE) ?>;
+        });
+        return unitsReady;
+    }
     const recount = () => {
         const n = picks().filter((c) => c.checked).length;
         const out = document.querySelector('[data-access-count]');
@@ -855,7 +919,10 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         picks().forEach((c) => { c.checked = e.target.checked; });
         recount();
     });
-    picks().forEach((c) => c.addEventListener('change', recount));
+    // Delegated: the boxes do not exist when this runs.
+    unitList?.addEventListener('change', (e) => {
+        if (e.target.matches('[data-unit-pick]')) recount();
+    });
 
     // A bulk verb the table runtime handed back because it needs to ask
     // something first. Preline opens the dialogue; this only says what it is
@@ -866,8 +933,10 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             // Nothing is prefilled: no tick state is true of five channels at
             // once, so the dialogue adds rather than replaces and says so.
             setScope(ids, scopeLabel(ids.length), true);
-            picks().forEach((c) => { c.checked = false; });
-            recount();
+            loadUnits().then(() => {
+                picks().forEach((c) => { c.checked = false; });
+                recount();
+            });
         }
         if (verb === 'delete') {
             setScope(ids, scopeLabel(ids.length), false);
@@ -886,11 +955,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         btn.setAttribute('data-hs-overlay', '#am2-channel-access');
         btn.addEventListener('click', async () => {
             setScope([btn.dataset.ch], btn.dataset.name, false);
-            picks().forEach((c) => { c.checked = false; });
-            recount();
             try {
-                const res = await fetch(
-                    `channels.php?ajax_action=get_channel_users&channel_id=${encodeURIComponent(btn.dataset.ch)}`);
+                // Both in flight at once: the roster of this channel does not
+                // depend on the list of units it will be ticked onto.
+                const [, res] = await Promise.all([
+                    loadUnits(),
+                    fetch(`channels.php?ajax_action=get_channel_users&channel_id=${encodeURIComponent(btn.dataset.ch)}`),
+                ]);
                 const wanted = new Set((await res.json() ?? []).map(String));
                 picks().forEach((c) => { c.checked = wanted.has(String(c.value)); });
             } catch {
