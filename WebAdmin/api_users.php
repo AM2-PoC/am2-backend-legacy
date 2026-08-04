@@ -144,52 +144,39 @@ elseif ($method == 'POST') {
         $u_id = $_POST['u_id'] ?? '';
         $feature = $_POST['feature'] ?? '';
 
-        if ($feature === 'duplex_mode') {
-            $val = $_POST['val'];
-            $sql_val = $pdo->quote($val);
-        } else {
-            $val = ($_POST['val'] === 'true') ? 'true' : 'false';
-            $sql_val = $val;
-        }
-
-        // $feature is interpolated as a column name below. users.php has always
-        // validated it against an allow-list; this copy never did, and this file
-        // takes its caller's word for who they are.
-        //
-        // duplex_mode belongs here. It has its own branch eight lines above --
-        // which is the proof the app calls this endpoint with it -- and leaving
-        // it out made every FULL/HALF toggle in Admin Native answer "Fitur tidak
-        // valid". users.php keeps its own list and still accepts it, so the
-        // panel works and this would not have shown up in panel testing.
-        //
-        // Safe to interpolate for the same reason as the rest: the column name
-        // is a literal from this list, and the value took the $pdo->quote()
-        // branch above.
-        //
-        // Checked before the transaction is opened, so the exit below does not
-        // leave one dangling for the request to unwind.
-        $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video', 'duplex_mode'];
-        if (!in_array($feature, $allowed, true)) {
-            echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
-            exit;
-        }
-
         try {
+            // The asking admin's own rights, which this path never read. An
+            // admin told they may not manage video could enable it from the
+            // app, because only the panel was checking.
+            $stmtAuth = $pdo->prepare(
+                "SELECT can_manage_maps, can_manage_p2p, can_manage_video
+                 FROM public.admin WHERE id = ?");
+            $stmtAuth->execute([$admin_id]);
+            $auth = $stmtAuth->fetch(PDO::FETCH_ASSOC) ?: [];
+            if ($admin_role === 'superadmin') {
+                $auth = ['can_manage_maps' => true, 'can_manage_p2p' => true,
+                         'can_manage_video' => true];
+            }
+
             $pdo->beginTransaction();
+            $val = am2_feature_value($feature, $_POST['val'] ?? '');
+            $row = am2_set_user_feature($pdo, (string) $u_id, $feature, $_POST['val'] ?? '', $auth);
 
-            $sql = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
-                    VALUES (?, $sql_val, NOW())
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET $feature = EXCLUDED.$feature, updated_at = NOW()";
-            $pdo->prepare($sql)->execute([$u_id]);
+            $stmtName = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
+            $stmtName->execute([$u_id]);
+            $targetName = $stmtName->fetchColumn() ?: $u_id;
 
-            $p = $pdo->prepare("SELECT * FROM public.user_app_permissions WHERE user_id = ?");
-            $p->execute([$u_id]);
-            $row = $p->fetch(PDO::FETCH_ASSOC);
+            [$logCode, $logParams] = am2_feature_log(
+                $feature, (string) $val, (string) $u_id, (string) $targetName);
+            $logParams['via'] = 'mobile';
+            am2_log($pdo, $admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', (string) $u_id);
 
             $pdo->commit();
             notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
             echo json_encode(['success' => true]);
+        } catch (InvalidArgumentException | RuntimeException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => am2_feature_reason($e)]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);

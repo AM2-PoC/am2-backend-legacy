@@ -439,4 +439,5 @@ require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/node_client.php';
 require_once __DIR__ . '/channel_access.php';
 require_once __DIR__ . '/activity_log.php';
+require_once __DIR__ . '/user_features.php';
 ?>

@@ -92,77 +92,32 @@ if (isset($_POST['update_feature'])) {
     $u_id = $_POST['u_id'];
     $feature = $_POST['feature'];
 
-    if ($feature === 'duplex_mode') {
-        $val = $_POST['val'];
-        $sql_val = $pdo->quote($val);
-        $status_label = "MENGUBAH MODE KE $val";
-    } else {
-        $val = ($_POST['val'] === 'true') ? 'true' : 'false';
-        $sql_val = $val;
-        $status_label = ($val === 'true') ? 'MENGAKTIFKAN' : 'MENONAKTIFKAN';
-    }
+    // Which switches exist, which value each takes and who may move them all
+    // live in user_features.php now. Both this page and the endpoint behind
+    // the admin app read them from there, so the two cannot drift again.
+    try {
+        $pdo->beginTransaction();
+        $stmtTarget = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
+        $stmtTarget->execute([$u_id]);
+        $target_name = $stmtTarget->fetchColumn() ?: $u_id;
 
-    // The catalog key for each switch, not its Indonesian name: the log
-    // entry is rendered in whatever language is being read, so the name of
-    // the feature has to travel as a key too.
-    $feature_names = [
-        'enable_maps'      => '@log.f_maps',
-        'enable_p2p'       => '@log.f_p2p',
-        'enable_ptt_video' => '@log.f_video',
-        'duplex_mode'      => '@log.f_duplex',
-    ];
+        $val = am2_feature_value($feature, $_POST['val'] ?? '');
+        $row = am2_set_user_feature($pdo, (string) $u_id, $feature, $_POST['val'] ?? '', $auth);
 
-    if (!array_key_exists($feature, $feature_names)) {
-        echo json_encode(['success' => false, 'msg' => 'Fitur tidak valid']); exit;
-    }
+        [$logCode, $logParams] = am2_feature_log($feature, (string) $val, (string) $u_id, (string) $target_name);
+        am2_log($pdo, $current_admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', $u_id);
 
-    $can_change = false;
-    if ($feature == 'enable_maps' && $auth['can_manage_maps']) $can_change = true;
-    if ($feature == 'enable_p2p' && $auth['can_manage_p2p']) $can_change = true;
-    if ($feature == 'enable_ptt_video' && $auth['can_manage_video']) $can_change = true;
-    if ($feature == 'duplex_mode') $can_change = true;
-
-    if ($can_change) {
-        try {
-            $pdo->beginTransaction();
-            $stmtTarget = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
-            $stmtTarget->execute([$u_id]);
-            $target_name = $stmtTarget->fetchColumn() ?: $u_id;
-
-            $sql_upsert = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
-                           VALUES (?, $sql_val, NOW())
-                           ON CONFLICT (user_id)
-                           DO UPDATE SET $feature = EXCLUDED.$feature, updated_at = NOW()";
-            $pdo->prepare($sql_upsert)->execute([$u_id]);
-
-            // Three events wearing one name. Turning a switch on, turning it
-            // off and moving a unit between half and full duplex read as three
-            // different sentences, and only the first two are even the same
-            // shape -- the third has no on or off, it has a mode.
-            $logParams = ['name' => $target_name, 'id' => $u_id];
-            if ($feature === 'duplex_mode') {
-                $logCode = 'feature.duplex';
-                $logParams['mode'] = $val;
-            } else {
-                $logCode = ($val === 'true') ? 'feature.enable' : 'feature.disable';
-                $logParams['feature'] = $feature_names[$feature];
-            }
-            am2_log($pdo, $current_admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', $u_id);
-
-            $p = $pdo->prepare("SELECT * FROM public.user_app_permissions WHERE user_id = ?");
-            $p->execute([$u_id]);
-            $row = $p->fetch();
-
-            $pdo->commit();
-            notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
-            echo json_encode(['success' => true]);
-        } catch (Exception $e) {
+        $pdo->commit();
+        notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
+        echo json_encode(['success' => true]);
+    } catch (InvalidArgumentException | RuntimeException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        echo json_encode(['success' => false, 'msg' => am2_feature_reason($e)]);
+    } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
-        }
-        exit;
+        echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
-    echo json_encode(['success' => false, 'msg' => 'Akses ditolak']); exit;
+    exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])
