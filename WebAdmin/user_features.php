@@ -75,15 +75,33 @@ function am2_may_set_feature(array $auth, string $feature): bool
  */
 function am2_set_user_feature(PDO $pdo, string $userId, string $feature, $raw, array $auth): array
 {
+    /*
+     * A refusal is written to the error log before it is thrown.
+     *
+     * This rule was just tightened on the path the admin app uses, and the app
+     * is not readable from here -- so if a handset speaks a vocabulary this
+     * does not recognise, the only way anyone finds out is a feature that
+     * silently stops working. One line per refusal turns that into something
+     * visible on the first day rather than a support call three weeks later.
+     */
+    $refuse = static function (string $why) use ($feature, $raw, $userId): void {
+        error_log(sprintf(
+            'AM2 feature REFUSED user=%s feature=%s value=%s reason=%s',
+            $userId, $feature, substr((string) $raw, 0, 40), $why));
+    };
+
     if (!array_key_exists($feature, AM2_FEATURES)) {
+        $refuse('unknown-feature');
         throw new InvalidArgumentException('Fitur tidak valid');
     }
     if (!am2_may_set_feature($auth, $feature)) {
+        $refuse('admin-lacks-right');
         throw new RuntimeException('Akses ditolak');
     }
 
     $value = am2_feature_value($feature, $raw);
     if ($value === null) {
+        $refuse('unrecognised-value');
         throw new InvalidArgumentException('Nilai tidak valid');
     }
 
