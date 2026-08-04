@@ -201,3 +201,46 @@ describe('no Alpine residue', () => {
             'alpine.min.js is being served again');
     });
 });
+
+/*
+ * Nothing is fetched from a third party.
+ *
+ * Bootstrap and Font Awesome came from jsdelivr and cloudflare on the pages
+ * that had not been rebuilt yet. A police dispatch panel that cannot paint its
+ * own buttons without two other companies being reachable is a panel that goes
+ * down when they do -- and every one of those requests told them who was
+ * looking at it.
+ *
+ * Cloudflare's own beacon is injected at the edge on the proxied domain, so it
+ * appears in a browser and not here. This reads the source, which is the part
+ * this repository decides.
+ */
+describe('no third-party assets', () => {
+    const pages = fs.readdirSync(SRC)
+        .filter((f) => f.endsWith('.php'))
+        .concat(fs.readdirSync(`${SRC}/partials`)
+            .filter((f) => f.endsWith('.php'))
+            .map((f) => `partials/${f}`));
+
+    test('no page loads a stylesheet or script from another host', () => {
+        const bad = [];
+        for (const page of pages) {
+            // Only what the page *loads*: a <link> or a <script>. An <a> to
+            // openstreetmap.org is an attribution notice the map licence
+            // requires, and matching every href made the guard demand its
+            // removal.
+            const m = readSrc(page)
+                .match(/<(?:link|script)\b[^>]*(?:href|src)=["']https?:\/\/[^"']+/gi) ?? [];
+            for (const hit of m) bad.push(`${page}: ${hit.slice(0, 80)}`);
+        }
+        assert.deepEqual(bad, [], `an off-site asset came back:\n${bad.join('\n')}`);
+    });
+
+    test('Bootstrap and Font Awesome are gone by name', () => {
+        for (const page of pages) {
+            const src = readSrc(page);
+            assert.ok(!/bootstrap(\.bundle)?\.min|font-awesome|fa-[a-z-]+"/.test(src),
+                `${page} still speaks Bootstrap or Font Awesome`);
+        }
+    });
+});
