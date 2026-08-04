@@ -407,97 +407,41 @@ tr[data-row-id]:focus-visible {
  * what they are allowed to do, then the verbs.
  */
 @media (max-width: 1023px) {
-    /* Stop being a table: tbody is laid out as a flex column, and the table
-       width algorithm would size every card to its content. */
+    /*
+     * The roster as a stacked list.
+     *
+     * Four attempts at squeezing the table onto a phone failed the same way:
+     * every column still had to appear on every row, which is chip soup however
+     * it is arranged. A roster is scanned, and what it is scanned by is who is
+     * out there and what is wrong. Everything else is one tap away in the sheet,
+     * which is where the controls finally have room to be tapped.
+     */
     .am2-roster { display: block; width: 100%; }
     .am2-roster thead { display: none; }
+    .am2-roster tbody { display: block; }
 
-    .am2-roster tbody {
-        display: flex;
-        flex-direction: column;
-        gap: 0.625rem;
-        padding: 0.75rem;
-    }
-
-    /*
-     * Three columns: the checkbox, then two equal ones. Channel and duplex are
-     * both a word long and had a ruled row each, which spent a hundred and
-     * twenty pixels on three short values. Paired, they cost one row.
-     */
     .am2-roster tr {
         display: grid;
-        grid-template-columns: 1.25rem 1fr 1fr;
-        /* No column gap: the rule above the paired cells has to read as one
-           line, and a gap cut a notch in it. Padding does the spacing. */
-        gap: 0;
-        border: 1px solid var(--color-border);
-        border-radius: var(--am2-radius);
-        background: var(--color-surface);
-        overflow: hidden;
+        grid-template-columns: 1.75rem minmax(0, 1fr);
+        align-items: center;
+        gap: 0 0.5rem;
+        border: 0;
+        border-bottom: 1px solid var(--color-border);
+        border-radius: 0;
+        background: transparent;
+        padding: 0.75rem 0.875rem;
     }
+    .am2-roster tr:last-child { border-bottom: 0; }
 
-    /* display:block needs the !important too. Without it the card mode's own
-       rule wins and every cell stays a two-column grid -- a 90px column for a
-       label, and 167px of the 266px available for everything else. */
-    .am2-roster td { display: block !important; border: 0 !important; }
-
-    /* Who. The headline of the card, so it carries no label: a name does not
-       need to be told it is a name. */
-    .am2-roster td[data-cell="select"] {
-        grid-column: 1; grid-row: 1;
-        padding: 0.75rem 0 0 0.75rem !important;
-    }
-    .am2-roster td[data-cell="unit"] {
-        grid-column: 2 / span 2; grid-row: 1;
-        padding: 0.75rem 0.75rem 0.625rem 0 !important;
-    }
+    /* The row carries who and what is wrong. The rest stays in the DOM,
+       out of sight, because the sheet borrows these very cells. */
+    .am2-roster td { display: none !important; padding: 0 !important; border: 0 !important; }
+    .am2-roster td::before { content: none !important; }
+    .am2-roster td[data-cell="select"] { display: block !important; }
+    .am2-roster td[data-cell="unit"]   { display: block !important; }
     .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
 
-    /* What. The label sits above its value rather than beside it: a 4.5rem
-       gutter on a 390px screen is a sixth of the card spent on a word that
-       repeats on every row. */
-    .am2-roster td[data-cell="channel"] { grid-column: 2; grid-row: 2; }
-    .am2-roster td[data-cell="duplex"]  { grid-column: 3; grid-row: 2; }
-    .am2-roster td[data-cell="features"] {
-        grid-column: 2 / span 2; grid-row: 3;
-        padding-inline: 0 0.75rem !important;
-    }
-
-    .am2-roster td[data-cell="channel"],
-    .am2-roster td[data-cell="duplex"],
-    .am2-roster td[data-cell="features"] {
-        border-top: 1px solid var(--color-border) !important;
-        padding-block: 0.5rem 0.625rem !important;
-    }
-    .am2-roster td[data-cell="channel"] { padding-inline: 0.75rem 0.625rem !important; }
-    .am2-roster td[data-cell="duplex"]  { padding-inline: 0 0.75rem !important; }
-
-    .am2-roster td[data-cell="channel"]::before,
-    .am2-roster td[data-cell="duplex"]::before,
-    .am2-roster td[data-cell="features"]::before {
-        content: attr(data-label) !important;
-        display: block;
-        margin-bottom: 0.3125rem;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: var(--color-text-subtle);
-    }
-
-    /* The verbs, on their own band at the foot of the card. */
-    .am2-roster td[data-cell="actions"] {
-        grid-column: 1 / -1;
-        border-top: 1px solid var(--color-border) !important;
-        background: var(--color-surface-muted);
-        padding: 0.5rem 0.625rem !important;
-        text-align: end;
-    }
-
-    .am2-roster td[data-cell="select"]::before,
-    .am2-roster td[data-cell="unit"]::before,
-    .am2-roster td[data-cell="actions"]::before { content: none !important; }
-
-    /* An empty state is one message, not a card with a checkbox. */
-    .am2-roster tr:has(td[colspan]) { display: block; border: 0; background: none; }
+    /* An empty state is one message, not a row. */
+    .am2-roster tr:has(td[colspan]) { display: block; padding: 0; border-bottom: 0; }
+    .am2-roster tr:has(td[colspan]) td { display: block !important; }
 }
