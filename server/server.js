@@ -2,12 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
-const { createClient } = require('redis');
 
 const app = express();
 const server = http.createServer(app);
@@ -23,31 +21,23 @@ if (!fs.existsSync(UPDATE_DIR)) {
     fs.mkdirSync(UPDATE_DIR, { recursive: true });
 }
 
-// --- REDIS CONFIGURATION ---
-const redisClient = createClient({
-    url: process.env.REDIS_URL || 'redis://localhost:6379'
-});
+// --- STATE AND PERSISTENCE ---
+// The in-process maps live in lib/state.js; the pool, Redis and the two
+// background writers live in lib/db.js. Both are inert on import.
+const {
+    activeConnections,
+    channelRooms,
+    pendingDisconnects,
+    DISCONNECT_GRACE_PERIOD,
+    activeSpeakers,
+    activeVideoRooms,
+    clearPtpSession,
+} = require('./lib/state');
 
-redisClient.on('error', (err) => console.error('❌ Redis Client Error', err));
+const { pool, redisClient, connectRedis, startCleanup, createLog } = require('./lib/db');
 
-(async () => {
-    try {
-        await redisClient.connect();
-        console.log('🚀 Redis Connected');
-    } catch (err) {
-        console.error('❌ Redis Connection Failed:', err.message);
-    }
-})();
-
-// --- TRACKING STATE (Memory Storage) ---
-const activeConnections = new Map(); // userId (string) -> ws instance
-const channelRooms = new Map();      // channelSlug -> Set of ws instances
-const pendingDisconnects = new Map(); // Untuk menyimpan timeout pembersihan (Debounce)
-const DISCONNECT_GRACE_PERIOD = 10000; // 10 detik toleransi reconnect
-
-// State berikut akan disinkronkan ke Redis agar persistensinya lebih baik
-const activeSpeakers = new Map();    // channelSlug -> Set of "userId:userName"
-const activeVideoRooms = new Map();  // channelSlug -> Set of "userId:userName"
+connectRedis();
+startCleanup();
 
 // --- MIDDLEWARE ---
 // Was wildcard. The relay is called by the panel over localhost and by the
@@ -99,63 +89,6 @@ app.use('/update', express.static(UPDATE_DIR, {
     }
 }));
 
-// --- DATABASE CONNECTION ---
-const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT || 5432,
-    max: 50,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    options: "-c timezone=Asia/Jakarta"
-});
-
-pool.on('error', (err) => {
-    console.error('❌ Database Pool Error:', err.message);
-});
-
-pool.on('connect', () => {
-    console.log('🐘 New DB Client connected to pool');
-});
-
-// --- AUTO CLEANUP: LOGS OLDER THAN 30 DAYS ---
-const runCleanup = async () => {
-    console.log('🧹 Menjalankan pembersihan log otomatis (30 Hari)...');
-    try {
-        // Hapus log aktivitas PTT (Push/Release/Login)
-        const pttRes = await pool.query("DELETE FROM public.ptt_logs WHERE event_time < NOW() - INTERVAL '30 days'");
-        // Hapus log aktivitas Admin
-        const adminRes = await pool.query("DELETE FROM public.admin_activity_logs WHERE waktu < NOW() - INTERVAL '30 days'");
-
-        console.log(`✅ Cleanup Selesai: Terhapus ${pttRes.rowCount} PTT Logs & ${adminRes.rowCount} Admin Logs.`);
-    } catch (err) {
-        console.error('❌ Cleanup Error:', err.message);
-    }
-};
-
-// Jalankan cleanup saat server start, lalu setiap 24 jam sekali
-runCleanup();
-setInterval(runCleanup, 86400000);
-
-// --- HELPERS: LOGGING ---
-const createLog = async (userId, channelId, eventType) => {
-    try {
-        if (!userId) return;
-
-        const uid = String(userId).trim();
-        const cid = parseInt(channelId);
-        const validChannelId = isNaN(cid) ? null : cid;
-
-        await pool.query(`
-            INSERT INTO public.ptt_logs (user_id, channel_id, event_type, event_time)
-            VALUES ($1::text, $2::integer, $3::text, CURRENT_TIMESTAMP)
-        `, [uid, validChannelId, String(eventType)]);
-    } catch (err) {
-        console.error(`❌ LOG ERROR [${eventType}]:`, err.message);
-    }
-};
 
 // --- HELPERS: BROADCASTING ---
 
@@ -264,17 +197,6 @@ const broadcastChannelNameChange = async (channelId) => {
     }
 };
 
-// --- HELPERS: PTP CLEANUP ---
-const clearPtpSession = (ws) => {
-    if (ws.ptpTargetId) {
-        const targetWs = activeConnections.get(String(ws.ptpTargetId));
-        if (targetWs) {
-            targetWs.ptpTargetId = null;
-            targetWs.send(JSON.stringify({ type: 'ptp_cancelled', data: { reason: 'session_ended' } }));
-        }
-        ws.ptpTargetId = null;
-    }
-};
 
 // --- ROUTING ---
 app.get('/', (req, res) => {

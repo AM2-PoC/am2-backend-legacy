@@ -42,6 +42,27 @@ export const NODE_URL = env.CT_NODE_URL;
 export const SRC = process.env.CT_SRC_DIR || '/var/www/am2/staging/current/WebAdmin';
 export const SERVER_JS = process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js';
 
+/**
+ * The whole relay as one string.
+ *
+ * server.js used to be all of it, so the guards below read that file. It is
+ * being split by concern, and the first thing that moved took a message type
+ * with it -- ptp_cancelled went to lib/state.js and the guard reported it as
+ * deleted. What those guards mean is "the relay still speaks this", and the
+ * relay is server.js plus everything in lib/.
+ */
+export function serverSrc() {
+    const dir = path.dirname(SERVER_JS);
+    const lib = path.join(dir, 'lib');
+    let out = fs.readFileSync(SERVER_JS, 'utf8');
+    if (fs.existsSync(lib)) {
+        for (const f of fs.readdirSync(lib).filter((n) => n.endsWith('.js')).sort()) {
+            out += '\n' + fs.readFileSync(path.join(lib, f), 'utf8');
+        }
+    }
+    return out;
+}
+
 export function readSrc(file) {
     return fs.readFileSync(path.join(SRC, file), 'utf8');
 }

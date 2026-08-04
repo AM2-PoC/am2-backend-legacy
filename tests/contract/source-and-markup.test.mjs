@@ -6,7 +6,7 @@
 // assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, get, readSrc, SRC, SERVER_JS } from './helpers.mjs';
+import { asSuper, get, readSrc, SRC, serverSrc } from './helpers.mjs';
 import fs from 'node:fs';
 
 let sup;
@@ -111,7 +111,7 @@ describe('form field names are the API', () => {
 });
 
 describe('the node relay contract', () => {
-    const src = fs.readFileSync(SERVER_JS, 'utf8');
+    const src = serverSrc();
 
     test('every admin route still exists', () => {
         for (const r of ['set-app-version', 'sync-channels', 'refresh-branch-permissions',
