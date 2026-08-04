@@ -214,6 +214,11 @@ return [
     'acc.kick_prompt' => ':who akan dipaksa keluar dan harus login ulang.',
     'acc.bulk_done' => ':ok berhasil, :failed gagal',
 
+    'set.apk_label' => 'Berkas APK',
+
+    'ch.loading_units' => 'Memuat daftar unit…',
+    'ch.units_failed' => 'Gagal memuat daftar unit. Tutup dan buka lagi.',
+
     'adm.heading' => 'Kontrol Otoritas Admin',
     'adm.lede' => 'Akses dan kuota untuk admin cabang',
     'adm.search' => 'Cari username',
