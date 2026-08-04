@@ -223,3 +223,68 @@ describe('a form is not an authorization', () => {
         assertConsistent(OTHER_TENANT_UNIT);
     });
 });
+
+/*
+ * The same invariants, reached from the admin app.
+ *
+ * The three pages were made to agree; the three endpoints behind them were
+ * not, and they are the copies that kept the original bugs. api_channels.php
+ * wrote is_default='false' and 'FULL DUPLEX' for every member of a roster it
+ * rebuilt, and api_users.php deleted every membership and recreated it with
+ * the first entry as default. Both went through the shared writer afterwards;
+ * these say so.
+ */
+describe('the admin app writes membership the same way the panel does', () => {
+    const ADMIN = () => sqlOne("SELECT id FROM public.admin WHERE username = 'ct_branch_a'")[0];
+
+    test('rebuilding a roster from the app keeps the default and the permission', async () => {
+        await seed();   // CH_A default, CH_A2 receive-only
+
+        // The app sends the whole roster of a channel, exactly as the panel's
+        // access dialogue does.
+        const res = await postForm(`/api_channels.php?admin_id=${ADMIN()}&role=admin`, null, {
+            action: 'save_access', channel_id: CH_A, users: JSON.stringify([UNIT]),
+        });
+        assert.ok(res.status < 400, `save_access answered ${res.status}`);
+
+        const rows = membership(UNIT);
+        const onA = rows.find((r) => r.id === CH_A);
+        assert.ok(onA, 'the unit was dropped from the channel it was being kept on');
+        assert.ok(onA.isDefault,
+            'rebuilding the roster cleared the default — the unit can no longer sign in');
+        assert.strictEqual(rows.find((r) => r.id === CH_A2).permission, 'RX',
+            'a receive-only channel elsewhere was rewritten to FULL DUPLEX');
+        assertConsistent(UNIT);
+    });
+
+    test('saving a channel list from the app does not move where the unit comes up', async () => {
+        await seed();   // CH_A default, CH_A2 receive-only
+
+        // The same two channels, in the other order. Nothing about the request
+        // says "make the first one default", and nothing should read it that way.
+        const res = await postForm(`/api_users.php?admin_id=${ADMIN()}&role=admin`, null, {
+            action: 'save_user_channels', u_id: UNIT, channels: JSON.stringify([CH_A2, CH_A]),
+        });
+        assert.ok(res.status < 400, `save_user_channels answered ${res.status}`);
+
+        const rows = membership(UNIT);
+        assert.strictEqual(rows.length, 2);
+        assert.ok(rows.find((r) => r.id === CH_A).isDefault,
+            'the default followed the order of the list instead of staying put');
+        assert.strictEqual(rows.find((r) => r.id === CH_A2).permission, 'RX',
+            'the receive-only permission was reset to FULL DUPLEX');
+        assertConsistent(UNIT);
+    });
+
+    test('the app cannot put a unit on another tenant\'s channel', async () => {
+        await seed();
+
+        const res = await postForm(`/api_users.php?admin_id=${ADMIN()}&role=admin`, null, {
+            action: 'save_user_channels', u_id: UNIT, channels: JSON.stringify([CH_B]),
+        });
+        const body = await res.json();
+        assert.strictEqual(body.success, false,
+            'branch A was allowed to grant its unit a branch B channel');
+        assert.ok(!membership(UNIT).some((r) => r.id === CH_B));
+    });
+});
