@@ -35,8 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $stmtKick = $pdo->prepare($sqlKick);
         $stmtKick->execute([$uid_to_kick]);
 
-        $stmtLog = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
-        $stmtLog->execute([$current_admin_id, 'FORCE_LOGOUT', "Memutus paksa koneksi user: $target_name"]);
+        am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
+                ['name' => $target_name], 'users', (string) $uid_to_kick);
 
         $pdo->commit();
 
@@ -79,23 +79,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
                 $pdo, (string) $user_id, $selected_channels, $default_channel_id, $permissions_input
             );
 
+            // The channel list travels structured, so "(utama)" can be said
+            // in the language of whoever is reading the log rather than the
+            // language of whoever granted the access. FULL DUPLEX and RX stay
+            // as they are: the relay compares against those exact strings, so
+            // they are protocol values, not prose.
             if ($selected_channels) {
                 $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
-                $channel_names_added = [];
+                $logChannels = [];
                 foreach ($selected_channels as $ch_id) {
                     $stmtChName->execute([$ch_id]);
-                    $c_name = $stmtChName->fetchColumn();
-                    $is_default = ((string) $ch_id === (string) $result['default']);
-                    $perm = $result['permissions'][(string) $ch_id] ?? 'FULL DUPLEX';
-                    $channel_names_added[] = $c_name . ($is_default ? " (Main)" : "") . " [$perm]";
+                    $logChannels[] = [
+                        'name'    => (string) $stmtChName->fetchColumn(),
+                        'default' => ((string) $ch_id === (string) $result['default']),
+                        'perm'    => $result['permissions'][(string) $ch_id] ?? 'FULL DUPLEX',
+                    ];
                 }
-                $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
+                $logCode   = 'access.update';
+                $logParams = ['name' => $target_name, 'channels' => $logChannels];
             } else {
-                $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
+                $logCode   = 'access.revoke';
+                $logParams = ['name' => $target_name];
             }
 
-            $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
-            $stmtLogAccess->execute([$current_admin_id, 'UPDATE_ACCESS', $keterangan_log]);
+            am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                    'users', (string) $user_id);
 
             $pdo->commit();
             syncUserChannels($user_id);
