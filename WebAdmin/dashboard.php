@@ -354,7 +354,7 @@ $cards = [
 <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <?php foreach ($cards as $c): ?>
         <a href="<?= $c['href'] ?>" data-kpi
-           class="am2-surface am2-clickable group flex flex-col rounded-card p-5
+           class="am2-surface am2-surface-accent am2-clickable group flex flex-col rounded-card p-5
                   no-underline! text-ink!">
             <p class="flex items-center justify-between font-mono text-[10px] uppercase
                       tracking-[0.18em] text-ink-subtle">

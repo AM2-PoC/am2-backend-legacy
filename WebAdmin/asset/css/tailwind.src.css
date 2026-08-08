@@ -588,10 +588,19 @@
  * card sits on #f8fafc behind a #e2e8f0 border, which is three shades of the
  * same thing; the stronger border and the real shadow are what separate them.
  */
+/*
+ * Two shadows, not one.
+ *
+ * A single wide blur reads as a sticker laid on the page. A tight contact
+ * shadow directly under the edge plus a wider ambient one is how a real surface
+ * sits above another: the first says it is touching, the second says there is
+ * air between them.
+ */
 .am2-surface {
     background: var(--color-surface);
     border: 1px solid var(--color-border-strong);
-    box-shadow: var(--am2-card-shadow);
+    box-shadow: 0 1px 2px rgba(var(--shadow-color), 0.06),
+                var(--am2-card-shadow);
 }
 [data-theme="dark"] .am2-surface {
     border-color: var(--color-border);
@@ -599,6 +608,27 @@
 
 /* The console's own detail: a hairline of brand across the top of the card it
  * is asking you to fill in. */
+/*
+ * The command palette's search row.
+ *
+ * It is the top edge of the card, full width inside a 20px radius with overflow
+ * hidden, so the baseline focus ring (2px, offset 2px) was clipped at both ends
+ * by the corners and pressed against the card edge -- an amber rectangle with
+ * its ends cut off. The row shows focus on the rule it already has instead: the
+ * hairline beneath it thickens and takes the brand colour, which is a shape
+ * that fits inside what it is drawn in.
+ *
+ * :focus-within, because the input is what receives focus and the row is what
+ * draws it.
+ */
+.am2-palette-field {
+    box-shadow: inset 0 -1px 0 var(--color-border);
+    transition: box-shadow var(--duration-micro) var(--ease-standard);
+}
+.am2-palette-field:focus-within {
+    box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
 .am2-surface-accent { position: relative; overflow: hidden; }
 .am2-surface-accent::before {
     content: "";
@@ -607,6 +637,26 @@
     top: 0;
     height: 2px;
     background: var(--color-primary);
+    transition: height var(--duration-micro) var(--ease-standard),
+                opacity var(--duration-micro) var(--ease-standard);
+}
+
+/*
+ * A card that can be clicked answers on the hairline it is already marked by.
+ *
+ * The lift and the border change are the shared .am2-clickable behaviour; this
+ * adds the one thing specific to an accented card -- the accent thickens.
+ * Cheaper than it looks: height on a 2px absolutely-positioned pseudo-element
+ * lays out nothing else on the card.
+ */
+.am2-surface-accent.am2-clickable:hover::before,
+a.am2-surface-accent:hover::before {
+    height: 3px;
+}
+.am2-surface-accent.am2-clickable:hover,
+a.am2-surface-accent:hover {
+    box-shadow: 0 1px 2px rgba(var(--shadow-color), 0.08),
+                var(--am2-shadow);
 }
 
 /* A marker with no label is only its dot, so it must not reserve label space. */
@@ -704,6 +754,18 @@ tr[data-row-id]:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
     border-radius: var(--am2-radius);
+}
+
+/*
+ * Opting out has to actually work.
+ *
+ * Tailwind's focus-visible:outline-none only sets outline-style, so against the
+ * shorthand above the width and colour survived and the ring still drew -- which
+ * is how the palette's search field kept its clipped rectangle after being told
+ * not to have one. A control that marks its own focus says so here.
+ */
+.am2-palette-field :focus-visible {
+    outline: none;
 }
 
 /*
