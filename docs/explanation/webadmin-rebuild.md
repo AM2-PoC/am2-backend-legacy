@@ -222,11 +222,6 @@ salah atau tidak ada hanya dicatat, permintaannya tetap diteruskan — termasuk 
 `log` memang tahap wajar sebelum dikencangkan; kalau lognya sudah bersih, ini
 tinggal mengganti satu nilai.
 
-**`git filter-branch` di 4 Agustus** menghapus `docs/superpowers` dari riwayat
-dua branch. GitHub masih menyimpan objek yang tak terjangkau di sisinya sampai
-GC mereka sendiri, dan siapa pun yang sudah clone sebelum force-push masih
-memegang salinannya.
-
 **Kontras warna belum diukur.** Lihat bagian aksesibilitas.
 
 **Unggahan untuk kanal APK lapangan belum diputuskan.** `settings.php` melayani

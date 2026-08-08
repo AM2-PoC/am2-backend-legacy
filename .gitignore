@@ -5,9 +5,24 @@
 *.local
 *.local.*
 
-# Codex/local workspace metadata
+# Local AI assistant and planning workspace metadata
 .codex
 .codex/
+.claude/
+.superpowers/
+.hermes/
+
+# AI prompts and plans kept outside the product documentation
+# These patterns intentionally do not ignore ordinary technical docs.
+docs/ai/
+docs/prompts/
+docs/plans/
+docs/**/prompt*.md
+docs/**/plan*.md
+docs/**/ai-*.md
+docs/**/claude*.md
+docs/**/hermes*.md
+docs/**/superpowers*.md
 
 # OS/editor noise
 .DS_Store
