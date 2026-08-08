@@ -499,7 +499,7 @@ $cards = [
                                duration-[var(--duration-micro)]
                                <?= $r === '24h'
                                    ? 'border-brand bg-brand/10 text-brand'
-                                   : 'border-edge text-ink-subtle hover:border-edge-strong hover:text-ink' ?>">
+                                   : 'border-edge text-ink-subtle hover:border-brand hover:text-brand' ?>">
                     <?= e($k) ?>
                 </button>
             <?php endforeach; ?>

@@ -33,7 +33,7 @@ const AM2_LOG_PAGE = 20;
                                duration-[var(--duration-micro)]
                                <?= $cat === 'ALL'
                                    ? 'border-brand bg-brand/10 text-brand'
-                                   : 'border-edge text-ink-subtle hover:border-edge-strong hover:text-ink' ?>">
+                                   : 'border-edge text-ink-subtle hover:border-brand hover:text-brand' ?>">
                     <?= e($key) ?>
                 </button>
             <?php endforeach; ?>
@@ -317,7 +317,7 @@ const AM2_LOG_PAGE = 20;
                 + 'disabled:opacity-40 '
                 + (opts.current
                     ? 'border-brand bg-brand/10 text-brand'
-                    : 'border-edge text-ink-subtle hover:border-edge-strong hover:text-ink');
+                    : 'border-edge text-ink-subtle hover:border-brand hover:text-brand');
             if (opts.current) b.setAttribute('aria-current', 'page');
             if (opts.label) b.setAttribute('aria-label', opts.label);
             b.addEventListener('click', () => { page = target; render(); });

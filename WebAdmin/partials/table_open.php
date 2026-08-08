@@ -85,7 +85,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
                               text-[11px] uppercase tracking-[0.15em] no-underline! transition-colors
                               duration-[var(--duration-micro)]
                               <?= $on ? 'border-brand bg-brand/10 text-brand!'
-                                      : 'border-edge text-ink-muted! hover:border-edge-strong hover:text-ink!' ?>">
+                                      : 'border-edge text-ink-muted! hover:border-brand hover:text-brand!' ?>">
                         <?php if (!empty($chip['dot'])): ?>
                             <span class="h-1.5 w-1.5 rounded-full <?= $chip['dot'] ?>" aria-hidden="true"></span>
                         <?php endif; ?>

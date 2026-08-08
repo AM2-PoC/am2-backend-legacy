@@ -76,6 +76,45 @@ test('body text is not smaller than the browser default suggests', () => {
         `a data cell renders below 14px: ${cells.join(', ')}`);
 });
 
+test('every pressable control across the panel hovers the same way', () => {
+    /*
+     * The first version of this checked partials/shell.php alone, so the header
+     * was fixed and the filter chips, the log category buttons, the pager, the
+     * command-bar and the login language pair were left answering in a neutral
+     * -- nineteen places, found only because they were pointed out.
+     *
+     * The distinction that matters is press versus type. Anything with an
+     * inactive state written as `border-edge ... hover:` is a control you press
+     * and belongs to the chips. A text input answers on focus instead, with
+     * focus:border-brand, which is the convention for a field you type into --
+     * colouring its border on hover would promise a press that does nothing.
+     */
+    const offenders = [];
+    for (const f of markupFiles()) {
+        const src = read(f);
+        for (const m of src.matchAll(/border-edge[^'"`]*?hover:border-edge-strong[^'"`]*/g)) {
+            const around = src.slice(Math.max(0, m.index - 400), m.index + 120);
+            // A field answers on focus; that is not this rule's subject.
+            if (/<input|<textarea|\$fieldCls|file:/.test(around)) continue;
+            offenders.push(`${f}: ${m[0].slice(0, 46)}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        `pressable controls still hover to a neutral while the chips hover to brand:\n  `
+        + offenders.join('\n  '));
+});
+
+test('a text input still answers on focus rather than on hover', () => {
+    // The other half of the same rule: a field must not take the brand border
+    // on hover, or it looks pressable when it is not.
+    const src = read('partials/table_open.php');
+    const input = src.match(/<input name="search"[\s\S]*?class="([^"]*)"/);
+    assert.ok(input, 'the roster search field changed shape');
+    assert.match(input[1], /focus:border-brand/, 'the search field shows nothing on focus');
+    assert.doesNotMatch(input[1], /hover:border-brand/,
+        'a text field colours its border on hover, which promises a press it does not answer');
+});
+
 test('the header controls answer a pointer the way the chips do', () => {
     /*
      * The language pair, the theme toggle and the account button only changed

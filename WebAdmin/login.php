@@ -292,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                   duration-[var(--duration-micro)]
                                   <?= $on
                                       ? 'border-brand bg-brand/10 text-brand!'
-                                      : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
+                                      : 'border-edge text-ink-subtle! hover:border-brand hover:text-brand!' ?>">
                             <?= strtoupper($loc) ?>
                         </a>
                     <?php endforeach; ?>
@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <button type="button" id="themeToggle"
                         class="grid h-11 w-11 place-items-center rounded-control border border-edge
                                text-ink-subtle transition-colors duration-[var(--duration-micro)]
-                               hover:border-edge-strong hover:text-ink"
+                               hover:border-brand hover:text-brand"
                         aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
                         aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
                     <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>">
