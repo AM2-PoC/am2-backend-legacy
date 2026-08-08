@@ -420,11 +420,21 @@ tr[data-row-id]:focus-visible {
      * out there and what is wrong. Everything else is one tap away in the sheet,
      * which is where the controls finally have room to be tapped.
      */
-    .am2-roster { display: block; width: 100%; }
-    .am2-roster thead { display: none; }
-    .am2-roster tbody { display: block; }
+    /*
+     * Every selector here is written .data-table.am2-roster rather than
+     * .am2-roster alone. Both classes sit on the same table, and the legacy
+     * card transform in am2-ui.css claims the same elements at .data-table
+     * tbody tr (0-1-2) -- one class and two types. .am2-roster tr is 0-1-1 and
+     * loses, !important on both sides included, which is what produced the tall
+     * near-empty cards on every roster page below lg. Two classes and one type
+     * is 0-2-1: it wins on the class column without widening the legacy system
+     * or touching a table that is not a roster.
+     */
+    .data-table.am2-roster { display: block; width: 100%; }
+    .data-table.am2-roster thead { display: none; }
+    .data-table.am2-roster tbody { display: block; }
 
-    .am2-roster tr {
+    .data-table.am2-roster tr {
         display: grid;
         grid-template-columns: 1.75rem minmax(0, 1fr);
         align-items: center;
@@ -434,18 +444,28 @@ tr[data-row-id]:focus-visible {
         border-radius: 0;
         background: transparent;
         padding: 0.75rem 0.875rem;
+        box-shadow: none;
+        margin-bottom: 0;
     }
-    .am2-roster tr:last-child { border-bottom: 0; }
+    .data-table.am2-roster tr:last-child { border-bottom: 0; }
 
     /* The row carries who and what is wrong. The rest stays in the DOM,
        out of sight, because the sheet borrows these very cells. */
-    .am2-roster td { display: none !important; padding: 0 !important; border: 0 !important; }
-    .am2-roster td::before { content: none !important; }
-    .am2-roster td[data-cell="select"] { display: block !important; }
-    .am2-roster td[data-cell="unit"]   { display: block !important; }
-    .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
+    .data-table.am2-roster td { display: none !important; padding: 0 !important; border: 0 !important; }
+    .data-table.am2-roster td::before { content: none !important; }
+    .data-table.am2-roster td[data-cell="select"] { display: block !important; }
+    .data-table.am2-roster td[data-cell="unit"]   { display: block !important; }
+    .data-table.am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
 
     /* An empty state is one message, not a row. */
-    .am2-roster tr:has(td[colspan]) { display: block; padding: 0; border-bottom: 0; }
-    .am2-roster tr:has(td[colspan]) td { display: block !important; }
+    .data-table.am2-roster tr:has(td[colspan]) { display: block; padding: 0; border-bottom: 0; }
+    .data-table.am2-roster tr:has(td[colspan]) td { display: block !important; }
+
+    /*
+     * The activity log is a roster with no checkbox: nothing about a past event
+     * can be selected or acted on. Without this the grid keeps its 1.75rem
+     * select column and every card is indented past a gutter that holds
+     * nothing.
+     */
+    .data-table.am2-roster-log tr { grid-template-columns: minmax(0, 1fr); }
 }
