@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     ['login.fact_tracking_label', 'login.fact_tracking'],
                 ] as [$labelKey, $bodyKey]): ?>
                     <div>
-                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
+                        <dt class="font-mono text-[11px] uppercase tracking-[0.18em] text-brand">
                             <?= e($labelKey) ?>
                         </dt>
                         <dd class="mt-1 font-mono text-[11px] leading-relaxed text-ink-muted">
@@ -145,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                      class="h-11 w-11 rounded-full bg-white object-contain p-0.5">
                 <div>
                     <p class="text-sm font-semibold tracking-tight">AM²</p>
-                    <p class="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
+                    <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                         <?= e('login.subtitle') ?>
                     </p>
                 </div>
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  class="am2-surface am2-surface-accent rounded-card p-6 sm:p-8">
 
                 <div data-am2-field>
-                    <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-brand">
+                    <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">
                         <?= e('login.eyebrow') ?>
                     </p>
                     <h1 class="mt-1.5 text-xl font-semibold tracking-tight"><?= e('login.heading') ?></h1>
@@ -252,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                              is rejected. Plain JS: one listener, and it is about
                              the keyboard rather than about a component. -->
                         <p id="am2-caps" hidden
-                           class="mt-2 flex items-center gap-1.5 font-mono text-[10px] uppercase
+                           class="mt-2 flex items-center gap-1.5 font-mono text-[11px] uppercase
                                   tracking-[0.15em] text-warn">
                             <span aria-hidden="true">⇪</span><?= e('login.caps_on') ?>
                         </p>

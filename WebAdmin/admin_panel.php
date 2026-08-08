@@ -241,7 +241,7 @@ $columns = [
 ];
 
 $tableAction = '<button type="button" data-hs-overlay="#am2-admin-form" data-admin-add'
-    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('adm.add') . '</button>';
@@ -282,14 +282,14 @@ include 'partials/shell.php';
                             <?php if ($filtered): ?>
                                 <a href="admin_panel.php"
                                    class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
-                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          px-4 font-mono text-[11px] uppercase tracking-[0.15em]
                                           text-ink-muted! no-underline! transition-colors
                                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
                                     <?= e('usr.clear_filter') ?>
                                 </a>
                             <?php else: ?>
                                 <button type="button" data-hs-overlay="#am2-admin-form" data-admin-add
-                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[10px]
+                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[11px]
                                                font-semibold uppercase tracking-[0.15em] text-slate-950
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:bg-brand-hover">
@@ -327,7 +327,7 @@ include 'partials/shell.php';
                                         <span class="truncate text-sm text-ink"><?= htmlspecialchars((string) $a['username']) ?></span>
                                         <?php if ($isSuper): ?>
                                             <span class="shrink-0 rounded-control bg-accent/10 px-1.5 font-mono
-                                                         text-[9px] uppercase tracking-[0.1em] text-accent">
+                                                         text-[11px] uppercase tracking-[0.1em] text-accent">
                                                 <?= e('adm.super') ?>
                                             </span>
                                         <?php endif; ?>
@@ -368,7 +368,7 @@ include 'partials/shell.php';
 
                         <td data-cell="features" data-label="<?= e('adm.features') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($isSuper): ?>
-                                <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">
+                                <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-accent">
                                     <?= e('adm.full_access') ?>
                                 </span>
                             <?php else: ?>
@@ -386,7 +386,7 @@ include 'partials/shell.php';
 
                         <td data-cell="quota" data-label="<?= e('adm.quota') ?>" class="px-4 py-2.5 text-right align-middle">
                             <?php if ($isSuper): ?>
-                                <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <?= e('adm.unlimited') ?>
                                 </span>
                             <?php else: ?>
@@ -399,13 +399,13 @@ include 'partials/shell.php';
                         <td data-cell="expiry" data-label="<?= e('adm.expiry') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($expired): ?>
                                 <span class="inline-flex items-center gap-1.5 rounded-control border border-bad/40
-                                             bg-bad/5 px-2 py-1 font-mono text-[9px] uppercase
+                                             bg-bad/5 px-2 py-1 font-mono text-[11px] uppercase
                                              tracking-[0.1em] text-bad">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('adm.expired') ?>
                                 </span>
-                                <span class="ms-1 font-mono text-[10px] text-ink-subtle"><?= date('d M Y', (int) $expiry) ?></span>
+                                <span class="ms-1 font-mono text-[11px] text-ink-subtle"><?= date('d M Y', (int) $expiry) ?></span>
                             <?php elseif (!$expiry): ?>
-                                <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <?= e('adm.permanent') ?>
                                 </span>
                             <?php else: ?>
@@ -420,7 +420,7 @@ include 'partials/shell.php';
                                 <button type="button" data-row-edit
                                         data-admin="<?= htmlspecialchars(json_encode($a, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>"
                                         class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               text-[11px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('adm.edit') ?>
@@ -435,7 +435,7 @@ include 'partials/shell.php';
                                             data-name="<?= htmlspecialchars((string) $a['username'], ENT_QUOTES, 'UTF-8') ?>"
                                             data-channels="<?= htmlspecialchars(json_encode($a['channel_ids']), ENT_QUOTES, 'UTF-8') ?>"
                                             class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                                   text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                                   text-[11px] uppercase tracking-[0.12em] text-ink-muted
                                                    transition-colors duration-[var(--duration-micro)]
                                                    hover:border-brand hover:text-brand">
                                         <?= e('adm.delegate') ?>
@@ -455,7 +455,7 @@ include 'partials/shell.php';
                                         <input type="hidden" name="delete_admin_id" value="<?= (int) $a['id'] ?>">
                                         <button type="submit"
                                                 class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                                       text-[9px] uppercase tracking-[0.12em] text-bad
+                                                       text-[11px] uppercase tracking-[0.12em] text-bad
                                                        transition-colors duration-[var(--duration-micro)]
                                                        hover:border-bad/50 hover:bg-bad/10">
                                             <?= e('adm.delete') ?>
@@ -476,11 +476,11 @@ $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-c
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
           . ' transition-colors duration-[var(--duration-micro)] hover:border-edge-strong'
           . ' focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25';
-$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
-$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+$labelCls = 'font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[11px] font-semibold'
           . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
           . ' duration-[var(--duration-micro)] hover:text-ink';
-$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold uppercase'
           . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
@@ -585,7 +585,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                         <input id="f_expired" name="expired_at" type="date" class="<?= $fieldCls ?> mt-0 font-mono">
                         <button type="button" data-add-30
                                 class="mt-0 h-11 shrink-0 rounded-control border border-edge px-3 font-mono
-                                       text-[10px] uppercase tracking-[0.15em] text-ink-muted
+                                       text-[11px] uppercase tracking-[0.15em] text-ink-muted
                                        transition-colors duration-[var(--duration-micro)]
                                        hover:border-brand hover:text-brand">
                             <?= e('adm.add_30') ?>
@@ -611,7 +611,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <input type="hidden" name="target_admin_id" id="delegate_admin_id" value="">
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-delegate-label" class="text-base font-semibold text-ink"><?= e('adm.delegate_title') ?></h2>
-                <p data-delegate-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+                <p data-delegate-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
                 <p class="mt-1 text-xs text-ink-muted"><?= e('adm.delegate_note') ?></p>
             </header>
 
@@ -658,7 +658,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
             <button type="button" data-hs-overlay="#am2-bulk-delete" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
             <button type="button" data-delete-apply disabled
-                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[11px] font-semibold uppercase
                            tracking-[0.15em] text-white transition-colors
                            duration-[var(--duration-micro)] hover:opacity-90
                            disabled:cursor-not-allowed disabled:opacity-40">
@@ -693,7 +693,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <?php foreach ([['features', 'adm.features'], ['quota', 'adm.quota'],
                             ['expiry', 'adm.expiry']] as [$slot, $label]): ?>
                 <div class="flex items-center gap-3 px-5 py-2">
-                    <span class="w-16 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                    <span class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
                     <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>
                 </div>

@@ -339,7 +339,7 @@ include 'partials/shell.php';
                             <?php if ($filtered): ?>
                                 <a href="user_access.php"
                                    class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
-                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          px-4 font-mono text-[11px] uppercase tracking-[0.15em]
                                           text-ink-muted! no-underline! transition-colors
                                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
                                     <?= e('usr.clear_filter') ?>
@@ -386,7 +386,7 @@ include 'partials/shell.php';
                                       aria-hidden="true"></span>
                                 <span class="min-w-0">
                                     <span class="block truncate text-sm text-ink"><?= htmlspecialchars((string) $row['name']) ?></span>
-                                    <span class="block truncate font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($uid) ?></span>
+                                    <span class="block truncate font-mono text-[11px] text-ink-subtle"><?= htmlspecialchars($uid) ?></span>
 
                                     <span data-summary class="block text-xs lg:hidden">
                                         <?php if (!$mine): ?>
@@ -424,7 +424,7 @@ include 'partials/shell.php';
                             <?php if (!$mine): ?>
                                 <!-- Without a default channel server.js refuses app_login outright. -->
                                 <span class="inline-flex items-center gap-1.5 rounded-control border border-bad/40
-                                             bg-bad/5 px-2 py-1 font-mono text-[9px] uppercase
+                                             bg-bad/5 px-2 py-1 font-mono text-[11px] uppercase
                                              tracking-[0.1em] text-bad">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('acc.none') ?>
                                 </span>
@@ -452,7 +452,7 @@ include 'partials/shell.php';
                                 <button type="button" data-row-edit
                                         data-state="<?= htmlspecialchars(json_encode($state, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>"
                                         class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               text-[11px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('acc.edit') ?>
@@ -462,7 +462,7 @@ include 'partials/shell.php';
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $row['name'], ENT_QUOTES, 'UTF-8') ?>"
                                         class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-bad
+                                               text-[11px] uppercase tracking-[0.12em] text-bad
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-bad/50 hover:bg-bad/10">
                                     <?= e('acc.kick') ?>
@@ -478,11 +478,11 @@ include 'partials/shell.php';
 <?php
 $ovl = 'hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto bg-slate-950/50 backdrop-blur-sm';
 $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-card';
-$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
-$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+$labelCls = 'font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[11px] font-semibold'
           . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
           . ' duration-[var(--duration-micro)] hover:text-ink';
-$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold uppercase'
           . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
@@ -502,7 +502,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-access-label" class="text-base font-semibold text-ink"><?= e('acc.modal_title') ?></h2>
-                <p id="m_user_name" class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+                <p id="m_user_name" class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
             </header>
 
             <p class="border-b border-edge px-5 py-2 text-xs text-ink-muted"><?= e('acc.modal_note') ?></p>
@@ -524,7 +524,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
                         <!-- Receive-only. The relay reads exactly one value here:
                              anything that is not RX means the unit may transmit. -->
-                        <label class="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-subtle">
+                        <label class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-subtle">
                             <input type="checkbox" id="rx_<?= $cid ?>" name="permissions[<?= $cid ?>]" value="RX"
                                    data-rx="<?= $cid ?>"
                                    class="h-3.5 w-3.5 rounded border-edge-strong text-accent focus:ring-accent/40">
@@ -532,7 +532,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                         </label>
 
                         <button type="button" id="def_label_<?= $cid ?>" data-def="<?= $cid ?>" hidden
-                                class="rounded-control border px-2 py-0.5 font-mono text-[9px] uppercase
+                                class="rounded-control border px-2 py-0.5 font-mono text-[11px] uppercase
                                        tracking-[0.1em] transition-colors duration-[var(--duration-micro)]">
                             <?= e('acc.default') ?>
                         </button>
@@ -541,7 +541,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             </div>
 
             <footer class="flex items-center justify-between gap-3 border-t border-edge px-5 py-4">
-                <p data-default-warning class="font-mono text-[9px] uppercase tracking-[0.15em] text-warn"></p>
+                <p data-default-warning class="font-mono text-[11px] uppercase tracking-[0.15em] text-warn"></p>
                 <div class="flex gap-2">
                     <button type="button" data-hs-overlay="#am2-access-edit" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
                     <button type="submit" name="update_multi_access" value="1" data-access-save
@@ -565,7 +565,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
             <button type="button" data-hs-overlay="#am2-bulk-kick" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
             <button type="button" data-kick-apply
-                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[11px] font-semibold uppercase
                            tracking-[0.15em] text-white transition-colors
                            duration-[var(--duration-micro)] hover:opacity-90">
                 <?= e('acc.kick') ?>
@@ -597,7 +597,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
         <div class="divide-y divide-edge">
             <div class="flex items-baseline gap-4 px-5 py-3.5">
-                <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                <span class="w-20 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                              text-ink-subtle"><?= e('acc.channels') ?></span>
                 <span data-slot="access" class="flex min-w-0 flex-1 flex-wrap gap-1.5"></span>
             </div>
@@ -662,7 +662,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             const def = document.querySelector(`[data-def="${CSS.escape(cid)}"]`);
             if (def) {
                 def.hidden = !on;
-                def.className = 'rounded-control border px-2 py-0.5 font-mono text-[9px] uppercase'
+                def.className = 'rounded-control border px-2 py-0.5 font-mono text-[11px] uppercase'
                     + ' tracking-[0.1em] transition-colors duration-[var(--duration-micro)] '
                     + (m.def === cid ? 'border-brand bg-brand/10 text-brand'
                                      : 'border-edge text-ink-subtle hover:border-brand');

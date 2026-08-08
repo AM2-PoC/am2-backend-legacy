@@ -384,7 +384,7 @@ $pageSize = AM2_USER_PAGE;
  * search box on every page whether or not the page could create anything.
  */
 $tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
-    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('usr.add') . '</button>';
@@ -432,14 +432,14 @@ include 'partials/shell.php';
                             <?php if ($filtered): ?>
                                 <a href="users.php"
                                    class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
-                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          px-4 font-mono text-[11px] uppercase tracking-[0.15em]
                                           text-ink-muted! no-underline! transition-colors
                                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
                                     <?= e('usr.clear_filter') ?>
                                 </a>
                             <?php else: ?>
                                 <button type="button" data-hs-overlay="#am2-add-unit"
-                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[10px]
+                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[11px]
                                                font-semibold uppercase tracking-[0.15em] text-slate-950
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:bg-brand-hover">
@@ -478,12 +478,12 @@ include 'partials/shell.php';
                                         <span class="truncate font-mono text-sm text-ink"><?= htmlspecialchars($uid) ?></span>
                                         <span data-tx hidden
                                               class="shrink-0 rounded-control bg-bad/10 px-1.5 font-mono
-                                                     text-[9px] uppercase tracking-[0.1em] text-bad">TX</span>
+                                                     text-[11px] uppercase tracking-[0.1em] text-bad">TX</span>
                                     </span>
                                     <span class="block truncate text-sm text-ink-muted"><?= htmlspecialchars((string) $u['name']) ?></span>
                                     <!-- Desktop: the freshness, because channel
                                          has a column of its own. -->
-                                    <span data-seen class="hidden font-mono text-[10px] text-ink-subtle lg:block">
+                                    <span data-seen class="hidden font-mono text-[11px] text-ink-subtle lg:block">
                                         <?= $online
                                             ? e('usr.online_now')
                                             : ($seen ? e('usr.last_seen', ['when' => date('d M H:i', $seen)]) : '') ?>
@@ -557,7 +557,7 @@ include 'partials/shell.php';
                                     <span class="truncate"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
                                 </span>
                                 <?php if (count($chans) > 1): ?>
-                                    <span class="mt-1 block font-mono text-[10px] text-ink-subtle">
+                                    <span class="mt-1 block font-mono text-[11px] text-ink-subtle">
                                         <?= e('usr.more_channels', ['n' => count($chans) - 1]) ?>
                                     </span>
                                 <?php endif; ?>
@@ -689,11 +689,11 @@ $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-c
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
           . ' transition-colors duration-[var(--duration-micro)] hover:border-edge-strong'
           . ' focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25';
-$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
-$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+$labelCls = 'font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[11px] font-semibold'
           . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
           . ' duration-[var(--duration-micro)] hover:text-ink';
-$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold uppercase'
           . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
@@ -762,7 +762,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <?= am2_csrf_field() ?>
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-edit-label" class="text-base font-semibold text-ink"><?= e('usr.edit_title') ?></h2>
-                <p data-edit-unit class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+                <p data-edit-unit class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
             </header>
             <div class="space-y-4 p-5">
                 <input type="hidden" name="edit_id" id="edit_id" value="">
@@ -790,7 +790,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-channels-label" class="text-base font-semibold text-ink"><?= e('usr.channels_title') ?></h2>
-            <p data-channels-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-channels-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="max-h-[50vh] overflow-y-auto p-5">
             <?php if (!$all_channels): ?>
@@ -824,7 +824,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-duplex-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_duplex_title') ?></h2>
-            <p data-duplex-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-duplex-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="flex gap-2 p-5">
             <button type="button" data-apply-duplex="HALF DUPLEX"
@@ -844,7 +844,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-feature-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_feature_title') ?></h2>
-            <p data-feature-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-feature-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="divide-y divide-edge">
             <?php foreach ($features as [$key, $labelKey, $allowed]): ?>
@@ -853,13 +853,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                     <span class="flex gap-1.5">
                         <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="false"
                                 <?= $allowed ? '' : 'disabled' ?>
-                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[11px]
                                        uppercase tracking-[0.15em] text-ink-muted transition-colors
                                        duration-[var(--duration-micro)] hover:border-bad hover:text-bad
                                        disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.off') ?></button>
                         <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="true"
                                 <?= $allowed ? '' : 'disabled' ?>
-                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[11px]
                                        uppercase tracking-[0.15em] text-ink-muted transition-colors
                                        duration-[var(--duration-micro)] hover:border-brand hover:text-brand
                                        disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.on') ?></button>
@@ -889,7 +889,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
             <button type="button" data-hs-overlay="#am2-bulk-delete" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
             <button type="button" data-delete-apply disabled
-                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[11px] font-semibold uppercase
                            tracking-[0.15em] text-white transition-colors duration-[var(--duration-micro)]
                            hover:bg-bad/90 disabled:cursor-not-allowed disabled:opacity-40">
                 <?= e('usr.bulk_delete') ?>
@@ -939,7 +939,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <?php foreach ([['channel', 'usr.channel'], ['duplex', 'usr.duplex'],
                             ['features', 'usr.features']] as [$slot, $label]): ?>
                 <div class="flex items-center gap-3 px-5 py-2">
-                    <span class="w-16 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                    <span class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
                     <span data-slot="<?= $slot ?>"
                           class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>

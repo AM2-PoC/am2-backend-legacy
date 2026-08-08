@@ -28,7 +28,7 @@ const AM2_LOG_PAGE = 20;
                             ['ADM', 'btn-adm', 'logs.adm']] as [$cat, $id, $key]): ?>
                 <button type="button" id="<?= $id ?>" data-cat="<?= $cat ?>"
                         aria-pressed="<?= $cat === 'ALL' ? 'true' : 'false' ?>"
-                        class="am2-cat h-11 rounded-control border px-3 font-mono text-[10px]
+                        class="am2-cat h-11 rounded-control border px-3 font-mono text-[11px]
                                uppercase tracking-[0.15em] transition-colors
                                duration-[var(--duration-micro)]
                                <?= $cat === 'ALL'
@@ -48,7 +48,7 @@ const AM2_LOG_PAGE = 20;
                    placeholder="<?= e('logs.search') ?>">
         </div>
 
-        <div class="ml-auto flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em]">
+        <div class="ml-auto flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
             <span id="loading-indicator" hidden class="text-brand">•••</span>
             <span id="logStale" hidden class="text-warn"><?= e('rail.stale') ?></span>
             <!-- Live is a state, so it is shown as one. Paused says why. -->
@@ -72,7 +72,7 @@ const AM2_LOG_PAGE = 20;
     <div class="max-h-[calc(100dvh-19rem)] overflow-auto">
         <table class="data-table am2-roster am2-roster-log w-full text-sm lg:min-w-[48rem]">
             <thead class="sticky top-0 z-10 bg-card">
-                <tr class="border-b border-edge text-left font-mono text-[10px] uppercase
+                <tr class="border-b border-edge text-left font-mono text-[11px] uppercase
                            tracking-[0.15em] text-ink-subtle">
                     <th scope="col" class="px-4 py-2.5 font-normal lg:px-5"><?= e('logs.time') ?></th>
                     <th scope="col" class="px-4 py-2.5 font-normal"><?= e('logs.event') ?></th>
@@ -96,7 +96,7 @@ const AM2_LOG_PAGE = 20;
         anybody could reach.
     -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-edge px-4 py-3 lg:px-5">
-        <p id="logCount" class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"></p>
+        <p id="logCount" class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle"></p>
         <div class="flex items-center gap-3">
             <!--
                 The endpoint pages backwards from the oldest row held, so the
@@ -209,14 +209,14 @@ const AM2_LOG_PAGE = 20;
         const head = document.createElement('span');
         head.className = 'flex items-center gap-2';
         const b = document.createElement('span');
-        b.className = 'shrink-0 rounded-control px-1.5 py-0.5 font-mono text-[9px] '
+        b.className = 'shrink-0 rounded-control px-1.5 py-0.5 font-mono text-[11px] '
                     + 'uppercase tracking-[0.1em] ' + badge(r);
         b.textContent = label(r);
         const when = document.createElement('span');
         when.className = 'font-mono text-[11px] tabular-nums text-ink';
         when.textContent = r.jam ?? '';
         const day = document.createElement('span');
-        day.className = 'font-mono text-[10px] text-ink-subtle';
+        day.className = 'font-mono text-[11px] text-ink-subtle';
         day.textContent = r.tanggal ?? '';
         head.append(b, when, day);
 
@@ -227,7 +227,7 @@ const AM2_LOG_PAGE = 20;
         what.textContent = r.target ?? '';
 
         const by = document.createElement('span');
-        by.className = 'mt-0.5 block break-words font-mono text-[10px] text-ink-subtle';
+        by.className = 'mt-0.5 block break-words font-mono text-[11px] text-ink-subtle';
         by.textContent = [r.pelaksana, r.pelaksana_id].filter(Boolean).join(' · ');
 
         td.append(head, what, by);
@@ -250,13 +250,13 @@ const AM2_LOG_PAGE = 20;
             jam.className = 'block font-mono text-xs tabular-nums';
             jam.textContent = r.jam ?? '';
             const tgl = document.createElement('span');
-            tgl.className = 'block font-mono text-[10px] text-ink-subtle';
+            tgl.className = 'block font-mono text-[11px] text-ink-subtle';
             tgl.textContent = r.tanggal ?? '';
             time.append(jam, tgl);
 
             const ev = cell('event', 'px-4 py-2 align-top');
             const b = document.createElement('span');
-            b.className = 'inline-block rounded-control px-1.5 py-0.5 font-mono text-[9px] '
+            b.className = 'inline-block rounded-control px-1.5 py-0.5 font-mono text-[11px] '
                         + 'uppercase tracking-[0.1em] ' + badge(r);
             b.textContent = label(r);
             ev.append(b);
@@ -269,7 +269,7 @@ const AM2_LOG_PAGE = 20;
             who.className = 'block truncate';
             who.textContent = r.pelaksana ?? '';
             const wid = document.createElement('span');
-            wid.className = 'block font-mono text-[10px] text-ink-subtle';
+            wid.className = 'block font-mono text-[11px] text-ink-subtle';
             wid.textContent = r.pelaksana_id ?? '';
             actor.append(who, wid);
 

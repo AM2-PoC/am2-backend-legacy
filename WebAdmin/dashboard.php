@@ -356,7 +356,7 @@ $cards = [
         <a href="<?= $c['href'] ?>" data-kpi
            class="am2-surface am2-surface-accent am2-clickable group flex flex-col rounded-card p-5
                   no-underline! text-ink!">
-            <p class="flex items-center justify-between font-mono text-[10px] uppercase
+            <p class="flex items-center justify-between font-mono text-[11px] uppercase
                       tracking-[0.18em] text-ink-subtle">
                 <span><?= e($c['key']) ?></span>
                 <span aria-hidden="true"
@@ -388,7 +388,7 @@ $cards = [
                 $delta = am2_delta($c['series'] ?? null);
                 if ($delta): ?>
                     <span class="ms-auto inline-flex items-baseline gap-1 self-center rounded-control
-                                 bg-card-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
+                                 bg-card-muted px-1.5 py-0.5 font-mono text-[11px] text-ink-muted"
                           title="<?= e('dash.delta_since') ?>">
                         <span aria-hidden="true"><?= $delta['up'] ? '↑' : '↓' ?></span>
                         <?= $delta['percent'] !== null
@@ -410,7 +410,7 @@ $cards = [
 
             <!-- Freshness. A number with no time on it is a number you have to
                  trust blindly; this one says when it was true. -->
-            <p class="mt-auto pt-3 font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+            <p class="mt-auto pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span data-kpi-stale hidden class="text-warn">⚠ <?= e('state.stale_title') ?> · </span>
                 <span data-kpi-time><?= $freshness ?></span> WIB
             </p>
@@ -435,7 +435,7 @@ $cards = [
                         <span class="h-1.5 w-1.5 shrink-0 rounded-full <?= $on > 0 ? 'bg-ok' : 'bg-edge-strong' ?>"
                               aria-hidden="true"></span>
                         <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($ch['display_name']) ?></span>
-                        <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                        <span class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                             <?= $on ?> <?= e('rail.online') ?>
                         </span>
                         <span class="w-16 shrink-0 text-right font-mono text-sm tabular-nums">
@@ -467,11 +467,11 @@ $cards = [
                     <li class="flex h-11 items-center gap-3 px-5">
                         <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true"></span>
                         <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($u['name']) ?></span>
-                        <span class="shrink-0 font-mono text-[10px] text-ink-subtle">
+                        <span class="shrink-0 font-mono text-[11px] text-ink-subtle">
                             <?= htmlspecialchars($u['id']) ?>
                         </span>
                         <a href="user_access.php?search=<?= urlencode($u['id']) ?>"
-                           class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                           class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                   no-underline! text-brand! hover:underline!"><?= e('dash.fix') ?></a>
                     </li>
                 <?php endforeach; ?>
@@ -485,7 +485,7 @@ $cards = [
     <header class="flex flex-wrap items-center justify-between gap-3 border-b border-edge px-5 py-4">
         <div>
             <h2 class="text-sm font-semibold tracking-tight"><?= e('dash.traffic') ?></h2>
-            <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <p class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span id="liveClock"><?= $freshness ?></span> WIB
                 <span id="chartSyncIcon" style="display:none" class="ml-2 text-brand">•••</span>
             </p>
@@ -494,7 +494,7 @@ $cards = [
             <?php foreach ([['24h', 'dash.range_24h'], ['7d', 'dash.range_7d']] as [$r, $k]): ?>
                 <button type="button" data-range="<?= $r ?>"
                         aria-pressed="<?= $r === '24h' ? 'true' : 'false' ?>"
-                        class="am2-range h-11 rounded-control border px-3 font-mono text-[10px]
+                        class="am2-range h-11 rounded-control border px-3 font-mono text-[11px]
                                uppercase tracking-[0.15em] transition-colors
                                duration-[var(--duration-micro)]
                                <?= $r === '24h'
@@ -512,7 +512,7 @@ $cards = [
 
         <div id="chartError" hidden class="absolute inset-0 grid place-items-center bg-card/80">
             <?= am2_state('error', t('state.error_title'), t('state.error_body'),
-                          '<button type="button" id="chartRetry" class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">' . e('common.retry') . '</button>') ?>
+                          '<button type="button" id="chartRetry" class="rounded-control border border-edge px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">' . e('common.retry') . '</button>') ?>
         </div>
     </div>
 </section>
@@ -529,7 +529,7 @@ $cards = [
                     <span class="h-1.5 w-1.5 shrink-0 rounded-full <?= $d <= 7 ? 'bg-bad' : 'bg-warn' ?>"
                           aria-hidden="true"></span>
                     <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($a['username']) ?></span>
-                    <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                    <span class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  <?= $d <= 7 ? 'text-bad' : 'text-warn' ?>">
                         <?= $d ?> <?= e('dash.days_left') ?>
                     </span>
