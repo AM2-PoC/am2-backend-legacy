@@ -178,7 +178,14 @@
        an undefined custom property makes an animation last zero seconds --
        which is indistinguishable from the instant appearance being fixed. */
     --duration-modal: 180ms;   /* dialogue, sheet, scrim       */
-    --duration-drawer: 220ms;  /* sidebar rail, mobile drawer  */
+    --duration-drawer: 220ms;  /* sidebar rail, width only     */
+    /*
+     * The mobile drawer crosses further than the rail collapses -- 272px from
+     * off-screen against the rail's 200px in place -- so the same duration puts
+     * more speed on screen and reads as a snap. Graded by distance, like every
+     * other duration here.
+     */
+    --duration-drawer-panel: 320ms;
     --duration-page: 150ms;    /* full-page view transition    */
     --duration-exit: 120ms;
 }
@@ -430,18 +437,17 @@
  */
 @media (max-width: 1023px) {
     /*
-     * --ease-standard, not --ease-enter.
+     * The rail's own curve, over a longer time.
      *
-     * --ease-enter is cubic-bezier(0.16, 1, 0.3, 1): it spends almost all of
-     * its travel immediately and eases into a very long tail. On a small panel
-     * that reads as arriving. On a 272px drawer it measured 40% of the distance
-     * in the first frame, 88% by 83ms, and then 266ms creeping through the last
-     * five pixels -- a lurch followed by a hang, which is not smooth however
-     * many frames it renders at. --ease-standard covers the distance evenly and
-     * settles once, which is what a large surface crossing the screen needs.
+     * An earlier attempt swapped the curve for --ease-standard, reading the
+     * complaint as a lurch. It was the speed: the desktop rail collapse is the
+     * motion this is meant to match, and it uses --ease-enter over 220ms to
+     * travel 200px in place. The drawer covers 272px from off-screen, so the
+     * same duration puts noticeably more speed on screen. Same curve, more
+     * time -- graded by distance, like every other duration here.
      */
     #am2-sidebar.opened {
-        animation: am2-drawer-in var(--duration-drawer) var(--ease-standard) both;
+        animation: am2-drawer-in var(--duration-drawer-panel) var(--ease-enter) both;
     }
     @keyframes am2-drawer-in {
         from { transform: translateX(-100%); }
@@ -463,7 +469,7 @@
      */
     #am2-sidebar.am2-closing {
         display: flex !important;
-        animation: am2-drawer-out var(--duration-drawer) var(--ease-exit) both;
+        animation: am2-drawer-out var(--duration-drawer-panel) var(--ease-exit) both;
     }
     @keyframes am2-drawer-out {
         from { transform: translateX(0); }
@@ -495,8 +501,8 @@
          * frame before the animation starts and lets go at the end, leaving the
          * class free to do its job.
          */
-        animation: am2-scrim-in var(--duration-drawer) var(--ease-standard) 50ms backwards;
-        transition-duration: var(--duration-drawer) !important;
+        animation: am2-scrim-in var(--duration-drawer-panel) var(--ease-enter) 50ms backwards;
+        transition-duration: var(--duration-drawer-panel) !important;
     }
 }
 

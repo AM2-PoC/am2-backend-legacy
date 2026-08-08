@@ -604,8 +604,12 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         </div>
 
         <footer data-slot="actions"
-                class="flex flex-wrap items-center justify-end gap-2 border-t border-edge
-                       bg-card-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"></footer>
+                class="flex items-stretch gap-2 border-t border-edge bg-card-muted px-5 py-3
+                       pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                       [&>span]:flex [&>span]:w-full [&>span]:gap-2
+                       [&_form]:contents [&_button]:min-h-11 [&_button]:flex-1
+                       [&_button]:basis-0 [&_button]:justify-center [&_button]:px-1
+                       [&_[data-row-result]]:hidden"></footer>
     </div>
 </div>
 
