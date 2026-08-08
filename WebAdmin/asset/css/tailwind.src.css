@@ -154,6 +154,49 @@
 }
 
 /*
+ * The theme arriving as a ripple from the toggle.
+ *
+ * The suppression above is still what stops a few hundred controls easing to
+ * new colours on their own schedules. The change is animated one level up
+ * instead: startViewTransition photographs the page, the attribute flips, and
+ * the browser cross-fades between two still images -- so this is one shape
+ * growing, not a page full of elements moving.
+ *
+ * The whole document is the named element, because a theme is not a region of
+ * the page. The origin is written on :root by the click handler, so the circle
+ * starts under the button that caused it.
+ *
+ * Named only while the swap is happening, and for the same reason the page
+ * transition is: view-transition-name makes a stacking context, and a permanent
+ * one on the root would put every dialogue underneath Preline's backdrop again.
+ * It would also claim the root snapshot away from the page transition, which
+ * uses it on every navigation.
+ */
+.am2-theme-switching { view-transition-name: am2-theme; }
+
+::view-transition-old(am2-theme) {
+    /* Pinned. Animating both snapshots slides them against each other; the old
+       theme simply waits underneath while the new one is drawn over it. */
+    animation: none;
+    mix-blend-mode: normal;
+}
+::view-transition-new(am2-theme) {
+    animation: am2-theme-ripple var(--duration-theme) var(--ease-standard) both;
+    mix-blend-mode: normal;
+}
+
+/*
+ * Radius: the far corner of the viewport, so the circle always finishes by
+ * covering the screen wherever the toggle happens to be. --am2-theme-r is set
+ * with the origin.
+ */
+@keyframes am2-theme-ripple {
+    from { clip-path: circle(0 at var(--am2-theme-x, 50%) var(--am2-theme-y, 0)); }
+    to   { clip-path: circle(var(--am2-theme-r, 150vmax)
+                             at var(--am2-theme-x, 50%) var(--am2-theme-y, 0)); }
+}
+
+/*
  * Motion.
  *
  * The rule this codebase follows: motion says something about state, hierarchy
@@ -187,6 +230,7 @@
      */
     --duration-drawer-panel: 320ms;
     --duration-page: 150ms;    /* full-page view transition    */
+    --duration-theme: 420ms;   /* theme ripple, corner to corner */
     --duration-exit: 120ms;
 }
 
@@ -369,6 +413,16 @@
      * holds opacity 0 -- suppressing only the transition would leave the panel
      * invisible instead of instant.
      */
+    /* A theme change is a change of colour, not a thing that travels. Under
+       reduced motion it simply happens -- and `animation: none` matters here
+       rather than merely tidying, because the ripple's first frame is a
+       zero-radius clip: left running at 0.01ms it would still flash the page
+       away for a frame. */
+    ::view-transition-new(am2-theme),
+    ::view-transition-old(am2-theme) {
+        animation: none;
+        clip-path: none;
+    }
     .hs-overlay.opened [data-am2-panel],
     #am2-unit-sheet.opened [data-am2-panel],
     #am2-sidebar.opened,

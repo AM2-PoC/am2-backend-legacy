@@ -57,7 +57,13 @@ function ruleFor(selector) {
 function transitionNames() {
     const out = {};
     for (const m of css.matchAll(/([^{}]+)\{([^}]*view-transition-name\s*:\s*([\w-]+)[^}]*)\}/g)) {
-        out[m[1].trim().replace(/^\.am2-navigating\s+/, '')] = m[3];
+        const selector = m[1].trim();
+        // The theme swap names the root for its own transition, gated on its
+        // own class. It is not part of the navigation snapshot and has nothing
+        // to do with which regions of a page animate, so it is not this file's
+        // subject -- theme-transition.test.mjs covers it.
+        if (selector.startsWith('.am2-theme-switching')) continue;
+        out[selector.replace(/^\.am2-navigating\s+/, '')] = m[3];
     }
     return out;
 }
