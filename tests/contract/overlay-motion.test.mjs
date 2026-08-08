@@ -214,6 +214,31 @@ test('the amber chips get a hover that is not amber, and the rest keep theirs', 
     assert.match(amber[2], /border-color/, 'the amber chips get no border change at all');
 });
 
+test('the drawer crosses the screen evenly, and its scrim darkens with it', () => {
+    /*
+     * --ease-enter is cubic-bezier(0.16, 1, 0.3, 1), which spends its travel
+     * almost at once and eases into a very long tail. Right for a small panel;
+     * on a 272px drawer it measured 40% of the distance in the first frame and
+     * 88% by 83ms, which is a lurch and then a hang however many frames it
+     * renders at. --ease-standard covers the distance evenly.
+     */
+    // Matched against the text rather than through the block splitter: this
+    // rule lives inside a media query, and the splitter treats @media as one
+    // block, so its contents never appear as rules of their own.
+    const open = css.match(/#am2-sidebar\.opened\s*\{[^}]*animation:\s*am2-drawer-in[^}]*\}/);
+    assert.ok(open, 'the drawer has no entrance');
+    assert.match(open[0], /--ease-standard/,
+        'the drawer uses the small-panel curve, which reads as a lurch across 272px');
+
+    // Preline paints the backdrop before the drawer starts moving -- measured
+    // 50ms -- so without a matching delay the room is already dark when the
+    // panel sets off.
+    const scrim = css.match(/\.hs-overlay-backdrop\s*\{[^}]*animation:\s*am2-scrim-in[^}]*\}/);
+    assert.ok(scrim, 'the drawer scrim still appears in one step');
+    assert.match(scrim[0], /\d+ms\s+both/,
+        'the scrim fade has no delay, so it darkens before the drawer has moved');
+});
+
 test('the sidebar is not treated as a scrim', () => {
     // It carries .hs-overlay like every dialogue, but it is a solid panel with
     // no backdrop of its own, and its entrance animates transform only. Caught
