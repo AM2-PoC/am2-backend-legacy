@@ -76,6 +76,22 @@ test('every Users status column is built from the shared chip, not a hand-copied
     }
 });
 
+test('the channel a unit is on is a chip, like the three columns beside it', () => {
+    // The request was am2-chip as the wrapper for all four columns. Half of it
+    // shipped: the "no channel" fault became a chip, the channel a unit is
+    // actually on stayed plain text, so the column still did not match FITUR
+    // and DUPLEX beside it.
+    const src = read('users.php');
+    const cell = src.match(/data-cell="channel"[\s\S]*?\n(?=\s*<td)/)[0];
+
+    const branch = cell.match(/if \(\$primary\)[\s\S]*?(?=<\?php else)/);
+    assert.ok(branch, 'the channel cell no longer branches on $primary');
+    assert.match(branch[0], /\bam2-chip\b/,
+        'a unit that has a channel renders it as plain text, not as the shared chip');
+    assert.match(branch[0], /border-brand|bg-brand/,
+        'the active channel chip is not brand-coloured, so it does not read as a live setting');
+});
+
 test('the Users chips keep their status readable rather than making everything brand-coloured', () => {
     const src = read('users.php');
     const cell = (name) => src.match(new RegExp(`data-cell="${name}"[\\s\\S]*?\\n(?=\\s*<td|\\s*</tr)`))[0];

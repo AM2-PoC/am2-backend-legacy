@@ -180,7 +180,17 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                                     fails for anyone who cannot separate these
                                     two hues.
                                 -->
+                                <!--
+                                    aria-label, because in rail mode the label
+                                    beside the icon is display:none -- which
+                                    takes it out of the accessibility tree as
+                                    well as off the screen, leaving the link
+                                    announced as its icon and nothing else. The
+                                    visible text stays; this only guarantees a
+                                    name when that text is hidden.
+                                -->
                                 <a href="<?= $href ?>" <?= $on ? 'aria-current="page"' : '' ?>
+                                   aria-label="<?= e($labelKey) ?>"
                                    class="am2-nav-item group relative flex h-11 items-center gap-3
                                           rounded-control px-2 no-underline!
                                           transition-colors duration-[var(--duration-micro)]
