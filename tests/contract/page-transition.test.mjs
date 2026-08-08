@@ -45,11 +45,19 @@ function ruleFor(selector) {
     return null;
 }
 
-/** Selectors that name a view transition, mapped to the name they assign. */
+/**
+ * Selectors that name a view transition, mapped to the name they assign.
+ *
+ * The `.am2-navigating` prefix is stripped: the names are applied only while a
+ * navigation is in flight, because carrying view-transition-name permanently
+ * makes a stacking context and buries every dialogue under Preline's backdrop
+ * (see overlay-stacking.test.mjs). What this file checks is which element gets
+ * which name, which is the same question either way.
+ */
 function transitionNames() {
     const out = {};
     for (const m of css.matchAll(/([^{}]+)\{([^}]*view-transition-name\s*:\s*([\w-]+)[^}]*)\}/g)) {
-        out[m[1].trim()] = m[3];
+        out[m[1].trim().replace(/^\.am2-navigating\s+/, '')] = m[3];
     }
     return out;
 }

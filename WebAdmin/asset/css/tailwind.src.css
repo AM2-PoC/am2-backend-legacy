@@ -268,10 +268,24 @@
  * discards the transition entirely. The top bar is therefore addressed as the
  * shell's own child: a bare `header` would also claim every card header on
  * users.php and admin_panel.php, which have several each.
+ *
+ * Named only while a navigation is actually in flight.
+ *
+ * view-transition-name creates a stacking context on whatever carries it. Left
+ * on permanently, `main` became one -- and every dialogue in this panel is
+ * markup inside main, while Preline builds its backdrop as a child of body. So
+ * the overlay's z-80 stopped being comparable to the backdrop's z-79, the
+ * backdrop covered the dialogue, and every click on it was swallowed. The
+ * dialogue still rendered, which is what made it look like a session fault
+ * rather than a paint order.
+ *
+ * The class is added just before the page leaves and removed as soon as the
+ * next one has revealed, so the names exist for the frames that need them and
+ * at no other time.
  */
-#am2-sidebar         { view-transition-name: am2-rail; }
-#am2-content > header { view-transition-name: am2-topbar; }
-main                 { view-transition-name: am2-page; }
+.am2-navigating #am2-sidebar          { view-transition-name: am2-rail; }
+.am2-navigating #am2-content > header { view-transition-name: am2-topbar; }
+.am2-navigating main                  { view-transition-name: am2-page; }
 
 ::view-transition-group(am2-rail),
 ::view-transition-group(am2-topbar) {

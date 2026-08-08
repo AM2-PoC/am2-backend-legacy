@@ -371,6 +371,42 @@ if (document.readyState === 'loading') {
     initTables();
 }
 
+/*
+ * The page transition, named only while one is happening.
+ *
+ * view-transition-name creates a stacking context wherever it sits. Carried
+ * permanently, <main> became one -- and every dialogue in this panel is markup
+ * inside <main> while Preline builds its backdrop under <body>, so the
+ * overlay's z-80 stopped being comparable to the backdrop's z-79. The backdrop
+ * covered the dialogue and ate every click on it. The dialogue still rendered,
+ * which is why it read as a stale session rather than as a paint order.
+ *
+ * pageswap fires while the outgoing snapshot is being taken, and pagereveal on
+ * the incoming page before it is shown; between those two moments the names
+ * are needed, and outside them they are a bug. Browsers without view
+ * transitions never fire either event, so they simply navigate -- which is what
+ * they did before any of this existed.
+ */
+const NAVIGATING = 'am2-navigating';
+window.addEventListener('pageswap', () => {
+    document.documentElement.classList.add(NAVIGATING);
+});
+window.addEventListener('pagereveal', (e) => {
+    document.documentElement.classList.add(NAVIGATING);
+    // Held until the animation has finished, then dropped, so a dialogue opened
+    // on the new page is never trapped under the backdrop. `finished` rejects
+    // if the transition is skipped, which is a reason to clear it, not to log.
+    const done = e.viewTransition?.finished ?? Promise.resolve();
+    done.catch(() => {}).finally(() => {
+        document.documentElement.classList.remove(NAVIGATING);
+    });
+});
+// A page restored from the back/forward cache never fires pagereveal, so the
+// class would survive into a page nobody is navigating.
+window.addEventListener('pageshow', () => {
+    document.documentElement.classList.remove(NAVIGATING);
+});
+
 window.AM2 = {
     enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr, initTables,
     prefersReducedMotion, move, T, EASE, STAGGER,
