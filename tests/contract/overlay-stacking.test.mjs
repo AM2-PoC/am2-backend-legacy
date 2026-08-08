@@ -60,9 +60,16 @@ test('the names are applied only while a navigation is in flight', () => {
 
     for (const m of css.matchAll(/([^{}]+)\{([^}]*view-transition-name\s*:\s*am2-[\w-]+[^}]*)\}/g)) {
         const selector = m[1].trim();
-        assert.match(selector, /am2-navigating/,
-            `"${selector}" names a transition unconditionally; it must be gated on the `
-            + 'navigating state or it makes a permanent stacking context');
+        /*
+         * Gated on some transient state -- any of them. Navigation uses
+         * .am2-navigating; the theme swap names the root under
+         * .am2-theme-switching for the length of its ripple. What matters is
+         * that no name is carried while the page is simply sitting there,
+         * because that is what makes the stacking context permanent.
+         */
+        assert.match(selector, /am2-navigating|am2-theme-switching/,
+            `"${selector}" names a transition unconditionally; it must be gated on a `
+            + 'transient class or it makes a permanent stacking context');
     }
 });
 
