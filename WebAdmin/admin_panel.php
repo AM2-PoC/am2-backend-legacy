@@ -348,7 +348,7 @@ include 'partials/shell.php';
                                     </span>
                                 </span>
 
-                                <button type="button" data-open-sheet
+                                <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-admin-sheet"
                                         data-name="<?= htmlspecialchars((string) $a['username'], ENT_QUOTES, 'UTF-8') ?>"
                                         data-role="<?= $isSuper ? e('adm.super') : e('adm.branch') ?>"
@@ -692,10 +692,10 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <div class="divide-y divide-edge">
             <?php foreach ([['features', 'adm.features'], ['quota', 'adm.quota'],
                             ['expiry', 'adm.expiry']] as [$slot, $label]): ?>
-                <div class="flex items-baseline gap-4 px-5 py-3.5">
-                    <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                <div class="flex items-center gap-3 px-5 py-2">
+                    <span class="w-16 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
-                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5"></span>
+                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -908,6 +908,21 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     });
 
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
+
+    /*
+     * The sheet only exists below lg, and a window can cross that line while it
+     * is open. `lg:hidden` takes the panel away, but Preline's backdrop is a
+     * child of body and knows nothing about the breakpoint -- it stayed at full
+     * opacity with the body still scroll-locked, so the page sat under a grey
+     * scrim belonging to nothing visible. Closing through Preline is what
+     * removes the backdrop, restores the scroll and returns the borrowed cells.
+     */
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    desktop.addEventListener('change', () => {
+        if (desktop.matches && sheet?.classList.contains('opened')) {
+            window.HSOverlay?.close(sheet);
+        }
+    });
 
     paintRole();
     paintExpiry();
