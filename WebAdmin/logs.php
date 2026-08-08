@@ -89,14 +89,28 @@ const AM2_LOG_PAGE = 20;
     <div id="logError" hidden></div>
 
     <!--
-        Footer. It says how many rows exist rather than silently stopping at a
-        hundred, and it says "terbaru" because that is all the endpoint sends:
-        fetch_logs.php caps each category at 100 server-side, so 200 is the
-        whole reachable set. Going deeper would mean changing the endpoint.
+        Footer. The count is of what is held, not of what exists: the endpoint
+        answers a page at a time, and "load older" asks for the one before it
+        until the server says there is nothing left. It used to stop at the
+        newest 200 and say so, which was honest but was also the whole log
+        anybody could reach.
     -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-edge px-4 py-3 lg:px-5">
         <p id="logCount" class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"></p>
-        <nav id="logPager" class="flex items-center gap-1" aria-label="<?= e('logs.pagination') ?>"></nav>
+        <div class="flex items-center gap-3">
+            <!--
+                The endpoint pages backwards from the oldest row held, so the
+                log is no longer whatever fitted in the first two hundred.
+                Hidden once the server says there is nothing older, rather than
+                left to be pressed for no result.
+            -->
+            <button type="button" id="logMore" hidden
+                    class="am2-chip inline-flex items-center border-edge text-ink-muted
+                           hover:text-brand">
+                <?= e('logs.load_older') ?>
+            </button>
+            <nav id="logPager" class="flex items-center gap-1" aria-label="<?= e('logs.pagination') ?>"></nav>
+        </div>
     </div>
 </section>
 
@@ -278,6 +292,10 @@ const AM2_LOG_PAGE = 20;
             .replace(':total', set.length);
 
         renderPager(pages);
+        // Offered on the last page, where running out of rows is the thing the
+        // reader has just hit, and only while the server says more exist.
+        $('logMore').hidden = exhausted || page < pages;
+
         // Polling is only honest on page one; anywhere else the numbering moves
         // under the reader. Say so rather than quietly stopping.
         const browsing = page > 1;
@@ -315,24 +333,88 @@ const AM2_LOG_PAGE = 20;
         pager.appendChild(mk('›', page + 1, { disabled: page === pages, label: 'next' }));
     }
 
+    /** Newest raw_time held, which is what the endpoint answers relative to. */
+    let watermark = '';
+    /** Oldest raw_time held, and whether anything older exists to ask for. */
+    let oldest = '', exhausted = false, loadingOlder = false;
+
+    const byTimeDesc = (a, b) => String(b.raw_time).localeCompare(String(a.raw_time));
+
+    function absorb(data, { append = false } = {}) {
+        const incoming = [...(data.ptt ?? []), ...(data.adm ?? [])];
+        if (!incoming.length && append) { exhausted = true; return 0; }
+        // Merge by id within category: a poll near a second boundary can
+        // legitimately return a row already held, and a duplicated line in an
+        // audit trail reads as the action having happened twice.
+        const key = (r) => `${r.kategori}:${r.id}`;
+        const seen = new Set(rows.map(key));
+        const fresh = incoming.filter((r) => !seen.has(key(r)));
+        rows = [...rows, ...fresh].sort(byTimeDesc);
+        if (rows.length) {
+            watermark = rows[0].raw_time ?? watermark;
+            oldest = rows[rows.length - 1].raw_time ?? oldest;
+        }
+        if (data.complete) exhausted = true;
+        return fresh.length;
+    }
+
     async function tick() {
         $('loading-indicator').hidden = false;
         try {
-            const res = await fetch('fetch_logs.php', { headers: { Accept: 'application/json' } });
+            // With a watermark the endpoint answers only what is newer, and
+            // answers 204 when that is nothing -- which is most polls.
+            const qs = watermark ? '?since=' + encodeURIComponent(watermark) : '';
+            const res = await fetch('fetch_logs.php' + qs, { headers: { Accept: 'application/json' } });
+            if (res.status === 204) {
+                // Nothing new. The rendered rows are still correct, so they are
+                // left exactly as they are -- re-rendering would throw away the
+                // reader's place for no new information.
+                $('logStale').hidden = true;
+                $('logError').hidden = true;
+                stamp();
+                slower();
+                return;
+            }
             if (!res.ok) throw new Error(res.status);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            rows = [...(data.ptt ?? []), ...(data.adm ?? [])]
-                .sort((a, b) => String(b.raw_time).localeCompare(String(a.raw_time)));
-            $('last-update-time').textContent = new Date().toLocaleTimeString(LOCALE,
-                { hour12: false, timeZone: 'Asia/Jakarta' });
+
+            const added = absorb(data);
+            stamp();
             $('logStale').hidden = true;
             $('logError').hidden = true;
-            render();
+            if (added) { faster(); render(); } else { slower(); }
         } catch {
             // Keep the rows on screen but say they are no longer current.
             $('logStale').hidden = false;
         } finally {
+            $('loading-indicator').hidden = true;
+        }
+    }
+
+    function stamp() {
+        $('last-update-time').textContent = new Date().toLocaleTimeString(LOCALE,
+            { hour12: false, timeZone: 'Asia/Jakarta' });
+    }
+
+    /** One page older, on demand. This is what makes the log deeper than 200. */
+    async function loadOlder() {
+        if (loadingOlder || exhausted || !oldest) return;
+        loadingOlder = true;
+        $('loading-indicator').hidden = false;
+        try {
+            const res = await fetch('fetch_logs.php?before=' + encodeURIComponent(oldest),
+                                    { headers: { Accept: 'application/json' } });
+            if (res.status === 204) { exhausted = true; return; }
+            if (!res.ok) throw new Error(res.status);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            if (!absorb(data, { append: true })) exhausted = true;
+            render();
+        } catch {
+            $('logStale').hidden = false;
+        } finally {
+            loadingOlder = false;
             $('loading-indicator').hidden = true;
         }
     }
@@ -362,10 +444,56 @@ const AM2_LOG_PAGE = 20;
         render();
     });
 
+    /*
+     * How often to ask.
+     *
+     * Four seconds is right while something is happening -- a dispatch log is
+     * read as it moves -- and wasteful at three in the morning, when the same
+     * interval bought 900 requests an hour to be told nothing had changed. So
+     * four seconds is the floor, not the rate: every quiet poll backs off a
+     * step, and the first new row snaps it back. An event still surfaces within
+     * four seconds of the one before it, which is what the number was for.
+     */
+    const MIN_EVERY = 4000;
+    const MAX_EVERY = 30000;
+    let every = MIN_EVERY, timer = null;
+
+    const faster = () => { every = MIN_EVERY; };
+    const slower = () => { every = Math.min(MAX_EVERY, Math.round(every * 1.5)); };
+
+    function schedule() {
+        clearTimeout(timer);
+        // A chain of timeouts rather than an interval: the delay is decided
+        // after each response, and an interval cannot change its own period.
+        timer = setTimeout(async () => {
+            // Only on page one. Anywhere else the numbering moves under the
+            // reader -- see render(), which says so on screen.
+            if (page === 1 && !document.hidden) await tick();
+            schedule();
+        }, every);
+    }
+
+    /*
+     * A hidden tab asks for nothing.
+     *
+     * This console is left open on several screens all shift, and a tab nobody
+     * is looking at was polling at exactly the same rate as the one in front of
+     * the operator. Coming back asks immediately, so the first thing seen is
+     * current rather than however old the last answer was.
+     */
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { clearTimeout(timer); return; }
+        faster();
+        if (page === 1) tick();
+        schedule();
+    });
+
+    // Older rows, on request. The endpoint pages backwards from the oldest row
+    // held, so this is what makes the log deeper than the newest 200 events.
+    $('logMore')?.addEventListener('click', loadOlder);
+
     tick();
-    // Four seconds, as before: a dispatch log is read while it moves. It only
-    // refreshes on page one -- see render().
-    setInterval(() => { if (page === 1) tick(); }, 4000);
+    schedule();
 })();
 </script>
 </body>
