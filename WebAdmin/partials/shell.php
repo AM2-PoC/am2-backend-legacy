@@ -279,7 +279,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                     class="hidden h-11 items-center gap-2 rounded-control border border-edge
                            bg-card-muted px-3 text-sm text-ink-subtle
                            transition-colors duration-[var(--duration-micro)]
-                           hover:border-edge-strong hover:text-ink md:flex md:w-56 lg:w-64"
+                           hover:border-brand hover:text-brand md:flex md:w-56 lg:w-64"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette">
                 <?= am2_icon('search', 'h-4 w-4') ?>
                 <span class="flex-1 text-left"><?= e('search.placeholder') ?></span>
