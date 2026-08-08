@@ -356,6 +356,18 @@
     .am2-js [data-reveal] {
         opacity: 1;
     }
+    /*
+     * A dialogue is simply there. Written as opacity 1 rather than as
+     * `transition: none` on the closed state, because the closed state is what
+     * holds opacity 0 -- suppressing only the transition would leave the panel
+     * invisible instead of instant.
+     */
+    .hs-overlay.opened [data-am2-panel],
+    #am2-unit-sheet.opened [data-am2-panel] {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
 }
 
 /*
@@ -470,7 +482,17 @@ tr[data-row-id]:focus-visible {
                 border-color var(--duration-micro);
 }
 .am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
-.am2-chip:enabled:hover { border-color: var(--color-primary); }
+
+/*
+ * Hover firms up the chip's own colour rather than replacing it.
+ *
+ * This used to set the brand colour on every enabled chip, so a warning chip
+ * turned blue under the pointer -- the one visual difference that says "this
+ * needs attention" disappeared exactly when someone reached for it. currentColor
+ * is whatever the chip already is: brand for an active feature, warn for a
+ * missing channel, danger for delete.
+ */
+.am2-chip:enabled:hover { border-color: currentColor; }
 
 /*
  * A chip that is a control has to be hittable.
@@ -502,6 +524,100 @@ tr[data-row-id]:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
     border-radius: var(--am2-radius);
+}
+
+/*
+ * A pointer on anything that acts when clicked.
+ *
+ * Browsers give <button> cursor:default and <a href> a pointer, so the
+ * navigation read as clickable and none of the controls did -- measured
+ * cursor:default on every row action, every chip and the sheet trigger.
+ * :disabled keeps its own cursor from the component rules above.
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary {
+    cursor: pointer;
+}
+
+/*
+ * Dialogues.
+ *
+ * Both kinds appeared instantly -- transition-duration measured 0s, transform
+ * none -- so neither said where it came from. Preline adds `opened` to the
+ * overlay once it is visible, which is the hook these hang on: the closed state
+ * is the resting rule and `opened` is the arrival.
+ *
+ * The centred modal comes forward a little; the sheet is docked to the bottom
+ * of the screen, so it rises from there. Anything else contradicts where each
+ * one sits.
+ */
+/*
+ * Written as a keyframe rather than as a transition between two classes.
+ *
+ * Preline removes `hidden` and adds `opened` within the same frame, so a
+ * transition has no earlier state to start from -- measured: opacity went 0.00
+ * to 1.00 between one frame and the next, which is the instant appearance this
+ * is meant to replace. An animation runs from its own `from`, so it does not
+ * depend on the two class changes being separated in time.
+ */
+.hs-overlay.opened [data-am2-panel] {
+    animation: am2-dialog-in var(--duration-modal) var(--ease-enter) both;
+}
+@keyframes am2-dialog-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/*
+ * The sheet is docked to the bottom of the screen, so it rises from there.
+ * Percent rather than pixels: it travels its own height whatever that is, which
+ * is what makes a short sheet and a tall one read the same.
+ */
+#am2-unit-sheet.opened [data-am2-panel] {
+    animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
+}
+@keyframes am2-sheet-in {
+    from { opacity: 0; transform: translateY(12%); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/*
+ * The row is the tap target, not the chevron.
+ *
+ * The trigger measured 28x36 in a 356px row, so opening a unit meant hitting a
+ * thumb-width sliver at the end of the line. ::before stretches the button's
+ * hit area over the whole cell without moving the chevron or nesting anything
+ * inside the row -- a button inside a button is invalid, and wrapping the row
+ * in an anchor would have taken the checkbox and the chips with it.
+ *
+ * Behind the content (z-index 0 against the raised text), so selecting a call
+ * sign still works and the chips stay clickable in their own right.
+ */
+@media (max-width: 1023px) {
+    /*
+     * The row is the containing block, not the cell.
+     *
+     * An earlier attempt anchored this to td[data-cell="unit"], but the roster
+     * turns rows into grids and most cells into display:none, so that td never
+     * became a containing block and the stretched area escaped into the row
+     * below -- one row's hit layer sat on top of the next row's chevron and
+     * made it unclickable. The tr is laid out, so it is the honest anchor.
+     */
+    .data-table.am2-roster tbody tr { position: relative; }
+    .data-table.am2-roster tbody tr:has([data-sheet-row]) [data-sheet-row]::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+    }
+    /* The checkbox keeps its own hit area: selecting a unit and opening it are
+       different intentions, and the sheet must not swallow the first. */
+    .data-table.am2-roster td[data-cell="select"] {
+        position: relative;
+        z-index: 1;
+    }
 }
 
 /*

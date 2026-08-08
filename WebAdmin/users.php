@@ -510,9 +510,21 @@ include 'partials/shell.php';
                                     </span>
                                 </span>
 
-                                <!-- Everything else about this unit is one tap
-                                     away, and the chevron is what says so. -->
-                                <button type="button" data-open-sheet
+                                <!--
+                                    Everything else about this unit is one tap
+                                    away, and the chevron is what says so.
+
+                                    The button is 28px wide inside a row of
+                                    around 356, and it used to be the only way
+                                    in: a thumb had to find the chevron exactly.
+                                    It stretches across the whole cell now
+                                    (data-sheet-row), so anywhere on the row
+                                    opens the sheet -- the chevron stays as the
+                                    thing that says the row is tappable, and the
+                                    text above it keeps its own selection
+                                    because the stretched layer sits behind it.
+                                -->
+                                <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-unit-sheet"
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
@@ -915,20 +927,35 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             </button>
         </header>
 
+        <!--
+            Label beside the value, on a narrower gutter.
+
+            Stacking the label above cost a whole line per row for four
+            characters of text, and with 44px chips that made the sheet 61% of a
+            390px screen. The label sits back alongside instead, on 4rem rather
+            than 5, and the row is only as tall as the chips it holds.
+        -->
         <div class="divide-y divide-edge">
             <?php foreach ([['channel', 'usr.channel'], ['duplex', 'usr.duplex'],
                             ['features', 'usr.features']] as [$slot, $label]): ?>
-                <div class="flex items-baseline gap-4 px-5 py-3.5">
-                    <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                <div class="flex items-center gap-3 px-5 py-2">
+                    <span class="w-16 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
-                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap gap-1.5"></span>
+                    <span data-slot="<?= $slot ?>"
+                          class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>
                 </div>
             <?php endforeach; ?>
         </div>
 
+        <!--
+            The verbs on one row. Three of them wrapped to two lines in a
+            two-column grid, which added ninety pixels to a sheet reached with
+            one thumb; sharing a single row keeps them all within reach of it.
+        -->
         <footer data-slot="actions"
-                class="flex flex-wrap items-center justify-end gap-2 border-t border-edge
-                       bg-card-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"></footer>
+                class="flex items-center gap-2 border-t border-edge bg-card-muted px-5 py-3
+                       pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                       [&>form]:contents [&_button]:flex-1 [&_button]:justify-center"></footer>
     </div>
 </div>
 
@@ -1125,6 +1152,24 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
     // Preline owns the closing; this only puts the furniture back.
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
+
+    /*
+     * The sheet only exists below lg, and a window can cross that line while it
+     * is open.
+     *
+     * `lg:hidden` takes the panel away, but Preline's backdrop is a child of
+     * body and knows nothing about the breakpoint: it stayed at full opacity
+     * with the body still scroll-locked, so the page was covered by a grey
+     * sheet belonging to nothing visible. Closing through Preline is what
+     * removes the backdrop, restores the scroll and returns the borrowed cells
+     * to their row -- doing any of that by hand would leave the other two.
+     */
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeSheetAboveLg = () => {
+        if (!desktop.matches || !sheet?.classList.contains('opened')) return;
+        window.HSOverlay?.close(sheet);
+    };
+    desktop.addEventListener('change', closeSheetAboveLg);
 
     /**
      * The roster is live. The same endpoint the shell polls and the map reads,
