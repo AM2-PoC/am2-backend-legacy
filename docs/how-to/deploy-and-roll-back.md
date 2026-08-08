@@ -50,6 +50,39 @@ for f in "$REL"/WebAdmin/*.php; do php -l "$f" >/dev/null || echo "SYNTAX: $f"; 
 node --check "$REL/server/server.js"
 ```
 
+## Migrate
+
+Before the swap, never after. Migrations that run afterwards leave a window — however short — where
+the new code is live against the old schema, and on this application that window is a broken
+Activity Log: `fetch_logs.php` selects `event_code`, and `am2_log()` swallows its own write failures
+by design, so the trail goes quietly empty rather than erroring.
+
+```bash
+# What would run, without running it.
+"$REL"/infra/scripts/apply-migrations.sh --db am2 --dry-run
+
+# Apply.
+"$REL"/infra/scripts/apply-migrations.sh --db am2
+```
+
+`applied 0, already present N` is the normal result and means there was nothing to do. The runner
+records each file with its checksum in `public.schema_migrations` and refuses to continue if a file
+that was already applied has since been edited — write a new migration rather than changing an old
+one.
+
+Rehearse on staging first, against a database restored from the same dump production will be running
+on:
+
+```bash
+sudo -u am2deploy /var/www/am2/staging/current/infra/scripts/apply-migrations.sh --db am2_staging
+```
+
+**Rolling back:** the migrations here only add — a column, an index, a function — so the previous
+release runs unchanged against the migrated schema, and a code rollback needs no schema rollback.
+That is a property of these migrations, not a rule; a future migration that drops or renames
+anything breaks it, and the way to keep a rollback possible is to write the destructive half as a
+separate migration shipped a release later.
+
 Swap, then restart only what needs it:
 
 ```bash
