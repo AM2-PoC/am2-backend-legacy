@@ -151,10 +151,21 @@ elseif ($method == 'POST') {
                 $logParams = ['name' => $target_name, 'via' => 'mobile'];
             }
 
-            if ($current_admin_id) {
-                am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
-                        'users', (string) $user_id);
-            }
+            /*
+             * Unconditional, for the same reason the force_logout path above is.
+             *
+             * am2_set_user_channels() declares the audit debt where the change is
+             * made, so it is owed on every call. Skipping the write when the
+             * caller had no admin id left the debt unpaid, and
+             * am2_audit_complete() -- correctly -- threw, which the catch below
+             * turned into a rollback: an access update that used to work now
+             * failed for exactly the caller least able to report it. An API-key
+             * caller that sends no admin_id is a real path (am2_api_identity()
+             * returns null for it), not a hypothetical one. am2_log() stores an
+             * absent id as null, so the row says what is true.
+             */
+            am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                    'users', (string) $user_id);
 
             am2_audit_complete();
             $pdo->commit();
