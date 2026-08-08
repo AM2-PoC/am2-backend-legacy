@@ -309,8 +309,13 @@ $cards = [
     https://preline.co/docs/card.html
     Every one of these links somewhere, so every one carries the affordance --
     the arrow and the border change. A card that did not link would get neither.
+
+    Four columns from lg, not xl. The band between 1024 and 1279px was the one
+    place these stayed two-up, and with a 272px rail the content budget there is
+    already wide enough for four -- so half the row was empty card while the
+    reader scrolled to find the fourth metric.
 -->
-<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <?php foreach ($cards as $c): ?>
         <a href="<?= $c['href'] ?>" data-kpi
            class="am2-surface am2-clickable group flex flex-col rounded-card p-5

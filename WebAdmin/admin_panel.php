@@ -414,7 +414,7 @@ include 'partials/shell.php';
                         </td>
 
                         <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
-                            <span class="inline-flex items-center gap-2">
+                            <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
                                 <button type="button" data-row-edit
