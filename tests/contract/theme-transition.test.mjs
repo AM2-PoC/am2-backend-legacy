@@ -22,7 +22,13 @@ const WEBADMIN = join(ROOT, 'WebAdmin');
 
 const read = (p) => readFileSync(join(WEBADMIN, p), 'utf8');
 const css = read('asset/css/tailwind.src.css').replace(/\/\*[\s\S]*?\*\//g, '');
-const shellEnd = read('partials/shell_end.php');
+/*
+ * The toggle's behaviour lives in its own partial now. It was written twice --
+ * once here and once in login.php -- and the copies drifted: the shell gained
+ * the ripple while login kept swapping instantly, which is what a second copy
+ * always eventually does.
+ */
+const shellEnd = read('partials/theme_toggle.php');
 
 test('the theme change is animated as one picture, not per element', () => {
     // startViewTransition snapshots the whole page, swaps the attribute, then
@@ -83,4 +89,15 @@ test('reduced motion gets the instant switch it asked for', () => {
         .map((m) => m[1]).join('\n');
     assert.match(blocks, /am2-theme/,
         'the theme ripple still plays for someone who asked for no motion');
+});
+
+test('both pages get the toggle from the same place', () => {
+    // The drift this file now guards against: a page carrying its own copy is
+    // a page that stops matching the rest without anyone noticing.
+    for (const page of ['partials/shell_end.php', 'login.php']) {
+        assert.match(read(page), /theme_toggle\.php/,
+            `${page} does not include the shared theme toggle`);
+        assert.doesNotMatch(read(page), /startViewTransition/,
+            `${page} carries its own copy of the toggle again`);
+    }
 });

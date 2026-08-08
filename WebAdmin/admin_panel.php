@@ -582,7 +582,8 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                         <?= e('adm.permanent_label') ?>
                     </label>
                     <div data-date-row class="mt-3 flex gap-2">
-                        <input id="f_expired" name="expired_at" type="date" class="<?= $fieldCls ?> mt-0 font-mono">
+                        <input id="f_expired" name="expired_at" type="date"
+                                   aria-label="<?= e('adm.expired') ?>" class="<?= $fieldCls ?> mt-0 font-mono">
                         <button type="button" data-add-30
                                 class="mt-0 h-11 shrink-0 rounded-control border border-edge px-3 font-mono
                                        text-[11px] uppercase tracking-[0.15em] text-ink-muted
@@ -653,6 +654,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         <div class="space-y-4 p-5">
             <p data-delete-prompt class="text-sm text-ink-muted"></p>
             <input id="am2-delete-count" type="text" inputmode="numeric" autocomplete="off"
+                   aria-label="<?= e('tbl.delete_count_label') ?>"
                    class="<?= $fieldCls ?> font-mono">
         </div>
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">

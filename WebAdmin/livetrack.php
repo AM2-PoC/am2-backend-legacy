@@ -149,6 +149,7 @@ include 'partials/shell.php';
 
         <div class="border-b border-edge p-3">
             <input id="unitSearch" type="search" autocomplete="off"
+                   aria-label="<?= e('track.search') ?>"
                    placeholder="<?= e('track.search') ?>"
                    class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm
                           text-ink transition-colors duration-[var(--duration-micro)]

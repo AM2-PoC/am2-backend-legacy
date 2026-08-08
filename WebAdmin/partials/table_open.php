@@ -81,7 +81,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
                 <?php foreach ($chips as $chip):
                     $on = $curChip === $chip['value']; ?>
                     <a href="<?= htmlspecialchars(am2_table_qs(['chip' => $chip['value'] ?: null])) ?>"
-                       class="inline-flex h-9 items-center gap-1.5 rounded-control border px-3 font-mono
+                       class="inline-flex h-11 items-center gap-1.5 rounded-control border px-3 font-mono
                               text-[11px] uppercase tracking-[0.15em] no-underline! transition-colors
                               duration-[var(--duration-micro)]
                               <?= $on ? 'border-brand bg-brand/10 text-brand!'

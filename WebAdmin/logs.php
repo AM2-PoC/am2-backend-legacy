@@ -41,6 +41,7 @@ const AM2_LOG_PAGE = 20;
 
         <div class="relative min-w-0 flex-1 sm:max-w-xs">
             <input id="logSearchInput" type="search" autocomplete="off"
+                   aria-label="<?= e('logs.search') ?>"
                    class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink
                           transition-colors duration-[var(--duration-micro)]
                           hover:border-edge-strong focus:border-brand focus:outline-none

@@ -326,24 +326,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </div>
 
 <script src="<?= am2_asset('asset/js/am2-ui.min.js') ?>" defer></script>
+<?php include 'partials/theme_toggle.php'; ?>
+
 <script>
 (() => {
     'use strict';
 
-    /* Theme, outside everything else: it has to work whether or not the bundle
-     * arrives. Identical to the shell's, because it is the same control. */
-    document.getElementById('themeToggle')?.addEventListener('click', function () {
-        const root = document.documentElement;
-        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.classList.add('am2-theme-switching');
-        root.setAttribute('data-theme', next);
-        requestAnimationFrame(() => requestAnimationFrame(
-            () => root.classList.remove('am2-theme-switching')));
-        document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
-        this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
-        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
-        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
-    });
+    /* Theme lives in partials/theme_toggle.php, included above -- it was a
+     * second copy here and drifted from the shell's. */
 
     /* Caps Lock. */
     const caps = document.getElementById('am2-caps');
