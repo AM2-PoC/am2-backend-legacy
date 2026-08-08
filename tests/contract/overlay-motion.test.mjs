@@ -100,7 +100,9 @@ test('the scrim is hidden from the moment the overlay is shown, not from `opened
      * so the search is for one that actually hides.
      */
     const hides = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-        .filter((m) => /\.hs-overlay:not\(\.hidden\)\s*\{/.test(m[0]))
+        // The selector carries exclusions now (the sidebar is an .hs-overlay
+        // without a scrim), so this matches the shape rather than the string.
+        .filter((m) => /\.hs-overlay:not\(\.hidden\)/.test(m[1]) && !/\[data-am2-panel\]/.test(m[1]))
         .filter((m) => /opacity:\s*0\s*[;}]/.test(m[2]));
     assert.notEqual(hides.length, 0,
         'the overlay is painted before it is animated, so the scrim flashes over the page '
@@ -187,15 +189,39 @@ test('anything that acts on a click says so with the cursor', () => {
     assert.match(body, /cursor\s*:\s*pointer/, 'the rule does not set cursor: pointer');
 });
 
-test('a warn chip stays warn on hover', () => {
-    // .am2-chip:enabled:hover paints every chip's border with the brand colour.
-    // On the yellow chips that turned a warning blue under the pointer, which
-    // says the state changed when nothing did.
-    const hover = ruleFor('.am2-chip:enabled:hover');
-    if (hover) {
-        assert.doesNotMatch(hover, /border-color\s*:\s*var\(--color-primary\)\s*;?\s*$/,
-            'every enabled chip still hovers to the brand colour regardless of what it means');
-    }
-    assert.match(css, /am2-chip[^{]*hover[^{]*\{[^}]*currentColor|--am2-chip-hover/,
-        'nothing makes the hover border follow the chip’s own colour');
+test('the amber chips get a hover that is not amber, and the rest keep theirs', () => {
+    /*
+     * --color-primary is #f59e0b. The default hover paints the border that
+     * colour, which is right for most of the roster and invisible on the chips
+     * already wearing it -- a brand border on a brand-coloured chip looks like
+     * nothing happened.
+     *
+     * Both general answers were worse: currentColor is the same colour by
+     * definition, and mixing every chip towards its own text removed the amber
+     * hover from the chips it was working on. So the base rule stays and the
+     * amber chips are the exception.
+     */
+    const base = ruleFor('.am2-chip:enabled:hover');
+    assert.ok(base, 'the chip has no hover rule at all');
+    assert.match(base, /border-color:\s*var\(--color-primary\)/,
+        'the ordinary chips lost the brand hover they always had');
+
+    const amber = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+        .find((m) => /\.am2-chip\.text-(warn|brand):enabled:hover/.test(m[1]));
+    assert.ok(amber, 'nothing overrides the hover for the chips that are already amber');
+    assert.doesNotMatch(amber[2], /var\(--color-primary\)/,
+        'the amber chips still hover to amber, which is the change nobody can see');
+    assert.match(amber[2], /border-color/, 'the amber chips get no border change at all');
+});
+
+test('the sidebar is not treated as a scrim', () => {
+    // It carries .hs-overlay like every dialogue, but it is a solid panel with
+    // no backdrop of its own, and its entrance animates transform only. Caught
+    // by the scrim rule it opened fully laid out at opacity 0 -- present,
+    // correct and completely invisible.
+    const rule = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+        .find((m) => /\.hs-overlay:not\(\.hidden\)/.test(m[1]) && /opacity:\s*0\s*[;}]/.test(m[2]));
+    assert.ok(rule, 'the scrim no longer starts hidden');
+    assert.match(rule[1], /#am2-sidebar/,
+        'the sidebar is caught by the scrim rule, which opens the drawer invisible');
 });

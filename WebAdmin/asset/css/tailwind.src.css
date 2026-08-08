@@ -547,22 +547,34 @@ tr[data-row-id]:focus-visible {
 .am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
 
 /*
- * Hover deepens the chip rather than recolouring it.
+ * Hover is the brand colour, except where the chip is already wearing it.
  *
- * Two wrong answers came before this one. Setting the brand colour turned a
- * yellow warning blue -- the one mark saying "this needs attention" vanished
- * exactly when someone reached for it. Setting currentColor was worse: a yellow
- * border on yellow text is no border at all, so the chip stopped responding to
- * the pointer altogether.
+ * --color-primary is #f59e0b, an amber, and so is every chip that shows a live
+ * or warning state. So the original rule was right for most of the roster and
+ * invisible on exactly the chips that are the same colour as the hover -- the
+ * brand border landed on a brand-coloured chip and nothing appeared to happen.
  *
- * The chip keeps its own hue and gains weight behind it. colour-mix darkens the
- * border towards the text without leaving the hue, and the tinted background is
- * what actually reads as a hover at a glance -- on a 9px chip a one-pixel
- * border change is nearly invisible whatever colour it is.
+ * Two attempts at a general answer made it worse: currentColor is the same
+ * colour by definition, and mixing every chip towards its own text took the
+ * amber hover away from the chips it was working on. The narrow fix is the
+ * correct one -- keep the brand hover, and give the amber chips the one thing
+ * that does show against amber.
  */
-.am2-chip:enabled:hover {
-    border-color: color-mix(in oklab, currentColor 70%, var(--color-border-strong));
-    background-color: color-mix(in oklab, currentColor 12%, transparent);
+.am2-chip:enabled:hover { border-color: var(--color-primary); }
+
+/*
+ * The amber chips: a darker edge and a little more fill.
+ *
+ * text-warn and text-brand are the two that already sit in the hover's own
+ * hue. --color-border-strong is a neutral, so the edge reads as a change
+ * without the chip pretending to have become a different state, and the extra
+ * background tint is what carries it at 9px where a one-pixel border barely
+ * registers.
+ */
+.am2-chip.text-warn:enabled:hover,
+.am2-chip.text-brand:enabled:hover {
+    border-color: var(--color-border-strong);
+    background-color: color-mix(in oklab, currentColor 18%, transparent);
 }
 
 /*
@@ -644,11 +656,16 @@ summary {
  * on it, then a dialogue. That is the pulse.
  *
  * So the overlay fades too, and it is the thing that has to start hidden.
+ *
+ * Not the sidebar. It is an .hs-overlay too, but it is a solid panel rather
+ * than a scrim over one -- it has no backdrop of its own to flash, and its
+ * entrance animates transform alone. Held at opacity 0 by this rule it opened
+ * fully laid out and completely invisible, which is the drawer "disappearing".
  */
-.hs-overlay:not(.hidden) {
+.hs-overlay:not(.hidden):not(#am2-sidebar) {
     opacity: 0;
 }
-.hs-overlay.opened {
+.hs-overlay.opened:not(#am2-sidebar) {
     animation: am2-scrim-in var(--duration-modal) var(--ease-enter) both;
 }
 @keyframes am2-scrim-in {
