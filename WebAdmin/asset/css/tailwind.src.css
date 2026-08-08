@@ -173,11 +173,11 @@
 
     --duration-micro: 140ms;   /* hover, focus, checked        */
     --duration-pop: 160ms;     /* dropdown, popover, tooltip   */
-    /* No --duration-modal: Motion owns the dialogue timing now (T.modal
-       in am2-ui.js). It was read only by the x-transition attributes on
-       the pages that have since been rebuilt, and Tailwind drops a theme
-       variable nothing references -- so the declaration survived as a
-       second copy of a number that no longer had a reader. */
+    /* Dialogues are CSS again, so this has a reader again. It was dropped
+       when Motion owned the timing; the animations below reference it, and
+       an undefined custom property makes an animation last zero seconds --
+       which is indistinguishable from the instant appearance being fixed. */
+    --duration-modal: 180ms;   /* dialogue, sheet, scrim       */
     --duration-drawer: 220ms;  /* sidebar rail, mobile drawer  */
     --duration-page: 150ms;    /* full-page view transition    */
     --duration-exit: 120ms;
@@ -370,10 +370,17 @@
         opacity: 1;
         transform: none;
     }
-    /* The pre-open state hides the panel to close Preline's two-step reveal.
-       With no animation to bring it back, it must never be hidden at all. */
+    /* The pre-open state hides the scrim to close Preline's two-step reveal.
+       With no animation to bring it back, nothing may start hidden at all. */
+    .hs-overlay:not(.hidden),
     .hs-overlay:not(.hidden) [data-am2-panel] {
-        opacity: 1;
+        opacity: 1 !important;
+    }
+    /* And nothing is held open to leave, because there is no exit to wait for. */
+    .hs-overlay.am2-closing,
+    [data-bulk-bar][data-bulk-bar].am2-closing,
+    #am2-sidebar.am2-closing {
+        animation: none;
     }
 }
 
@@ -431,17 +438,28 @@
     }
 
     /*
-     * And the scrim leaves with it.
+     * And it leaves the way it came.
      *
-     * Closing sets `hidden` on the drawer in one frame -- display:none, so
-     * nothing about the panel can be animated out -- while Preline spends its
-     * own fade destroying the backdrop. Measured 3ms to gone and 149ms until
-     * the scrim cleared: a sixth of a second of dimmed page with nothing on it,
-     * which is exactly the pause that reads as the drawer having hung. Matching
-     * the scrim to the panel is what removes it.
+     * Closing sets `hidden` in one frame -- display:none, so the drawer simply
+     * stopped existing while Preline spent another 150ms fading its backdrop:
+     * measured 3ms to gone, 149ms until the scrim cleared. A sixth of a second
+     * of dimmed page with nothing on it, which is what reads as the drawer
+     * having hung and then vanished.
+     *
+     * am2-ui.js holds it open with .am2-closing for the length of this
+     * animation, so the panel slides back out under the scrim rather than being
+     * cut. The scrim's own fade is shortened to land at the same time.
      */
+    #am2-sidebar.am2-closing {
+        display: flex !important;
+        animation: am2-drawer-out var(--duration-drawer) var(--ease-exit) both;
+    }
+    @keyframes am2-drawer-out {
+        from { transform: translateX(0); }
+        to   { transform: translateX(-100%); }
+    }
     .hs-overlay-backdrop {
-        transition-duration: var(--duration-exit) !important;
+        transition-duration: var(--duration-drawer) !important;
     }
 }
 
@@ -529,15 +547,23 @@ tr[data-row-id]:focus-visible {
 .am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
 
 /*
- * Hover firms up the chip's own colour rather than replacing it.
+ * Hover deepens the chip rather than recolouring it.
  *
- * This used to set the brand colour on every enabled chip, so a warning chip
- * turned blue under the pointer -- the one visual difference that says "this
- * needs attention" disappeared exactly when someone reached for it. currentColor
- * is whatever the chip already is: brand for an active feature, warn for a
- * missing channel, danger for delete.
+ * Two wrong answers came before this one. Setting the brand colour turned a
+ * yellow warning blue -- the one mark saying "this needs attention" vanished
+ * exactly when someone reached for it. Setting currentColor was worse: a yellow
+ * border on yellow text is no border at all, so the chip stopped responding to
+ * the pointer altogether.
+ *
+ * The chip keeps its own hue and gains weight behind it. colour-mix darkens the
+ * border towards the text without leaving the hue, and the tinted background is
+ * what actually reads as a hover at a glance -- on a 9px chip a one-pixel
+ * border change is nearly invisible whatever colour it is.
  */
-.am2-chip:enabled:hover { border-color: currentColor; }
+.am2-chip:enabled:hover {
+    border-color: color-mix(in oklab, currentColor 70%, var(--color-border-strong));
+    background-color: color-mix(in oklab, currentColor 12%, transparent);
+}
 
 /*
  * A chip that is a control has to be hittable.
@@ -608,18 +634,28 @@ summary {
  * depend on the two class changes being separated in time.
  */
 /*
- * The resting state is hidden, and it starts the moment the overlay is shown.
+ * The scrim is what flashed, not the panel.
  *
- * Preline removes `hidden` first and adds `opened` from a later callback --
- * measured at 77ms apart. Hanging the animation on `.opened` alone meant the
- * panel was painted at full opacity for those frames and then animated from
- * zero, which is the pulse before it appears. Anchoring the hidden state to the
- * overlay merely not being `hidden` closes that gap: there is no frame in which
- * the panel is visible and unanimated.
+ * Two attempts animated the panel and neither touched the complaint, because
+ * the overlay element carries the dark backdrop itself (bg-slate-950/50) and
+ * Preline reveals it a full frame before it adds `opened` -- measured: at 2ms
+ * the scrim was already at opacity 1 over the whole viewport while the panel
+ * was still at 0, and it stayed that way for ~80ms. A dark screen with nothing
+ * on it, then a dialogue. That is the pulse.
+ *
+ * So the overlay fades too, and it is the thing that has to start hidden.
  */
-.hs-overlay:not(.hidden) [data-am2-panel] {
+.hs-overlay:not(.hidden) {
     opacity: 0;
 }
+.hs-overlay.opened {
+    animation: am2-scrim-in var(--duration-modal) var(--ease-enter) both;
+}
+@keyframes am2-scrim-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
 .hs-overlay.opened [data-am2-panel] {
     animation: am2-dialog-in var(--duration-modal) var(--ease-enter) both;
 }
@@ -633,12 +669,60 @@ summary {
  * Percent rather than pixels: it travels its own height whatever that is, which
  * is what makes a short sheet and a tall one read the same.
  */
-#am2-unit-sheet.opened [data-am2-panel] {
+#am2-unit-sheet.opened [data-am2-panel],
+#am2-channel-sheet.opened [data-am2-panel],
+#am2-access-sheet.opened [data-am2-panel],
+#am2-admin-sheet.opened [data-am2-panel] {
     animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
 }
 @keyframes am2-sheet-in {
     from { opacity: 0; transform: translateY(12%); }
     to   { opacity: 1; transform: translateY(0); }
+}
+
+/*
+ * Leaving.
+ *
+ * Preline sets `hidden` -- display:none -- in a single frame, so nothing can be
+ * animated out of an overlay by CSS alone. am2-ui.js holds the panel open for
+ * the length of this animation by adding .am2-closing, and removes it when the
+ * animation ends. The dialogue sinks back the way it came; the sheet returns to
+ * the edge it rose from.
+ */
+.hs-overlay.am2-closing {
+    display: block !important;
+    animation: am2-scrim-out var(--duration-exit) var(--ease-exit) both;
+}
+.hs-overlay.am2-closing [data-am2-panel] {
+    animation: am2-dialog-out var(--duration-exit) var(--ease-exit) both;
+}
+#am2-unit-sheet.am2-closing [data-am2-panel],
+#am2-channel-sheet.am2-closing [data-am2-panel],
+#am2-access-sheet.am2-closing [data-am2-panel],
+#am2-admin-sheet.am2-closing [data-am2-panel] {
+    animation: am2-sheet-out var(--duration-drawer) var(--ease-exit) both;
+}
+@keyframes am2-scrim-out  { from { opacity: 1; } to { opacity: 0; } }
+@keyframes am2-dialog-out {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(8px) scale(0.99); }
+}
+@keyframes am2-sheet-out {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(12%); }
+}
+
+/*
+ * The bulk bar leaves downward too, held open by the same helper.
+ *
+ * The entrance rule matches this element as well, and the two are the same
+ * weight -- so whichever is written last wins, and the bar kept replaying its
+ * arrival while it was supposed to be leaving. The attribute selector on the
+ * same element settles it without an !important on the animation itself.
+ */
+[data-bulk-bar][data-bulk-bar].am2-closing {
+    display: flex !important;
+    animation: am2-sheet-out var(--duration-exit) var(--ease-exit) both;
 }
 
 /*
