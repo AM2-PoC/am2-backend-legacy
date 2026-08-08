@@ -1,0 +1,117 @@
+# The checks that need nothing but the checkout.
+#
+# There was no CI at all. Everything here already passed on someone's machine
+# before a release -- which is the problem: it passed when somebody remembered
+# to run it, and the failure mode of a forgotten check is indistinguishable from
+# a passing one.
+#
+# Deliberately no secrets and no services. Most of the contract suite needs a
+# staging host and a protected env file, and wiring those into CI would mean
+# putting production-shaped credentials into GitHub. That suite stays on the
+# VPS, run before a release. What runs here is the part that only needs source,
+# which is also the part that catches the mistakes made most often: a syntax
+# error, a built asset that no longer matches what built it.
+
+name: source checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: php -l
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Lint every PHP file
+        run: |
+          # Not `find -exec php -l` alone: php -l exits non-zero per file but a
+          # bare loop would let the last file decide the job.
+          fail=0
+          while IFS= read -r f; do
+              php -l "$f" > /dev/null || { echo "SYNTAX: $f"; fail=1; }
+          done < <(find WebAdmin -name '*.php' -not -path '*/node_modules/*')
+          exit $fail
+
+  node:
+    name: node --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Parse every server-side script
+        run: |
+          fail=0
+          while IFS= read -r f; do
+              node --check "$f" || { echo "SYNTAX: $f"; fail=1; }
+          done < <(find server -name '*.js' -not -path '*/node_modules/*')
+          exit $fail
+
+  assets:
+    name: built assets match their source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: WebAdmin/package-lock.json
+      - run: npm --prefix WebAdmin ci
+      - run: npm --prefix WebAdmin run build
+      - name: The committed CSS and JS must be what the source builds
+        run: |
+          # The bundle is committed because deploys copy an archive rather than
+          # building on the host. That only works while the two agree, and the
+          # way they stop agreeing is an edit to a src/ file that nobody
+          # rebuilt -- invisible in review, because the diff looks complete.
+          if ! git diff --exit-code -- WebAdmin/asset; then
+              echo "::error::Built assets differ from their source. Run 'npm --prefix WebAdmin run build' and commit the result."
+              exit 1
+          fi
+
+  tests:
+    name: contract tests (offline subset)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Run the tests that need no credentials and no network
+        run: |
+          # The set is computed, not listed: a hand-maintained list goes stale
+          # the first time somebody adds a test and forgets, and a test that
+          # never runs looks exactly like a test that passes.
+          mapfile -t files < <(./tests/offline-tests.sh)
+          if [ ${#files[@]} -eq 0 ]; then
+              echo "::error::No offline tests were selected; the selector is broken."
+              exit 1
+          fi
+          printf 'running %d files\n' "${#files[@]}"
+          node --test "${files[@]/#/tests/contract/}"
+
+  compose:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The local stack must still describe itself
+        run: |
+          cp .env.example .env
+          docker compose config > /dev/null
