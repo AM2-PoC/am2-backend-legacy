@@ -242,14 +242,21 @@ function qr(text, size = 120) {
     return svg;
 }
 
-/** Reveal below the fold, once, for the long lower half of the dashboard. */
+/**
+ * Reveal below the fold, once, for the long lower half of the dashboard.
+ *
+ * The hidden starting state belongs to CSS -- `.am2-js [data-reveal]` -- and
+ * not to this function. Setting it here ran after first paint, because the
+ * bundle is deferred: the section painted, went invisible, and faded back in.
+ * That one-frame drop, on every load, is what the page change looked like.
+ * All this does now is bring an already-hidden element back.
+ */
 function revealOnScroll(selector) {
     if (reduced) {
         document.querySelectorAll(selector).forEach((el) => { el.style.opacity = '1'; });
         return;
     }
     document.querySelectorAll(selector).forEach((el) => {
-        el.style.opacity = '0';
         inView(el, () => {
             animate(el, { opacity: [0, 1], y: [12, 0] },
                 { duration: T.entrance, ease: EASE.enter });
