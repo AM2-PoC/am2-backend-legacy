@@ -119,8 +119,18 @@ test('every panel plays an exit, and something holds it open long enough to see'
     assert.match(css, /\.am2-closing/, 'nothing marks an element as leaving');
 
     const exit = read('asset/js/src/am2-exit.js');
-    assert.match(exit, /getAnimations\(\)/,
+    assert.match(exit, /getAnimations\(/,
         'the helper does not wait on the animation, so the class comes off before it plays');
+    /*
+     * Descendants included, and asserted separately because this is the part
+     * that was wrong. The bare getAnimations() returns only the overlay's own
+     * animations -- its scrim fade -- while the panel travels inside it for
+     * twice as long, so every sheet was cut off mid-exit. The version of this
+     * check that matched the literal string `getAnimations()` pinned the bug in
+     * place: the correct fix failed the test.
+     */
+    assert.match(exit, /getAnimations\(\s*\{[^}]*subtree:\s*true/,
+        'the helper waits only on the overlay, so a panel animating inside it is cut short');
     assert.match(exit, /classList\.remove\(/, 'the closing class is never released');
 });
 

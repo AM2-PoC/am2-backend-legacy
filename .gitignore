@@ -12,17 +12,15 @@
 .superpowers/
 .hermes/
 
-# AI prompts and plans kept outside the product documentation
-# These patterns intentionally do not ignore ordinary technical docs.
+# AI prompts and plans kept outside the product documentation.
+# Directory-scoped on purpose: a bare docs/**/plan*.md would also swallow
+# docs/planning-guide.md, and the pattern that quietly ignores a real document
+# is the one nobody notices until the file is missing from a checkout.
 docs/ai/
 docs/prompts/
 docs/plans/
-docs/**/prompt*.md
-docs/**/plan*.md
-docs/**/ai-*.md
-docs/**/claude*.md
-docs/**/hermes*.md
-docs/**/superpowers*.md
+docs/superpowers/
+docs/hermes/
 
 # OS/editor noise
 .DS_Store

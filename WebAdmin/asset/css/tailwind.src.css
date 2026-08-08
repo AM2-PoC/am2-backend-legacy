@@ -718,8 +718,8 @@ tr[data-row-id]:focus-visible {
  * text-warn and text-brand are the two that already sit in the hover's own
  * hue. --color-border-strong is a neutral, so the edge reads as a change
  * without the chip pretending to have become a different state, and the extra
- * background tint is what carries it at 9px where a one-pixel border barely
- * registers.
+ * background tint is what carries it at this size, where a one-pixel border
+ * barely registers.
  */
 .am2-chip.text-warn:enabled:hover,
 .am2-chip.text-brand:enabled:hover {
@@ -730,8 +730,9 @@ tr[data-row-id]:focus-visible {
 /*
  * A chip that is a control has to be hittable.
  *
- * The type stays 9px -- these are dense status columns and a bigger label would
- * cost a column -- so the target is made out of the box rather than the text.
+ * The type stays small -- these are dense status columns and a bigger label
+ * would cost a column -- so the target is made out of the box rather than the
+ * text.
  * 32px was the shipped height; WCAG 2.5.5 asks for 44, and this console is used
  * one-handed in a moving vehicle, which is the case that argues for the larger
  * number rather than the 24px floor. Scoped to the interactive cases because
@@ -756,7 +757,14 @@ tr[data-row-id]:focus-visible {
 :focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
-    border-radius: var(--am2-radius);
+    /*
+     * No border-radius here. It is not part of the outline -- it changes the
+     * element's own geometry and how its background is clipped -- so every
+     * square focusable thing (a table row with tabindex, a checkbox, a
+     * summary) rounded its corners the moment it took keyboard focus and
+     * squared them again on blur. Browsers already follow an element's own
+     * radius when drawing the outline, so it bought nothing either.
+     */
 }
 
 /*

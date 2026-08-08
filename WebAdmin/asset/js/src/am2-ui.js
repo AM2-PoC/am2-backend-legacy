@@ -229,6 +229,14 @@ function qr(text, size = 120) {
  * All this does now is bring an already-hidden element back.
  */
 function revealOnScroll(selector) {
+    /*
+     * The bundle is here, so the head's expiry timer is no longer needed. It
+     * exists because `am2-js` says JavaScript runs, not that this file arrived:
+     * without the timer, a bundle that 404s or throws leaves every section it
+     * was meant to reveal hidden permanently.
+     */
+    clearTimeout(window.__am2RevealFallback);
+
     if (reduced) {
         document.querySelectorAll(selector).forEach((el) => { el.style.opacity = '1'; });
         return;

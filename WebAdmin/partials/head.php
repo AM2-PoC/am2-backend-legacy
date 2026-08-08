@@ -25,8 +25,21 @@ $pageTitle = $pageTitle ?? '';
         never runs the bundle then shows a blank page forever. This class is the
         condition, and it is set inline and synchronously so it is already true
         for the first paint.
+
+        The class says "this browser runs JavaScript", which is not the same as
+        "the bundle arrived". A 404, a blocked request or a throw before the
+        reveal pass would leave every [data-reveal] section invisible for good
+        -- including the danger zone on Settings. So the class also expires:
+        the bundle clears the timer when it takes over, and anything that stops
+        the bundle reaching that point hands the content back instead of
+        keeping it hidden.
     -->
-    <script>document.documentElement.classList.add('am2-js');</script>
+    <script>
+        document.documentElement.classList.add('am2-js');
+        window.__am2RevealFallback = setTimeout(function () {
+            document.documentElement.classList.remove('am2-js');
+        }, 3000);
+    </script>
     <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexSans-Regular.woff2" crossorigin>
     <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexMono-Regular.woff2" crossorigin>
     <!-- Still loaded while pages migrate one at a time: the un-migrated ones

@@ -36,7 +36,17 @@ export function playExit(el) {
         // Asked for on the next frame, so what gets measured is the exit rule
         // the class just brought in rather than whatever ran before it.
         requestAnimationFrame(() => {
-            const running = el.getAnimations().filter((a) => a.playState === 'running');
+            /*
+             * Including descendants, which is where the exit that matters
+             * actually runs. The overlay itself only fades its scrim
+             * (--duration-exit, 120ms); the panel inside it slides down over
+             * --duration-drawer (220ms). Measuring the overlay alone dropped
+             * the class at 120ms, the child rule stopped matching, and every
+             * bottom sheet was cut at just over half its exit -- the exact
+             * defect this module exists to prevent.
+             */
+            const running = el.getAnimations({ subtree: true })
+                .filter((a) => a.playState === 'running');
             const done = running.length
                 ? Promise.allSettled(running.map((a) => a.finished))
                 : Promise.resolve();
