@@ -254,14 +254,61 @@
  */
 @view-transition { navigation: auto; }
 
-::view-transition-old(root) {
-    animation-duration: var(--duration-exit);
-    animation-timing-function: var(--ease-exit);
+/*
+ * The chrome holds still.
+ *
+ * Cross-fading the root meant cross-fading the sidebar and the header against
+ * pixel-identical copies of themselves on every navigation. Nothing moved, but
+ * everything dimmed and came back, and that flicker across the whole viewport
+ * is what read as a blink. Naming them takes each out of the root snapshot and
+ * gives it its own group, which the rules below then tell not to animate at
+ * all. What is left moving is the one thing that actually changed.
+ *
+ * A name must belong to exactly one element per document, or the browser
+ * discards the transition entirely. The top bar is therefore addressed as the
+ * shell's own child: a bare `header` would also claim every card header on
+ * users.php and admin_panel.php, which have several each.
+ */
+#am2-sidebar         { view-transition-name: am2-rail; }
+#am2-content > header { view-transition-name: am2-topbar; }
+main                 { view-transition-name: am2-page; }
+
+::view-transition-group(am2-rail),
+::view-transition-group(am2-topbar) {
+    animation: none;
 }
-::view-transition-new(root) {
-    animation-duration: var(--duration-page);
-    animation-timing-function: var(--ease-enter);
+
+/* The old page leaves quickly; waiting for something to go is waiting. */
+::view-transition-old(am2-page) {
+    animation: am2-page-leave var(--duration-exit) var(--ease-exit) both;
 }
+::view-transition-new(am2-page) {
+    animation: am2-page-enter var(--duration-page) var(--ease-enter) both;
+}
+
+/*
+ * Eight pixels and a fade. Far enough that the eye reads arrival, short enough
+ * that it never becomes a slide -- and it is one element travelling, not the
+ * whole viewport changing brightness.
+ */
+@keyframes am2-page-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes am2-page-leave {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/*
+ * The initial state of a revealed section, in CSS so it is true at first paint.
+ *
+ * It used to be set from the deferred bundle: the section painted, then dropped
+ * to invisible, then faded back. Gated on .am2-js because a browser that never
+ * runs the bundle must get a readable page rather than a permanently blank one
+ * -- without script the class is absent and the section is simply visible.
+ */
+.am2-js [data-reveal] { opacity: 0; }
 
 /*
  * Reduced motion. Transform, stagger and looping animation go; colour changes
@@ -281,9 +328,19 @@
         animation: none;
         opacity: 1;
     }
-    ::view-transition-old(root),
-    ::view-transition-new(root) {
+    /* Every group, not just root: the named ones carry the page movement now,
+       and silencing root alone left them animating. */
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
         animation: none;
+    }
+    /*
+     * A section that is hidden waiting for an entrance that will not play is a
+     * section nobody can read. Under reduced motion it is simply there.
+     */
+    .am2-js [data-reveal] {
+        opacity: 1;
     }
 }
 
