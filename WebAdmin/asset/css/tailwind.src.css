@@ -485,8 +485,17 @@
          * scrim was already a third of the way dark before the panel had moved
          * at all. The delay lines the two up; the duration matches so they
          * finish together.
+         *
+         * `backwards`, never `both`. `both` holds the animation's final frame
+         * on the element forever, which outranks the `opacity-0` class Preline
+         * adds to fade the scrim out -- so the backdrop stayed at full opacity,
+         * the transition it waits on never fired, and the element was never
+         * removed. A grey sheet over the page with nothing behind it, which is
+         * the stuck backdrop this reintroduced. `backwards` applies the opening
+         * frame before the animation starts and lets go at the end, leaving the
+         * class free to do its job.
          */
-        animation: am2-scrim-in var(--duration-drawer) var(--ease-standard) 50ms both;
+        animation: am2-scrim-in var(--duration-drawer) var(--ease-standard) 50ms backwards;
         transition-duration: var(--duration-drawer) !important;
     }
 }
