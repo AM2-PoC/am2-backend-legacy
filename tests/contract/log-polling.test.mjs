@@ -33,45 +33,39 @@ test('the endpoint accepts a watermark, so a poll can ask only for what is new',
 });
 
 test('the watermark is bound as a parameter, not pasted into the SQL', () => {
-    // It arrives from the query string. The rest of this file parameterises
-    // its admin scoping already; a watermark spliced into the statement would
-    // be the one place it did not.
-    const spliced = endpoint.match(/(?:>|>=|<)\s*['"]?\s*\{?\$(?:since|_GET)/);
-    assert.equal(spliced, null,
-        `the watermark is interpolated into SQL: ${spliced?.[0]}`);
-    assert.match(endpoint, /bindValue\(\s*['"]:since|:since_\w+/,
-        'nothing binds a :since placeholder');
-});
-
-test('nothing new is answered without a body', () => {
-    // 204 is the whole point: a poll that finds no new rows should cost the
-    // headers and nothing else.
-    assert.match(endpoint, /http_response_code\(\s*204\s*\)/,
-        'the endpoint has no empty-result path, so "nothing changed" still ships every row');
-});
-
-test('the watermark keeps sub-second precision', () => {
-    // strtotime() returns whole seconds, so a watermark round-tripped through
-    // it lands on .000000. The comparison is strictly greater-than, so every
-    // poll then re-sent every row from that same second -- measured: three
-    // consecutive polls each returned the same 891 bytes instead of 204.
-    // Comments stripped first: this file explains why strtotime is wrong, and
-    // an explanation of a mistake is not the mistake.
+    /*
+     * It arrives from the query string. The rest of this file parameterises its
+     * admin scoping already; a watermark spliced into the statement would be
+     * the one place it did not.
+     *
+     * The first version of this check looked only for `> $since` inside a
+     * string, and would have passed with a live injection present: the way a
+     * value actually gets into a PHP SQL string is concatenation, and
+     * `"... > '" . $since . "'"` matched nothing it was looking for. Both
+     * shapes are covered now.
+     */
     const code = endpoint.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    assert.doesNotMatch(code, /strtotime\s*\(/,
-        'the watermark is parsed with strtotime, which truncates to the second and '
-        + 'makes each poll re-send the rows it just delivered');
-    assert.match(endpoint, /H:i:s\.u/,
-        'the watermark is not formatted with microseconds, so it cannot address a single row');
+    for (const [shape, re] of [
+        ['interpolated', /(?:>|>=|<|<=)\s*['"]?\s*\{?\$(?:since|before|_GET)/],
+        ['concatenated', /\.\s*\$(?:since|before|stamp|_GET)\b[^;]*?\.\s*['"]/],
+        ['read straight from the query string', /\$sql\w*\s*=[^;]*\$_GET/],
+    ]) {
+        const hit = code.match(re);
+        assert.equal(hit, null, `the watermark reaches the SQL ${shape}: ${hit?.[0]}`);
+    }
+    assert.match(code, /bindValue\(\s*['"]:(?:since|before)/,
+        'nothing binds a :since or :before placeholder');
 });
 
-test('a malformed watermark starts from the newest rows rather than erroring', () => {
-    // Binding stops it reaching the SQL parser, but a bound value that is not a
-    // timestamp still aborts the statement -- so a stale bookmark produced a
-    // system error where the honest answer is to start over.
-    assert.match(endpoint, /try\s*\{[\s\S]*DateTimeImmutable[\s\S]*catch/,
-        'the timestamp is not validated before it reaches the database');
-});
+/*
+ * The 204 path, the malformed-watermark fallback and the microsecond
+ * resolution used to be asserted here by looking for a call, a token, or three
+ * tokens appearing in order somewhere in the file. All three would have passed
+ * with the behaviour absent -- a 204 in an unreachable branch, a parse outside
+ * the try it was supposed to be inside. They now live in
+ * log-polling-integrity.test.mjs, which runs the endpoint and reads what came
+ * back.
+ */
 
 test('the endpoint can be asked for older rows, so the log is not capped at 200', () => {
     assert.match(endpoint, /\$_GET\[['"]before/,
@@ -80,7 +74,8 @@ test('the endpoint can be asked for older rows, so the log is not capped at 200'
 });
 
 test('the page keeps a watermark and sends it', () => {
-    assert.match(pageSrc, /since=/, 'logs.php never sends a watermark, so the endpoint cannot answer cheaply');
+    assert.match(pageSrc, /since_ptt=|since_adm=/,
+        'logs.php never sends a watermark, so the endpoint cannot answer cheaply');
 });
 
 test('a poll that returns nothing new leaves the rendered rows alone', () => {

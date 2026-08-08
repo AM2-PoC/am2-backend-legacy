@@ -295,7 +295,7 @@ const AM2_LOG_PAGE = 20;
         renderPager(pages);
         // Offered on the last page, where running out of rows is the thing the
         // reader has just hit, and only while the server says more exist.
-        $('logMore').hidden = exhausted || page < pages;
+        $('logMore').hidden = exhausted() || page < pages;
 
         // Polling is only honest on page one; anywhere else the numbering moves
         // under the reader. Say so rather than quietly stopping.
@@ -334,16 +334,30 @@ const AM2_LOG_PAGE = 20;
         pager.appendChild(mk('›', page + 1, { disabled: page === pages, label: 'next' }));
     }
 
-    /** Newest raw_time held, which is what the endpoint answers relative to. */
-    let watermark = '';
-    /** Oldest raw_time held, and whether anything older exists to ask for. */
-    let oldest = '', exhausted = false, loadingOlder = false;
+    /*
+     * One cursor per category, because the endpoint limits the two separately.
+     *
+     * Sharing a watermark between them is what dropped rows: whichever table
+     * was busier decided where the shared mark landed, and the quieter one's
+     * rows underneath it were never asked for again. `more` is the server
+     * saying its answer filled the page, so there is certainly another one.
+     */
+    const cursor = {
+        ptt: { newest: '', oldest: '', more: true },
+        adm: { newest: '', oldest: '', more: true },
+    };
+    let loadingOlder = false;
 
-    const byTimeDesc = (a, b) => String(b.raw_time).localeCompare(String(a.raw_time));
+    /** Nothing older left to ask for in either table. */
+    const exhausted = () => !cursor.ptt.more && !cursor.adm.more;
 
-    function absorb(data, { append = false } = {}) {
+    // Plain comparison, not localeCompare: collation can ignore or reorder
+    // punctuation, and these are timestamps whose byte order is already their
+    // time order.
+    const byTimeDesc = (a, b) => (String(a.raw_time) < String(b.raw_time) ? 1 : -1);
+
+    function absorb(data, { append = false, polling = false } = {}) {
         const incoming = [...(data.ptt ?? []), ...(data.adm ?? [])];
-        if (!incoming.length && append) { exhausted = true; return 0; }
         // Merge by id within category: a poll near a second boundary can
         // legitimately return a row already held, and a duplicated line in an
         // audit trail reads as the action having happened twice.
@@ -351,11 +365,24 @@ const AM2_LOG_PAGE = 20;
         const seen = new Set(rows.map(key));
         const fresh = incoming.filter((r) => !seen.has(key(r)));
         rows = [...rows, ...fresh].sort(byTimeDesc);
-        if (rows.length) {
-            watermark = rows[0].raw_time ?? watermark;
-            oldest = rows[rows.length - 1].raw_time ?? oldest;
+
+        for (const cat of ['ptt', 'adm']) {
+            const b = data.cursor?.[cat];
+            if (!b) continue;
+            if (b.newest) cursor[cat].newest = b.newest;
+            /*
+             * The paging cursor belongs to the downward queries -- the first
+             * load and each "older" page. A poll returns rows newer than
+             * everything held, so letting it move `oldest` would drag the mark
+             * forward and skip the history in between, and letting it set
+             * `more` would report on the wrong direction entirely: a poll that
+             * fills its page says nothing about how deep the log goes.
+             */
+            if (!polling) {
+                if (b.oldest) cursor[cat].oldest = b.oldest;
+                cursor[cat].more = !!b.more;
+            }
         }
-        if (data.complete) exhausted = true;
         return fresh.length;
     }
 
@@ -363,8 +390,13 @@ const AM2_LOG_PAGE = 20;
         $('loading-indicator').hidden = false;
         try {
             // With a watermark the endpoint answers only what is newer, and
-            // answers 204 when that is nothing -- which is most polls.
-            const qs = watermark ? '?since=' + encodeURIComponent(watermark) : '';
+            // answers 204 when that is nothing -- which is most polls. One
+            // watermark per category: see `cursor`.
+            const polling = !!(cursor.ptt.newest || cursor.adm.newest);
+            const qs = polling
+                ? '?since_ptt=' + encodeURIComponent(cursor.ptt.newest)
+                  + '&since_adm=' + encodeURIComponent(cursor.adm.newest)
+                : '';
             const res = await fetch('fetch_logs.php' + qs, { headers: { Accept: 'application/json' } });
             if (res.status === 204) {
                 // Nothing new. The rendered rows are still correct, so they are
@@ -380,11 +412,23 @@ const AM2_LOG_PAGE = 20;
             const data = await res.json();
             if (data.error) throw new Error(data.error);
 
-            const added = absorb(data);
+            const added = absorb(data, { polling });
             stamp();
             $('logStale').hidden = true;
             $('logError').hidden = true;
             if (added) { faster(); render(); } else { slower(); }
+            /*
+             * A poll that filled its page has left a backlog behind it. Come
+             * back at once rather than waiting out the interval: the window is
+             * oldest-first, so the rows still owed are the newer ones, and a
+             * tab that was hidden for an hour would otherwise trickle them in
+             * a hundred at a time. A short delay rather than an immediate call:
+             * the watermark always advances so this terminates, but a tight
+             * loop against a busy table is not a thing to leave to that.
+             */
+            if (polling && (data.cursor?.ptt?.more || data.cursor?.adm?.more)) {
+                setTimeout(tick, 250);
+            }
         } catch {
             // Keep the rows on screen but say they are no longer current.
             $('logStale').hidden = false;
@@ -400,17 +444,33 @@ const AM2_LOG_PAGE = 20;
 
     /** One page older, on demand. This is what makes the log deeper than 200. */
     async function loadOlder() {
-        if (loadingOlder || exhausted || !oldest) return;
+        if (loadingOlder || exhausted()) return;
+        if (!cursor.ptt.oldest && !cursor.adm.oldest) return;
         loadingOlder = true;
         $('loading-indicator').hidden = false;
         try {
-            const res = await fetch('fetch_logs.php?before=' + encodeURIComponent(oldest),
+            /*
+             * Each category asks from its own tail. Sharing one `before` across
+             * both is what skipped rows: when they filled their pages and ended
+             * at different times, the older tail became the next request and
+             * everything the other table held between the two was never asked
+             * for again. A category with nothing left sends no bound and is
+             * simply not queried further.
+             */
+            const qs = new URLSearchParams();
+            if (cursor.ptt.more && cursor.ptt.oldest) qs.set('before_ptt', cursor.ptt.oldest);
+            if (cursor.adm.more && cursor.adm.oldest) qs.set('before_adm', cursor.adm.oldest);
+            if (![...qs.keys()].length) return;
+
+            const res = await fetch('fetch_logs.php?' + qs.toString(),
                                     { headers: { Accept: 'application/json' } });
-            if (res.status === 204) { exhausted = true; return; }
+            if (res.status === 204) { cursor.ptt.more = cursor.adm.more = false; return; }
             if (!res.ok) throw new Error(res.status);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            if (!absorb(data, { append: true })) exhausted = true;
+            if (!absorb(data, { append: true })) {
+                cursor.ptt.more = cursor.adm.more = false;
+            }
             render();
         } catch {
             $('logStale').hidden = false;
