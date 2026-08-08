@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_boot.php';
+am2_session_boot();
 date_default_timezone_set('Asia/Jakarta');
 require_once 'config.php';
 
