@@ -87,19 +87,39 @@ test('motion on a dialogue is dropped under reduced motion', () => {
         'the dialogue keeps its travel under reduced motion');
 });
 
-test('the panel is hidden from the moment the overlay is shown, not from `opened`', () => {
-    // Preline removes `hidden` first and adds `opened` from a later callback --
-    // measured 77ms apart. Hanging the resting state on `.opened` alone left
-    // the panel painted at full opacity for those frames and then animated from
-    // zero, which is the pulse before the dialogue appears.
-    // Two rules match this selector: the resting state, and its cancellation
-    // inside the reduced-motion block. The one being checked is the resting
-    // state, so the search is for a body that actually hides the panel.
+test('the scrim is hidden from the moment the overlay is shown, not from `opened`', () => {
+    /*
+     * The pulse was never the panel: the overlay element carries the dark
+     * backdrop itself (bg-slate-950/50) and Preline reveals it a frame before
+     * it adds `opened`. Measured: at 2ms the scrim was already opacity 1 across
+     * the viewport while the panel sat at 0, and stayed that way ~80ms. A dark
+     * screen with nothing on it, then a dialogue.
+     *
+     * So it is the overlay that has to start hidden. Two rules match the
+     * selector -- the resting state and its cancellation under reduced motion --
+     * so the search is for one that actually hides.
+     */
     const hides = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-        .filter((m) => m[1].includes(':not(.hidden)') && m[1].includes('[data-am2-panel]'))
+        .filter((m) => /\.hs-overlay:not\(\.hidden\)\s*\{/.test(m[0]))
         .filter((m) => /opacity:\s*0\s*[;}]/.test(m[2]));
     assert.notEqual(hides.length, 0,
-        'nothing hides the panel between the overlay showing and `opened` arriving');
+        'the overlay is painted before it is animated, so the scrim flashes over the page '
+        + 'while the dialogue is still invisible');
+    assert.match(css, /@keyframes\s+am2-scrim-in/, 'the scrim has no entrance of its own');
+});
+
+test('every panel plays an exit, and something holds it open long enough to see', () => {
+    // Preline sets `hidden` -- display:none -- in the frame it decides to
+    // close, which cancels any animation outright. Nothing left by CSS alone.
+    for (const name of ['am2-scrim-out', 'am2-dialog-out', 'am2-sheet-out']) {
+        assert.match(css, new RegExp(`@keyframes\\s+${name}`), `no ${name} keyframes`);
+    }
+    assert.match(css, /\.am2-closing/, 'nothing marks an element as leaving');
+
+    const exit = read('asset/js/src/am2-exit.js');
+    assert.match(exit, /getAnimations\(\)/,
+        'the helper does not wait on the animation, so the class comes off before it plays');
+    assert.match(exit, /classList\.remove\(/, 'the closing class is never released');
 });
 
 test('the bulk bar arrives like the sheet it sits beside', () => {
