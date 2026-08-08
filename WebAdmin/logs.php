@@ -70,7 +70,7 @@ const AM2_LOG_PAGE = 20;
         did until it was measured.
     -->
     <div class="max-h-[calc(100dvh-19rem)] overflow-auto">
-        <table class="data-table w-full text-sm">
+        <table class="data-table am2-roster am2-roster-log w-full text-sm lg:min-w-[48rem]">
             <thead class="sticky top-0 z-10 bg-card">
                 <tr class="border-b border-edge text-left font-mono text-[10px] uppercase
                            tracking-[0.15em] text-ink-subtle">
@@ -165,15 +165,60 @@ const AM2_LOG_PAGE = 20;
         return ADM[t] ?? t.slice(0, 10);
     }
 
-    /** textContent throughout: keterangan is free text an admin typed. */
-    function cell(label, cls) {
+    /**
+     * textContent throughout: keterangan is free text an admin typed.
+     *
+     * data-cell is the roster contract the shared CSS reads. Below lg every
+     * cell but the summary is hidden, so the four columns built with this are
+     * the desktop table and nothing else.
+     */
+    function cell(name, cls) {
         const td = document.createElement('td');
-        td.setAttribute('data-label', label);   // drives the mobile card transform
+        td.setAttribute('data-cell', name);
         td.className = cls;
         return td;
     }
 
-    const HEAD = [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    /**
+     * The card a narrow screen gets.
+     *
+     * An event is read as a sentence -- when, what, to whom, by whom -- not as
+     * four labelled fields, which is what the generic card transform made of it
+     * and why the log was unreadable on a phone. It borrows data-cell="unit"
+     * because that is the one cell the roster CSS reveals below lg; `hidden`
+     * keeps it out of the desktop table, where the four real columns already
+     * say all of this.
+     */
+    function summaryCell(r) {
+        const td = cell('unit', 'hidden');
+
+        const head = document.createElement('span');
+        head.className = 'flex items-center gap-2';
+        const b = document.createElement('span');
+        b.className = 'shrink-0 rounded-control px-1.5 py-0.5 font-mono text-[9px] '
+                    + 'uppercase tracking-[0.1em] ' + badge(r);
+        b.textContent = label(r);
+        const when = document.createElement('span');
+        when.className = 'font-mono text-[11px] tabular-nums text-ink';
+        when.textContent = r.jam ?? '';
+        const day = document.createElement('span');
+        day.className = 'font-mono text-[10px] text-ink-subtle';
+        day.textContent = r.tanggal ?? '';
+        head.append(b, when, day);
+
+        // The target is the longest string on the row and the reason anyone
+        // opened this page. It wraps rather than truncates.
+        const what = document.createElement('span');
+        what.className = 'mt-1 block break-words text-sm text-ink';
+        what.textContent = r.target ?? '';
+
+        const by = document.createElement('span');
+        by.className = 'mt-0.5 block break-words font-mono text-[10px] text-ink-subtle';
+        by.textContent = [r.pelaksana, r.pelaksana_id].filter(Boolean).join(' · ');
+
+        td.append(head, what, by);
+        return td;
+    }
 
     function render() {
         const set = visible();
@@ -186,7 +231,7 @@ const AM2_LOG_PAGE = 20;
             const tr = document.createElement('tr');
             tr.className = 'transition-colors duration-[var(--duration-micro)] hover:bg-card-muted';
 
-            const time = cell(HEAD[0], 'px-4 py-2 align-top lg:px-5');
+            const time = cell('time', 'px-4 py-2 align-top lg:px-5');
             const jam = document.createElement('span');
             jam.className = 'block font-mono text-xs tabular-nums';
             jam.textContent = r.jam ?? '';
@@ -195,17 +240,17 @@ const AM2_LOG_PAGE = 20;
             tgl.textContent = r.tanggal ?? '';
             time.append(jam, tgl);
 
-            const ev = cell(HEAD[1], 'px-4 py-2 align-top');
+            const ev = cell('event', 'px-4 py-2 align-top');
             const b = document.createElement('span');
             b.className = 'inline-block rounded-control px-1.5 py-0.5 font-mono text-[9px] '
                         + 'uppercase tracking-[0.1em] ' + badge(r);
             b.textContent = label(r);
             ev.append(b);
 
-            const detail = cell(HEAD[2], 'px-4 py-2 align-top');
+            const detail = cell('detail', 'px-4 py-2 align-top');
             detail.textContent = r.target ?? '';
 
-            const actor = cell(HEAD[3], 'px-4 py-2 align-top');
+            const actor = cell('actor', 'px-4 py-2 align-top');
             const who = document.createElement('span');
             who.className = 'block truncate';
             who.textContent = r.pelaksana ?? '';
@@ -214,7 +259,7 @@ const AM2_LOG_PAGE = 20;
             wid.textContent = r.pelaksana_id ?? '';
             actor.append(who, wid);
 
-            tr.append(time, ev, detail, actor);
+            tr.append(summaryCell(r), time, ev, detail, actor);
             body.appendChild(tr);
         }
 
