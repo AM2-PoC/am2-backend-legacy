@@ -235,8 +235,19 @@ test('the drawer crosses the screen evenly, and its scrim darkens with it', () =
     // panel sets off.
     const scrim = css.match(/\.hs-overlay-backdrop\s*\{[^}]*animation:\s*am2-scrim-in[^}]*\}/);
     assert.ok(scrim, 'the drawer scrim still appears in one step');
-    assert.match(scrim[0], /\d+ms\s+both/,
+    assert.match(scrim[0], /\d+ms\s+backwards/,
         'the scrim fade has no delay, so it darkens before the drawer has moved');
+
+    /*
+     * `backwards`, never `both`. Preline fades its backdrop out by adding an
+     * `opacity-0` class and then waiting for the transition; a fill mode of
+     * `both` pins the animation's last frame on the element, which outranks
+     * that class. Measured: the class landed at 6ms and the backdrop sat at
+     * opacity 1 indefinitely, the transition never fired, and the element was
+     * never removed -- a grey sheet over the page with nothing behind it.
+     */
+    assert.doesNotMatch(scrim[0], /\bboth\b/,
+        'the backdrop animation fills forwards, which pins it open and strands it over the page');
 });
 
 test('the sidebar is not treated as a scrim', () => {
