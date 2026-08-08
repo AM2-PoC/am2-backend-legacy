@@ -532,9 +532,20 @@ include 'partials/shell.php';
 
                         <td data-cell="channel" data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($primary): ?>
-                                <span class="block truncate text-sm text-ink"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                <!--
+                                    The same chip as FITUR and DUPLEX, in brand:
+                                    a default channel is a live setting, and the
+                                    row now reads as one family of controls
+                                    rather than one column of prose beside three
+                                    of chips. max-w keeps a long channel name
+                                    from widening the column past its share.
+                                -->
+                                <span class="am2-chip inline-flex max-w-full items-center border-brand
+                                             bg-brand/10 text-brand">
+                                    <span class="truncate"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                </span>
                                 <?php if (count($chans) > 1): ?>
-                                    <span class="block font-mono text-[10px] text-ink-subtle">
+                                    <span class="mt-1 block font-mono text-[10px] text-ink-subtle">
                                         <?= e('usr.more_channels', ['n' => count($chans) - 1]) ?>
                                     </span>
                                 <?php endif; ?>
@@ -621,7 +632,7 @@ include 'partials/shell.php';
                             <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
-                                <?php $actCls = 'am2-chip inline-flex h-8 items-center border-edge text-ink-muted'; ?>
+                                <?php $actCls = 'am2-chip inline-flex items-center border-edge text-ink-muted'; ?>
                                 <button type="button" data-row-channels
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
@@ -641,7 +652,7 @@ include 'partials/shell.php';
                                     <?= am2_csrf_field() ?>
                                     <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
                                     <button type="submit"
-                                            class="am2-chip inline-flex h-8 items-center border-edge text-bad
+                                            class="am2-chip inline-flex items-center border-edge text-bad
                                                    hover:border-bad/50! hover:bg-bad/10">
                                         <?= e('usr.delete') ?>
                                     </button>
