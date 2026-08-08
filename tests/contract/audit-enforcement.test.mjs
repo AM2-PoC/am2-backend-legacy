@@ -20,7 +20,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,19 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WEBADMIN = join(ROOT, 'WebAdmin');
 
 const read = (p) => readFileSync(join(WEBADMIN, p), 'utf8');
+
+/**
+ * The same file with its comments removed.
+ *
+ * These checks reason about which call runs before which, and a comment that
+ * names a function is not a call to it -- the prose explaining why an audit
+ * write is unconditional mentions both am2_set_user_channels() and
+ * am2_audit_complete(), which is enough to move a window onto the wrong text.
+ */
+const code = (p) => read(p)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1')
+    .replace(/(^|\s)#[^\n]*/g, '$1');
 
 /**
  * Runs PHP with the audit helpers loaded against a PDO that records instead of
@@ -193,9 +206,16 @@ test('rewriting a unit\'s channel membership is recorded, from either surface', 
     // users.php and the endpoint the app calls. Who a unit can talk to is
     // exactly what the log is for, and both left it looking unchanged.
     for (const file of ['users.php', 'api_users.php', 'user_access.php', 'api_user_access.php']) {
-        const src = read(file);
+        const src = code(file);
         for (const m of src.matchAll(/am2_set_user_channels\(/g)) {
-            const after = src.slice(m.index, m.index + 1600);
+            /*
+             * To the settlement, not a fixed number of characters. The window
+             * used to be 1600 and a comment added above the log write pushed
+             * am2_log() past it -- a test that fails when prose grows is a test
+             * that will be silenced rather than believed.
+             */
+            const end = src.indexOf('am2_audit_complete()', m.index);
+            const after = src.slice(m.index, end === -1 ? m.index + 2400 : end);
             assert.match(after, /am2_log\(/,
                 `a membership rewrite in ${file} reaches the database without an audit event`);
             assert.match(after, /access\.(update|revoke)/,
@@ -216,8 +236,61 @@ test('a forced logout is recorded even when the caller has no admin id', () => {
         'the audit event is conditional again, so an unattributed kick goes unrecorded');
 });
 
+/**
+ * Every region between a declared debt and its settlement, as raw text.
+ *
+ * The debt is declared inside the mutating helper, so a caller cannot see it;
+ * what a caller controls is whether the matching am2_log() actually runs.
+ */
+function owedRegions(src) {
+    const out = [];
+    for (const m of src.matchAll(/am2_audit_(?:expect\s*\(|complete\s*\(\s*\))/g)) {
+        if (m[0].startsWith('am2_audit_expect')) continue;
+        const start = src.lastIndexOf('am2_set_user_channels(', m.index);
+        const from = start === -1 ? Math.max(0, m.index - 2000) : start;
+        out.push(src.slice(from, m.index));
+    }
+    return out;
+}
+
+test('the audit event is never the one thing behind a condition', () => {
+    /*
+     * This is the shape that broke api_user_access.php: the mutating helper
+     * declares the debt unconditionally, the handler wraps only the am2_log()
+     * in `if ($current_admin_id)`, and am2_audit_complete() then throws for an
+     * API-key caller that sends no admin id -- rolling back an access update
+     * that used to succeed.
+     *
+     * The membership test above cannot catch it: its 1600-character window
+     * merely requires am2_log( to appear somewhere, which a conditional call
+     * does. What matters is not presence but reachability.
+     */
+    const offenders = [];
+    for (const file of readdirSync(WEBADMIN).filter((f) => f.endsWith('.php'))) {
+        for (const region of owedRegions(read(file))) {
+            // An if-block whose body contains am2_log() and no nested braces:
+            // the log is the whole of what the condition guards.
+            const guarded = region.match(/if\s*\([^)]*\)\s*\{[^{}]*am2_log\s*\([^{}]*\}/);
+            if (!guarded) continue;
+            /*
+             * An if/else that logs on both arms is a dispatch, not a guard --
+             * api_users.php picks user.create or user.rename that way, and the
+             * debt is settled either way. Only a branch the log can fall out of
+             * is a defect.
+             */
+            const after = region.slice(guarded.index + guarded[0].length);
+            if (/^\s*else\b[^{]*\{[^{}]*am2_log\s*\(/.test(after)) continue;
+            offenders.push(`${file}: ${guarded[0].replace(/\s+/g, ' ').slice(0, 90)}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        'an audit write owed to am2_audit_complete() is behind a condition, so the '
+        + 'caller it skips gets a LogicException and a rolled-back mutation:\n  '
+        + offenders.join('\n  '));
+});
+
 test('every caller settles the balance before it commits', () => {
-    for (const file of ['users.php', 'api_users.php']) {
+    for (const file of ['users.php', 'api_users.php', 'user_access.php', 'api_user_access.php']) {
         const src = read(file);
         const commits = [...src.matchAll(/->commit\(\)/g)];
         assert.notEqual(commits.length, 0, `${file} has no commit`);
