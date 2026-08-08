@@ -32,10 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         am2_log($pdo, $current_admin_id, 'CREATE_USER', 'user.create',
                 ['name' => $name, 'id' => $id], 'users', $id);
         
+        am2_audit_complete();
         $pdo->commit();
         $success_msg = "User $name (User: $id) berhasil didaftarkan.";
     } catch (PDOException $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = ($e->getCode() == '23505') ? "ID $id sudah terdaftar." : "Database Error: " . am2_safe_error($e, 'users');
     }
 }
@@ -63,17 +64,50 @@ if (isset($_POST['save_user_channels'])) {
             exit;
         }
         $pdo->beginTransaction();
+
+        $stmtName = $pdo->prepare('SELECT name FROM public.users WHERE id = ?');
+        $stmtName->execute([$u_id]);
+        $targetName = (string) ($stmtName->fetchColumn() ?: $u_id);
+
         // This page sends a membership list and nothing else, so the
         // permission on each surviving channel and the unit's default both
         // stand. It used to recreate every row as FULL DUPLEX, which handed
         // transmit rights to receive-only units, and moved the default to
         // whichever channel happened to come first in the JSON.
-        am2_set_user_channels($pdo, (string) $u_id, $channels);
+        $result = am2_set_user_channels($pdo, (string) $u_id, $channels);
+
+        /*
+         * Who a unit can talk to is exactly the kind of change the activity log
+         * exists for, and this path wrote none: the same edit made from the
+         * channel-access page was recorded, and made from the row dialogue here
+         * it was not. Same event codes, so both read as one thing in the log.
+         */
+        if ($channels) {
+            $stmtCh = $pdo->prepare('SELECT display_name FROM public.channels WHERE id = ?');
+            $logChannels = [];
+            foreach ($channels as $chId) {
+                $stmtCh->execute([$chId]);
+                $logChannels[] = [
+                    'name'    => (string) $stmtCh->fetchColumn(),
+                    'default' => ((string) $chId === (string) $result['default']),
+                    'perm'    => $result['permissions'][(string) $chId] ?? 'FULL DUPLEX',
+                ];
+            }
+            $logCode   = 'access.update';
+            $logParams = ['name' => $targetName, 'channels' => $logChannels];
+        } else {
+            $logCode   = 'access.revoke';
+            $logParams = ['name' => $targetName];
+        }
+        am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                'users', (string) $u_id);
+
+        am2_audit_complete();
         $pdo->commit();
         syncUserChannels($u_id);
         echo json_encode(['success' => true]);
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
     exit;
@@ -103,14 +137,15 @@ if (isset($_POST['update_feature'])) {
         [$logCode, $logParams] = am2_feature_log($feature, (string) $val, (string) $u_id, (string) $target_name);
         am2_log($pdo, $current_admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', $u_id);
 
+        am2_audit_complete();
         $pdo->commit();
         notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
         echo json_encode(['success' => true]);
     } catch (InvalidArgumentException | RuntimeException $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_feature_reason($e)]);
     } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
     exit;
@@ -134,10 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         am2_log($pdo, $current_admin_id, 'UPDATE_USER', $logCode,
                 ['id' => $edit_id, 'name' => $edit_name], 'users', $edit_id);
 
+        am2_audit_complete();
         $pdo->commit();
         $success_msg = "Data $edit_id diperbarui.";
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = am2_safe_error($e, 'users');
     }
 }
@@ -157,6 +193,7 @@ if (isset($_POST['delete_user'])) {
         am2_log($pdo, $current_admin_id, 'DELETE_USER', 'user.delete',
                 ['name' => $old_name, 'id' => $del_id], 'users', $del_id);
 
+        am2_audit_complete();
         $pdo->commit();
         // The bulk path asks over fetch and cannot follow a redirect into a
         // page it then throws away. Same guard, same query, different reply.
@@ -167,7 +204,7 @@ if (isset($_POST['delete_user'])) {
         }
         header("Location: users.php?success=deleted"); exit;
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = "Gagal menghapus user.";
     }
 }

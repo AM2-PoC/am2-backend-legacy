@@ -32,12 +32,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
                         status = 'offline',
                         current_device_id = NULL
                     WHERE id = ?";
+        // Written here rather than behind a helper, so the obligation is
+        // declared here too: kicking a unit off is a change to that unit, and
+        // the log is how anyone later finds out who did it.
+        am2_audit_expect('force_logout');
         $stmtKick = $pdo->prepare($sqlKick);
         $stmtKick->execute([$uid_to_kick]);
 
         am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
                 ['name' => $target_name], 'users', (string) $uid_to_kick);
 
+        am2_audit_complete();
         $pdo->commit();
 
         notifyForceLogout($uid_to_kick);
@@ -46,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         echo json_encode(['success' => true]);
         exit;
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         header('Content-Type: application/json', true, 500);
         echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'user_access')]);
         exit;
@@ -123,11 +128,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
             am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
                     'users', (string) $user_id);
 
+            am2_audit_complete();
             $pdo->commit();
             syncUserChannels($user_id);
             $success_msg = "Otoritas akses user berhasil diperbarui.";
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
         }
     }

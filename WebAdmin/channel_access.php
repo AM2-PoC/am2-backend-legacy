@@ -99,6 +99,7 @@ function am2_set_user_channels(
     array $perms = []
 ): array {
     am2_require_transaction($pdo, __FUNCTION__);
+    am2_audit_expect(__FUNCTION__);
 
     $existing = am2_user_channels($pdo, $userId);
     $wanted = [];

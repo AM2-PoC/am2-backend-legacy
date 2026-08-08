@@ -117,10 +117,11 @@ elseif ($method == 'POST') {
                         ['id' => $id, 'name' => $name, 'via' => 'mobile'], 'users', $id);
             }
 
+            am2_audit_complete();
             $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'User berhasil ' . ($action == 'add' ? 'ditambahkan' : 'diperbarui')]);
         } catch (PDOException $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => 'Gagal: ' . am2_safe_error($e, 'api_users')]);
         }
     }
@@ -148,17 +149,48 @@ elseif ($method == 'POST') {
 
             $pdo->beginTransaction();
 
+            $stmtName = $pdo->prepare('SELECT name FROM public.users WHERE id = ?');
+            $stmtName->execute([$u_id]);
+            $targetName = (string) ($stmtName->fetchColumn() ?: $u_id);
+
             // The same call the panel makes. What it replaces deleted every
             // membership and rebuilt it as FULL DUPLEX with the first entry as
             // default -- so re-saving a list from the app reset every
             // permission and moved where the unit comes up.
-            am2_set_user_channels($pdo, (string) $u_id, $channels);
+            $result = am2_set_user_channels($pdo, (string) $u_id, $channels);
 
+            /*
+             * The same event the panel writes. This path recorded nothing at
+             * all, so a membership rewritten from the app left the log saying
+             * the unit's access had not changed since whenever it was last
+             * edited on the web.
+             */
+            if ($channels) {
+                $stmtCh = $pdo->prepare('SELECT display_name FROM public.channels WHERE id = ?');
+                $logChannels = [];
+                foreach ($channels as $chId) {
+                    $stmtCh->execute([$chId]);
+                    $logChannels[] = [
+                        'name'    => (string) $stmtCh->fetchColumn(),
+                        'default' => ((string) $chId === (string) $result['default']),
+                        'perm'    => $result['permissions'][(string) $chId] ?? 'FULL DUPLEX',
+                    ];
+                }
+                $logCode   = 'access.update';
+                $logParams = ['name' => $targetName, 'channels' => $logChannels];
+            } else {
+                $logCode   = 'access.revoke';
+                $logParams = ['name' => $targetName];
+            }
+            am2_log($pdo, $admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                    'users', (string) $u_id);
+
+            am2_audit_complete();
             $pdo->commit();
             syncUserChannels($u_id);
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
@@ -199,14 +231,15 @@ elseif ($method == 'POST') {
             $logParams['via'] = 'mobile';
             am2_log($pdo, $admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', (string) $u_id);
 
+            am2_audit_complete();
             $pdo->commit();
             notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
             echo json_encode(['success' => true]);
         } catch (InvalidArgumentException | RuntimeException $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_feature_reason($e)]);
         } catch (PDOException $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
@@ -227,10 +260,11 @@ elseif ($method == 'POST') {
             $oldName = am2_delete_user($pdo, (string) $id, $admin_id);
             am2_log($pdo, $admin_id, 'DELETE_USER', 'user.delete',
                     ['name' => $oldName, 'id' => $id, 'via' => 'mobile'], 'users', (string) $id);
+            am2_audit_complete();
             $pdo->commit();
             echo json_encode(['success' => true]);
         } catch (PDOException $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
