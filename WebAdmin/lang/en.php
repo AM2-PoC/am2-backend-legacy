@@ -462,6 +462,7 @@ return [
     'usr.bulk_delete_title'      => 'Delete :n units?',
     'usr.bulk_delete_body'       => 'A deleted unit and its channel access cannot be brought back.',
     'usr.bulk_delete_prompt'     => 'Type :n to continue',
+    'tbl.delete_count_label' => 'Type the count to confirm the deletion',
     'usr.bulk_duplex_title'      => 'Duplex mode',
     'usr.bulk_feature_title'     => 'Feature permissions',
     'usr.bulk_done'              => ':ok succeeded, :failed failed',

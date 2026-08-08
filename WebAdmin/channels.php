@@ -788,6 +788,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         <div class="space-y-4 p-5">
             <p data-delete-prompt class="text-sm text-ink-muted"></p>
             <input id="am2-delete-count" type="text" inputmode="numeric" autocomplete="off"
+                   aria-label="<?= e('tbl.delete_count_label') ?>"
                    class="<?= $fieldCls ?> font-mono">
         </div>
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">

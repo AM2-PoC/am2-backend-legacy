@@ -462,6 +462,7 @@ return [
     'usr.bulk_delete_title'      => 'Hapus :n unit?',
     'usr.bulk_delete_body'       => 'Unit yang dihapus beserta akses channelnya tidak bisa dikembalikan.',
     'usr.bulk_delete_prompt'     => 'Ketik :n untuk melanjutkan',
+    'tbl.delete_count_label' => 'Ketik jumlah untuk mengonfirmasi penghapusan',
     'usr.bulk_duplex_title'      => 'Mode duplex',
     'usr.bulk_feature_title'     => 'Izin fitur',
     'usr.bulk_done'              => ':ok berhasil, :failed gagal',
