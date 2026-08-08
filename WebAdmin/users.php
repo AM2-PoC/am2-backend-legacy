@@ -502,9 +502,17 @@ include 'partials/shell.php';
                                     </span>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <span class="inline-flex items-center gap-1.5 rounded-control border border-warn/40
-                                             bg-warn/5 px-2 py-1 font-mono text-[9px] uppercase
-                                             tracking-[0.1em] text-warn">
+                                <!--
+                                    The shared chip, not a copy of it. This
+                                    column reproduced the chip's padding and
+                                    type scale by hand and had already drifted
+                                    from the other three. Warning rather than
+                                    brand: a unit with no default channel cannot
+                                    talk to anyone, which is a fault, not a
+                                    setting that happens to be off.
+                                -->
+                                <span class="am2-chip inline-flex items-center gap-1.5 border-warn/40
+                                             bg-warn/5 text-warn">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('usr.no_channel') ?>
                                 </span>
                             <?php endif; ?>
@@ -563,27 +571,31 @@ include 'partials/shell.php';
                             </button>
                         </td>
 
+                        <!--
+                            Same chip as the three status columns, so the row
+                            reads as one family of controls rather than four
+                            inventions. The colours stay different on purpose:
+                            these are verbs, not states, so they are neutral
+                            until hovered, and delete is the one thing here that
+                            must never be mistaken for a status that happens to
+                            be on.
+                        -->
                         <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
-                            <span class="inline-flex items-center gap-2">
+                            <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
+                                <?php $actCls = 'am2-chip inline-flex h-8 items-center border-edge text-ink-muted'; ?>
                                 <button type="button" data-row-channels
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
-                                               transition-colors duration-[var(--duration-micro)]
-                                               hover:border-brand hover:text-brand">
+                                        class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.channels') ?>
                                 </button>
 
                                 <button type="button" data-row-edit
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
-                                               transition-colors duration-[var(--duration-micro)]
-                                               hover:border-brand hover:text-brand">
+                                        class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.edit') ?>
                                 </button>
 
@@ -592,10 +604,8 @@ include 'partials/shell.php';
                                     <?= am2_csrf_field() ?>
                                     <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
                                     <button type="submit"
-                                            class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                                   text-[9px] uppercase tracking-[0.12em] text-bad
-                                                   transition-colors duration-[var(--duration-micro)]
-                                                   hover:border-bad/50 hover:bg-bad/10">
+                                            class="am2-chip inline-flex h-8 items-center border-edge text-bad
+                                                   hover:border-bad/50! hover:bg-bad/10">
                                         <?= e('usr.delete') ?>
                                     </button>
                                 </form>
