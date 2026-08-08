@@ -70,12 +70,23 @@ function beats(a, b) {
     return false;
 }
 
-/** Every selector in the file's mobile roster block. */
+/**
+ * Every selector across all of the file's below-lg blocks.
+ *
+ * There is more than one: the roster card rules and the sheet's row-wide tap
+ * area both belong under the same breakpoint but are written apart, next to the
+ * things they explain. Reading only the first block silently stopped seeing
+ * half the contract.
+ */
 function rosterSelectors() {
-    const start = css.indexOf('@media (max-width: 1023px)');
-    assert.notEqual(start, -1, 'the mobile roster media query is gone');
-    const block = css.slice(start, css.indexOf('\n}\n', start));
-    return [...block.matchAll(/^\s*([^@{}\n][^{}\n]*?)\s*\{/gm)].map((m) => m[1].trim());
+    const starts = [...css.matchAll(/@media \(max-width: 1023px\)/g)].map((m) => m.index);
+    assert.notEqual(starts.length, 0, 'the mobile roster media query is gone');
+    const out = [];
+    for (const start of starts) {
+        const block = css.slice(start, css.indexOf('\n}\n', start));
+        out.push(...[...block.matchAll(/^\s*([^@{}\n][^{}\n]*?)\s*\{/gm)].map((m) => m[1].trim()));
+    }
+    return out;
 }
 
 test('the shared roster table has a desktop minimum width, so a squeezed viewport scrolls instead of crushing columns', () => {
