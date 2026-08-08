@@ -86,6 +86,21 @@ test('focus is never removed without something drawn in its place', () => {
         const selector = m[1].trim();
         const body = m[2];
         if (!/:focus/.test(selector)) continue;      // not a focus rule at all
+
+        /*
+         * The replacement is usually on the same element, but it does not have
+         * to be: the palette's search input suppresses its own ring because the
+         * card it sits in clips it, and the row around it draws the focus with
+         * :focus-within instead. What matters is that something visible marks
+         * focus -- not which element carries it.
+         */
+        const ancestor = selector.match(/^(\.[\w-]+)\s/);
+        if (ancestor) {
+            const drawn = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].some(
+                (r) => r[1].includes(`${ancestor[1]}:focus-within`)
+                    && /box-shadow|border-color|background|outline/.test(r[2]));
+            if (drawn) continue;
+        }
         assert.match(body, /box-shadow|border-color|background/,
             `"${selector}" removes the focus outline and draws nothing instead`);
     }
