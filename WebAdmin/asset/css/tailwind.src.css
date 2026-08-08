@@ -363,10 +363,17 @@
      * invisible instead of instant.
      */
     .hs-overlay.opened [data-am2-panel],
-    #am2-unit-sheet.opened [data-am2-panel] {
+    #am2-unit-sheet.opened [data-am2-panel],
+    #am2-sidebar.opened,
+    [data-bulk-bar]:not([hidden]) {
         animation: none;
         opacity: 1;
         transform: none;
+    }
+    /* The pre-open state hides the panel to close Preline's two-step reveal.
+       With no animation to bring it back, it must never be hidden at all. */
+    .hs-overlay:not(.hidden) [data-am2-panel] {
+        opacity: 1;
     }
 }
 
@@ -399,6 +406,44 @@
  * closes, so the rail can transition its width freely.
  */
 #am2-sidebar { transition-property: none; }
+
+/*
+ * The drawer slides, without transitioning.
+ *
+ * The rule above has to stay -- Preline waits on transitionend before it
+ * destroys the backdrop, and a drawer that transitions a property which does
+ * not change leaves that wait unfinished. But with no motion at all the drawer
+ * vanished in a single frame while its backdrop lingered: measured 3ms to
+ * hidden, 149ms until the scrim went, so the page sat dimmed with nothing on it
+ * for a sixth of a second.
+ *
+ * An animation is not a transition, so Preline's wait is unaffected while the
+ * panel still travels. Opening only: closing is driven by Preline removing the
+ * class, and there is no frame left to animate in once `hidden` is back.
+ */
+@media (max-width: 1023px) {
+    #am2-sidebar.opened {
+        animation: am2-drawer-in var(--duration-drawer) var(--ease-enter) both;
+    }
+    @keyframes am2-drawer-in {
+        from { transform: translateX(-100%); }
+        to   { transform: translateX(0); }
+    }
+
+    /*
+     * And the scrim leaves with it.
+     *
+     * Closing sets `hidden` on the drawer in one frame -- display:none, so
+     * nothing about the panel can be animated out -- while Preline spends its
+     * own fade destroying the backdrop. Measured 3ms to gone and 149ms until
+     * the scrim cleared: a sixth of a second of dimmed page with nothing on it,
+     * which is exactly the pause that reads as the drawer having hung. Matching
+     * the scrim to the panel is what removes it.
+     */
+    .hs-overlay-backdrop {
+        transition-duration: var(--duration-exit) !important;
+    }
+}
 
 @media (min-width: 1024px) {
     #am2-sidebar {
@@ -562,6 +607,19 @@ summary {
  * is meant to replace. An animation runs from its own `from`, so it does not
  * depend on the two class changes being separated in time.
  */
+/*
+ * The resting state is hidden, and it starts the moment the overlay is shown.
+ *
+ * Preline removes `hidden` first and adds `opened` from a later callback --
+ * measured at 77ms apart. Hanging the animation on `.opened` alone meant the
+ * panel was painted at full opacity for those frames and then animated from
+ * zero, which is the pulse before it appears. Anchoring the hidden state to the
+ * overlay merely not being `hidden` closes that gap: there is no frame in which
+ * the panel is visible and unanimated.
+ */
+.hs-overlay:not(.hidden) [data-am2-panel] {
+    opacity: 0;
+}
 .hs-overlay.opened [data-am2-panel] {
     animation: am2-dialog-in var(--duration-modal) var(--ease-enter) both;
 }
@@ -581,6 +639,18 @@ summary {
 @keyframes am2-sheet-in {
     from { opacity: 0; transform: translateY(12%); }
     to   { opacity: 1; transform: translateY(0); }
+}
+
+/*
+ * The bulk bar arrives the same way the sheet does.
+ *
+ * It is docked to the bottom of the viewport and was toggled with `hidden`
+ * alone, so it blinked into place the moment a row was ticked -- a different
+ * grammar from every other panel on the page for no reason other than that it
+ * is not a Preline overlay. Same travel, same curve.
+ */
+[data-bulk-bar]:not([hidden]) {
+    animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
 }
 
 /*

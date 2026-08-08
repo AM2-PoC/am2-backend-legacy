@@ -402,7 +402,7 @@ include 'partials/shell.php';
                                     </span>
                                 </span>
 
-                                <button type="button" data-open-sheet
+                                <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-access-sheet"
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $row['name'], ENT_QUOTES, 'UTF-8') ?>"
@@ -827,6 +827,21 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     });
 
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
+
+    /*
+     * The sheet only exists below lg, and a window can cross that line while it
+     * is open. `lg:hidden` takes the panel away, but Preline's backdrop is a
+     * child of body and knows nothing about the breakpoint -- it stayed at full
+     * opacity with the body still scroll-locked, so the page sat under a grey
+     * scrim belonging to nothing visible. Closing through Preline is what
+     * removes the backdrop, restores the scroll and returns the borrowed cells.
+     */
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    desktop.addEventListener('change', () => {
+        if (desktop.matches && sheet?.classList.contains('opened')) {
+            window.HSOverlay?.close(sheet);
+        }
+    });
 })();
 </script>
 </body>

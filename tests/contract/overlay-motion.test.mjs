@@ -87,6 +87,56 @@ test('motion on a dialogue is dropped under reduced motion', () => {
         'the dialogue keeps its travel under reduced motion');
 });
 
+test('the panel is hidden from the moment the overlay is shown, not from `opened`', () => {
+    // Preline removes `hidden` first and adds `opened` from a later callback --
+    // measured 77ms apart. Hanging the resting state on `.opened` alone left
+    // the panel painted at full opacity for those frames and then animated from
+    // zero, which is the pulse before the dialogue appears.
+    // Two rules match this selector: the resting state, and its cancellation
+    // inside the reduced-motion block. The one being checked is the resting
+    // state, so the search is for a body that actually hides the panel.
+    const hides = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+        .filter((m) => m[1].includes(':not(.hidden)') && m[1].includes('[data-am2-panel]'))
+        .filter((m) => /opacity:\s*0\s*[;}]/.test(m[2]));
+    assert.notEqual(hides.length, 0,
+        'nothing hides the panel between the overlay showing and `opened` arriving');
+});
+
+test('the bulk bar arrives like the sheet it sits beside', () => {
+    // It is docked to the same edge and was toggled with `hidden` alone, so it
+    // blinked into place while every other panel on the page travelled.
+    const rule = ruleContaining('[data-bulk-bar]');
+    assert.ok(rule, 'the bulk bar has no motion rule');
+    assert.match(rule.body, /animation/, 'the bulk bar still appears instantly');
+});
+
+test('the mobile drawer slides, and its scrim leaves with it', () => {
+    // The drawer cannot transition: Preline waits on transitionend before
+    // destroying the backdrop, and a transition that never fires strands the
+    // scrim over the page. An animation is not a transition.
+    assert.match(css, /#am2-sidebar\.opened[^{]*\{[^}]*animation/,
+        'the drawer appears in a single frame with no travel');
+    assert.match(css, /@keyframes\s+am2-drawer-in/, 'no am2-drawer-in keyframes');
+    assert.match(css, /#am2-sidebar\s*\{\s*transition-property:\s*none/,
+        'the drawer transitions again, which is what strands Preline’s backdrop');
+    // Measured: 3ms to hidden, 149ms until the scrim cleared -- a sixth of a
+    // second of dimmed page with nothing on it.
+    assert.match(css, /\.hs-overlay-backdrop[^{]*\{[^}]*transition-duration/,
+        'the backdrop fades on its own schedule, so it outlives the drawer');
+});
+
+test('every page with a roster gets the same sheet treatment', () => {
+    // users.php was fixed alone the first time. These four carry the same
+    // roster, the same sheet and the same chevron.
+    for (const page of ['users.php', 'channels.php', 'user_access.php', 'admin_panel.php']) {
+        const src = read(page);
+        assert.match(src, /data-sheet-row/,
+            `${page} still opens its sheet from the chevron alone`);
+        assert.match(src, /matchMedia\('\(min-width: 1024px\)'\)/,
+            `${page} can strand its sheet backdrop when the window grows past lg`);
+    }
+});
+
 test('the mobile sheet cannot leave its backdrop behind when the window grows', () => {
     // lg:hidden takes the panel away; Preline's backdrop is a child of body and
     // knows nothing about the breakpoint, so it stayed -- opacity 1, body still
