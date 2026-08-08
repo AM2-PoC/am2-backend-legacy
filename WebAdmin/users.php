@@ -953,9 +953,12 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             one thumb; sharing a single row keeps them all within reach of it.
         -->
         <footer data-slot="actions"
-                class="flex items-center gap-2 border-t border-edge bg-card-muted px-5 py-3
+                class="flex items-stretch gap-2 border-t border-edge bg-card-muted px-5 py-3
                        pb-[max(0.75rem,env(safe-area-inset-bottom))]
-                       [&>form]:contents [&_button]:flex-1 [&_button]:justify-center"></footer>
+                       [&>span]:flex [&>span]:w-full [&>span]:gap-2
+                       [&_form]:contents [&_button]:min-h-11 [&_button]:flex-1
+                       [&_button]:basis-0 [&_button]:justify-center [&_button]:px-1
+                       [&_[data-row-result]]:hidden"></footer>
     </div>
 </div>
 

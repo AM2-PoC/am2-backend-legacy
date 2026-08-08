@@ -214,21 +214,24 @@ test('the amber chips get a hover that is not amber, and the rest keep theirs', 
     assert.match(amber[2], /border-color/, 'the amber chips get no border change at all');
 });
 
-test('the drawer crosses the screen evenly, and its scrim darkens with it', () => {
+test('the drawer moves like the rail it is a version of, and its scrim darkens with it', () => {
     /*
-     * --ease-enter is cubic-bezier(0.16, 1, 0.3, 1), which spends its travel
-     * almost at once and eases into a very long tail. Right for a small panel;
-     * on a 272px drawer it measured 40% of the distance in the first frame and
-     * 88% by 83ms, which is a lurch and then a hang however many frames it
-     * renders at. --ease-standard covers the distance evenly.
+     * The desktop rail collapse is the reference: --ease-enter over 220ms. An
+     * earlier attempt swapped the drawer to --ease-standard, reading the
+     * complaint as a lurch; it was the speed. The drawer covers 272px from
+     * off-screen against the rail's 200px in place, so the same duration puts
+     * more speed on screen -- same curve, more time.
+     *
+     * Matched against the text rather than through the block splitter: this
+     * rule lives inside a media query, and the splitter treats @media as one
+     * block, so its contents never appear as rules of their own.
      */
-    // Matched against the text rather than through the block splitter: this
-    // rule lives inside a media query, and the splitter treats @media as one
-    // block, so its contents never appear as rules of their own.
     const open = css.match(/#am2-sidebar\.opened\s*\{[^}]*animation:\s*am2-drawer-in[^}]*\}/);
     assert.ok(open, 'the drawer has no entrance');
-    assert.match(open[0], /--ease-standard/,
-        'the drawer uses the small-panel curve, which reads as a lurch across 272px');
+    assert.match(open[0], /--ease-enter/,
+        'the drawer no longer shares the rail’s curve, which is the motion it is meant to match');
+    assert.match(open[0], /--duration-drawer-panel/,
+        'the drawer runs at the rail’s duration over a longer distance, so it reads as faster');
 
     // Preline paints the backdrop before the drawer starts moving -- measured
     // 50ms -- so without a matching delay the room is already dark when the

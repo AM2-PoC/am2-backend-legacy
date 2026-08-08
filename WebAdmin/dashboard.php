@@ -283,6 +283,42 @@ function am2_sparkline(array $values, string $class = 'text-brand'): string
          . ' points="' . implode(' ', $points) . '"/></svg>';
 }
 
+/**
+ * The change across a series, as a signed count and a percentage.
+ *
+ * Arithmetic on the seven cumulative daily counts each card already carries --
+ * no second query, and nothing new to keep in step with the number above it.
+ *
+ * Returns null rather than a zero when there is nothing to say: a card
+ * reporting "0%" every day is noise, and a single data point has no direction
+ * at all. A card without a series simply does not get one.
+ */
+function am2_delta(?array $series): ?array
+{
+    if (!$series || count($series) < 2) {
+        return null;
+    }
+    $values = array_map('intval', array_values($series));
+    $first = $values[0];
+    $last  = $values[count($values) - 1];
+    $change = $last - $first;
+    if ($change === 0) {
+        return null;
+    }
+    // Against a starting zero any growth is infinite, so the percentage is
+    // withheld and the count speaks for itself.
+    $percent = $first > 0 ? (int) round($change / $first * 100) : null;
+
+    // A single unit added to a fleet of 219 rounds to 0%, and "↑ 0%" is a
+    // contradiction on the face of the card. Below a whole percent the count is
+    // the honest figure -- it is also the smaller number, which is the one that
+    // fits.
+    if ($percent === 0) {
+        $percent = null;
+    }
+    return ['change' => $change, 'percent' => $percent, 'up' => $change > 0];
+}
+
 $cards = [
     ['key' => 'dash.total_users', 'value' => $total_user, 'href' => 'users.php',
      'context' => count($stranded) > 0
@@ -337,6 +373,28 @@ $cards = [
                 <?php if (!empty($c['live'])): ?>
                     <span class="h-2 w-2 rounded-full <?= $user_online > 0 ? 'bg-ok am2-live' : 'bg-edge-strong' ?>"
                           aria-hidden="true"></span>
+                <?php endif; ?>
+
+                <?php
+                /*
+                 * Which way the number has moved over the week the sparkline
+                 * draws. Absent when the series is flat or missing, rather than
+                 * printing a "0%" that says nothing on a card read every day.
+                 *
+                 * Growth is not good news here and a fall is not bad -- more
+                 * units is a bigger fleet, fewer is decommissioning -- so the
+                 * colour stays neutral and only the arrow states direction.
+                 */
+                $delta = am2_delta($c['series'] ?? null);
+                if ($delta): ?>
+                    <span class="ms-auto inline-flex items-baseline gap-1 self-center rounded-control
+                                 bg-card-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-muted"
+                          title="<?= e('dash.delta_since') ?>">
+                        <span aria-hidden="true"><?= $delta['up'] ? '↑' : '↓' ?></span>
+                        <?= $delta['percent'] !== null
+                            ? abs($delta['percent']) . '%'
+                            : ($delta['up'] ? '+' : '−') . abs($delta['change']) ?>
+                    </span>
                 <?php endif; ?>
             </p>
 

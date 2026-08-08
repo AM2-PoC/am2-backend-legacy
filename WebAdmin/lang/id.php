@@ -54,6 +54,7 @@ return [
     'dash.scope_branch' => 'Di bawah wewenang Anda',
     'dash.calls_24h' => 'Panggilan 24 jam',
     'dash.calls_note' => 'Tekan mic, bukan lepas',
+    'dash.delta_since' => "Perubahan 7 hari terakhir",
     'dash.range_24h' => '24 jam',
     'dash.range_7d' => '7 hari',
     'dash.channel_activity' => 'Aktivitas channel',

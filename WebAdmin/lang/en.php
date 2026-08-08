@@ -54,6 +54,7 @@ return [
     'dash.scope_branch' => 'Under your authority',
     'dash.calls_24h' => 'Calls, 24 hours',
     'dash.calls_note' => 'Mic pressed, not released',
+    'dash.delta_since' => "Change over the last 7 days",
     'dash.range_24h' => '24 hours',
     'dash.range_7d' => '7 days',
     'dash.channel_activity' => 'Channel activity',
