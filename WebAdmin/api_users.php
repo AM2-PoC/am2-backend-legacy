@@ -120,7 +120,14 @@ elseif ($method == 'POST') {
             am2_audit_complete();
             $pdo->commit();
             echo json_encode(['success' => true, 'message' => 'User berhasil ' . ($action == 'add' ? 'ditambahkan' : 'diperbarui')]);
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
+            /*
+             * Throwable, not PDOException. The audit guard raises a
+             * LogicException, which these clauses did not name -- so an
+             * unbalanced mutation left this endpoint as an uncaught fatal,
+             * emitting an HTML error page to a caller parsing JSON. The
+             * rollback and the abandon are exactly what that case needs.
+             */
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => 'Gagal: ' . am2_safe_error($e, 'api_users')]);
         }
@@ -238,7 +245,9 @@ elseif ($method == 'POST') {
         } catch (InvalidArgumentException | RuntimeException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_feature_reason($e)]);
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
+            // Throwable so the audit guard's LogicException lands here too,
+            // rather than escaping as HTML to a caller parsing JSON.
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
@@ -263,7 +272,9 @@ elseif ($method == 'POST') {
             am2_audit_complete();
             $pdo->commit();
             echo json_encode(['success' => true]);
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
+            // Throwable so the audit guard's LogicException lands here too,
+            // rather than escaping as HTML to a caller parsing JSON.
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
