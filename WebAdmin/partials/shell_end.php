@@ -38,7 +38,7 @@
                           placeholder:text-ink-subtle focus:outline-none focus:ring-0
                           focus-visible:outline-none"
                    placeholder="<?= e('search.hint') ?>">
-            <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[10px]
+            <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[11px]
                         text-ink-subtle sm:block">ESC</kbd>
         </div>
         <ul id="am2-palette-list" role="listbox" class="max-h-80 overflow-y-auto py-2"></ul>
@@ -253,7 +253,7 @@
                 + (i === cursor ? 'bg-brand/10 text-ink' : 'text-ink-muted');
 
             const g = document.createElement('span');
-            g.className = 'shrink-0 font-mono text-[9px] uppercase tracking-[0.15em] '
+            g.className = 'shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] '
                 + (i === cursor ? 'text-brand' : 'text-ink-subtle');
             // textContent, not innerHTML: `label` is whatever was typed.
             g.textContent = item.group;

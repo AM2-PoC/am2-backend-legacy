@@ -82,7 +82,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
                     $on = $curChip === $chip['value']; ?>
                     <a href="<?= htmlspecialchars(am2_table_qs(['chip' => $chip['value'] ?: null])) ?>"
                        class="inline-flex h-9 items-center gap-1.5 rounded-control border px-3 font-mono
-                              text-[10px] uppercase tracking-[0.15em] no-underline! transition-colors
+                              text-[11px] uppercase tracking-[0.15em] no-underline! transition-colors
                               duration-[var(--duration-micro)]
                               <?= $on ? 'border-brand bg-brand/10 text-brand!'
                                       : 'border-edge text-ink-muted! hover:border-edge-strong hover:text-ink!' ?>">
@@ -103,7 +103,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
                 <?= $tableAction ?>
             <?php endif; ?>
 
-            <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <span class="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e($countKey ?? 'tbl.rows', ['n' => number_format($total)]) ?>
             </span>
         </div>
@@ -124,7 +124,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
             horizontal scroll the cards exist to avoid.
         -->
         <table class="data-table am2-roster w-full text-sm lg:min-w-[56rem]">
-            <thead class="sticky top-0 z-10 bg-card-muted text-left font-mono text-[10px]
+            <thead class="sticky top-0 z-10 bg-card-muted text-left font-mono text-[11px]
                           uppercase tracking-[0.15em] text-ink-subtle">
                 <tr>
                     <?php if ($selectable): ?>

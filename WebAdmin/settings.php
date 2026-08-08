@@ -458,7 +458,7 @@ if ($is_super) {
 $pageTitle = t('set.heading');
 $pageLede  = t('set.lede');
 $pageActions = '<span class="hidden rounded-control border border-edge px-2.5 py-1.5 font-mono'
-    . ' text-[10px] uppercase tracking-[0.15em] lg:inline-block '
+    . ' text-[11px] uppercase tracking-[0.15em] lg:inline-block '
     . ($is_super ? 'border-bad/40 text-bad' : 'text-ink-muted') . '">'
     . htmlspecialchars(strtoupper($role_user)) . '</span>';
 
@@ -504,7 +504,7 @@ include 'partials/shell.php';
         <a href="<?= $s['href'] ?>" data-kpi
            class="am2-surface am2-surface-accent am2-clickable group flex flex-col rounded-card p-5
                   no-underline! text-ink!">
-            <p class="flex items-center justify-between font-mono text-[10px] uppercase
+            <p class="flex items-center justify-between font-mono text-[11px] uppercase
                       tracking-[0.18em] text-ink-subtle">
                 <span><?= e($s['key']) ?></span>
                 <span aria-hidden="true"
@@ -525,14 +525,14 @@ include 'partials/shell.php';
         <section id="am2-card-account" class="am2-surface rounded-card scroll-mt-28">
             <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
                 <span class="text-ink-subtle"><?= am2_icon('lock', 'h-4 w-4') ?></span>
-                <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+                <h2 class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                     <?= e('set.account') ?>
                 </h2>
             </header>
 
             <div class="p-5">
                 <p class="flex items-baseline justify-between gap-3 border-b border-edge pb-4">
-                    <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.username') ?>
                     </span>
                     <span class="truncate font-mono text-sm text-ink">
@@ -561,7 +561,7 @@ include 'partials/shell.php';
                     foreach ($fields as $f): ?>
                         <div class="mb-4">
                             <label for="<?= $f['id'] ?>"
-                                   class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                   class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                 <?= e($f['label']) ?>
                             </label>
                             <div class="relative mt-2">
@@ -609,13 +609,13 @@ include 'partials/shell.php';
                         <li data-rule="length" class="flex items-center gap-2 text-xs text-ink-subtle">
                             <span data-mark aria-hidden="true"
                                   class="grid h-4 w-4 shrink-0 place-items-center rounded-full
-                                         border border-edge-strong text-[9px]">·</span>
+                                         border border-edge-strong text-[11px]">·</span>
                             <span><?= e('set.rule_length') ?></span>
                         </li>
                         <li data-rule="match" class="flex items-center gap-2 text-xs text-ink-subtle">
                             <span data-mark aria-hidden="true"
                                   class="grid h-4 w-4 shrink-0 place-items-center rounded-full
-                                         border border-edge-strong text-[9px]">·</span>
+                                         border border-edge-strong text-[11px]">·</span>
                             <span><?= e('set.rule_match') ?></span>
                         </li>
                     </ul>
@@ -644,14 +644,14 @@ include 'partials/shell.php';
     <section id="am2-card-licence" class="am2-surface rounded-card scroll-mt-28">
         <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
             <span class="text-ink-subtle"><?= am2_icon('shield', 'h-4 w-4') ?></span>
-            <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+            <h2 class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                 <?= e('set.licence') ?>
             </h2>
         </header>
 
         <div class="p-5">
             <div class="am2-surface-accent rounded-control border border-edge bg-card-muted px-4 py-3">
-                <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                     <?= e('set.valid_until') ?>
                 </p>
                 <p class="mt-1 text-lg font-semibold text-ink">
@@ -668,7 +668,7 @@ include 'partials/shell.php';
                 <?php foreach ($quotas as $q): $pct = am2_quota_pct($q['used'], $q['quota']); ?>
                     <div>
                         <p class="flex items-center justify-between gap-3">
-                            <span class="flex items-center gap-2 font-mono text-[10px] uppercase
+                            <span class="flex items-center gap-2 font-mono text-[11px] uppercase
                                          tracking-[0.15em] text-ink-subtle">
                                 <?= am2_icon($q['icon'], 'h-3.5 w-3.5') ?><?= e($q['label']) ?>
                             </span>
@@ -705,14 +705,14 @@ include 'partials/shell.php';
                 <?php endforeach; ?>
             </div>
 
-            <h3 class="mt-6 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <h3 class="mt-6 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e('set.features') ?>
             </h3>
             <ul class="mt-2 divide-y divide-edge rounded-control border border-edge">
                 <?php foreach ($features as $f): ?>
                     <li class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
                         <span class="text-ink"><?= e($f['key']) ?></span>
-                        <span class="flex items-center gap-1.5 font-mono text-[10px] uppercase
+                        <span class="flex items-center gap-1.5 font-mono text-[11px] uppercase
                                      tracking-[0.15em] <?= $f['on'] ? 'text-ok' : 'text-ink-subtle' ?>">
                             <?php if ($f['on']): ?>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -743,7 +743,7 @@ include 'partials/shell.php';
     <section id="am2-card-shelf" class="am2-surface mt-4 rounded-card scroll-mt-28" data-reveal>
         <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
             <span class="text-ink-subtle"><?= am2_icon('inbox', 'h-4 w-4') ?></span>
-            <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+            <h2 class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                 <?= e('set.distribution') ?>
             </h2>
         </header>
@@ -758,12 +758,12 @@ include 'partials/shell.php';
             <?php foreach ($channels as $ch): ?>
                 <section class="rounded-control border border-edge p-4">
                     <header class="flex items-baseline justify-between gap-3">
-                        <h3 class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink">
+                        <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink">
                             <?= htmlspecialchars($ch['label']) ?>
                         </h3>
                         <?php if (!$ch['managed']): ?>
                             <span class="shrink-0 rounded-control border border-edge px-1.5 font-mono
-                                         text-[9px] uppercase tracking-[0.1em] text-ink-subtle">
+                                         text-[11px] uppercase tracking-[0.1em] text-ink-subtle">
                                 <?= e('set.channel_readonly') ?>
                             </span>
                         <?php endif; ?>
@@ -773,7 +773,7 @@ include 'partials/shell.php';
                     <?php if ($ch['version'] !== null && $ch['version'] !== ''): ?>
                         <div class="mt-4 flex items-start gap-4">
                             <div class="min-w-0 flex-1">
-                                <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <?= e('set.current_version') ?>
                                 </p>
                                 <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
@@ -801,7 +801,7 @@ include 'partials/shell.php';
                                                    transition-colors duration-[var(--duration-micro)]
                                                    hover:border-brand focus:outline-none
                                                    focus-visible:ring-2 focus-visible:ring-brand/60"></button>
-                                    <figcaption class="mt-1.5 font-mono text-[9px] uppercase
+                                    <figcaption class="mt-1.5 font-mono text-[11px] uppercase
                                                        tracking-[0.15em] text-ink-subtle">
                                         <?= e('set.scan_to_install') ?>
                                     </figcaption>
@@ -849,7 +849,7 @@ include 'partials/shell.php';
                     <?php endif; ?>
 
                     <?php if (!$ch['managed']): ?>
-                        <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                        <p class="mt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                             <?= $ch['files']
                                 ? e('set.shelf_count', ['n' => count($ch['files'])])
                                 : e('set.shelf_empty') ?>
@@ -888,11 +888,11 @@ include 'partials/shell.php';
                            class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
                                   border border-edge bg-card text-sm text-ink-muted
                                   file:me-3 file:cursor-pointer file:border-0 file:bg-card-muted
-                                  file:px-4 file:py-3 file:font-mono file:text-[10px]
+                                  file:px-4 file:py-3 file:font-mono file:text-[11px]
                                   file:uppercase file:tracking-[0.15em] file:text-ink
                                   hover:border-edge-strong focus:border-brand focus:outline-none
                                   focus:ring-2 focus:ring-brand/25">
-                    <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <p class="mt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.upload_limit', ['limit' => am2_bytes_human($upload_limit)]) ?>
                     </p>
                 </div>
@@ -904,7 +904,7 @@ include 'partials/shell.php';
                         <span data-apk-name class="min-w-0 truncate font-mono text-ink"></span>
                         <span data-apk-size class="shrink-0 font-mono text-xs text-ink-muted"></span>
                     </p>
-                    <p class="flex items-baseline gap-2 font-mono text-[10px] text-ink-subtle">
+                    <p class="flex items-baseline gap-2 font-mono text-[11px] text-ink-subtle">
                         <span class="uppercase tracking-[0.15em]"><?= e('set.checksum') ?></span>
                         <span data-apk-hash class="min-w-0 truncate"><?= e('set.computing') ?></span>
                     </p>
@@ -919,7 +919,7 @@ include 'partials/shell.php';
                         <div data-bar class="h-full w-0 rounded-full bg-brand
                                     transition-[width] duration-[var(--duration-micro)]"></div>
                     </div>
-                    <p data-label class="mt-1.5 text-center font-mono text-[10px]
+                    <p data-label class="mt-1.5 text-center font-mono text-[11px]
                               uppercase tracking-[0.15em] text-ink-subtle"></p>
                 </div>
 
@@ -927,7 +927,7 @@ include 'partials/shell.php';
                     <!-- 135x15 on a phone. A link beside a 44px button has
                          to be reachable by the same thumb. -->
                     <a href="update/" target="_blank" rel="noopener"
-                       class="inline-flex h-11 items-center font-mono text-[10px]
+                       class="inline-flex h-11 items-center font-mono text-[11px]
                               uppercase tracking-[0.15em] text-ink-subtle!
                               no-underline! hover:text-brand!
                               focus-visible:outline-2 focus-visible:outline-offset-2">
@@ -935,7 +935,7 @@ include 'partials/shell.php';
                     </a>
                     <button type="submit" name="upload_apk" value="1" id="am2-apk-submit"
                             class="h-11 rounded-control border border-edge px-5 font-mono
-                                   text-[10px] font-semibold uppercase tracking-[0.15em]
+                                   text-[11px] font-semibold uppercase tracking-[0.15em]
                                    text-ink transition-colors duration-[var(--duration-micro)]
                                    hover:border-brand hover:text-brand focus:outline-none
                                    focus-visible:ring-2 focus-visible:ring-brand/60
@@ -946,7 +946,7 @@ include 'partials/shell.php';
             </form>
 
             <div id="am2-shelf-list" class="self-start rounded-control border border-edge">
-            <p class="px-4 pt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <p class="px-4 pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e('set.on_shelf') ?>
             </p>
             <?php if (!$shelf['files']): ?>
@@ -961,12 +961,12 @@ include 'partials/shell.php';
                                 </span>
                                 <?php if ($f['name'] === $shelf_target): ?>
                                     <span class="shrink-0 rounded-control bg-ok/10 px-1.5 font-mono
-                                                 text-[9px] uppercase tracking-[0.1em] text-ok">
+                                                 text-[11px] uppercase tracking-[0.1em] text-ok">
                                         <?= e('set.served') ?>
                                     </span>
                                 <?php endif; ?>
                             </span>
-                            <span class="shrink-0 font-mono text-[10px] text-ink-subtle">
+                            <span class="shrink-0 font-mono text-[11px] text-ink-subtle">
                                 <?= am2_bytes_human($f['size']) ?> ·
                                 <?= date('d M Y', $f['time']) ?>
                             </span>
@@ -987,7 +987,7 @@ include 'partials/shell.php';
 <section id="am2-card-danger" class="am2-surface mt-4 rounded-card border-bad/40 scroll-mt-28" data-reveal>
     <header class="flex items-center gap-2.5 border-b border-bad/30 bg-bad/5 px-5 py-3.5">
         <span class="text-bad"><?= am2_icon('alert', 'h-4 w-4') ?></span>
-        <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-bad">
+        <h2 class="font-mono text-[11px] uppercase tracking-[0.18em] text-bad">
             <?= e('set.danger') ?>
         </h2>
     </header>
@@ -998,7 +998,7 @@ include 'partials/shell.php';
                 <h3 class="text-sm font-semibold text-ink"><?= e('set.export') ?></h3>
                 <p class="mt-1 text-xs text-ink-muted"><?= e('set.export_note') ?></p>
                 <!-- What the file will hold, before it is asked for. -->
-                <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                     <?= $is_super
                         ? e('set.export_full_note')
                         : e('set.export_contents', [
@@ -1014,7 +1014,7 @@ include 'partials/shell.php';
                 <?= am2_csrf_field() ?>
                 <button type="submit" name="export_db" value="1"
                         class="h-11 w-full rounded-control border border-edge px-5 font-mono
-                               text-[10px] font-semibold uppercase tracking-[0.15em] text-ink
+                               text-[11px] font-semibold uppercase tracking-[0.15em] text-ink
                                transition-colors duration-[var(--duration-micro)]
                                hover:border-brand hover:text-brand focus:outline-none
                                focus-visible:ring-2 focus-visible:ring-brand/60 sm:w-auto">
@@ -1028,14 +1028,14 @@ include 'partials/shell.php';
                 <div class="min-w-0">
                     <h3 class="text-sm font-semibold text-ink"><?= e('set.restore') ?></h3>
                     <p class="mt-1 text-xs text-ink-muted"><?= e('set.restore_note') ?></p>
-                    <p class="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.restore_logged') ?>
                     </p>
                 </div>
                 <button type="button" data-hs-overlay="#am2-restore"
                         aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-restore"
                         class="h-11 shrink-0 rounded-control border border-bad/50 px-5 font-mono
-                               text-[10px] font-semibold uppercase tracking-[0.15em] text-bad
+                               text-[11px] font-semibold uppercase tracking-[0.15em] text-bad
                                transition-colors duration-[var(--duration-micro)]
                                hover:bg-bad/10 focus:outline-none focus-visible:ring-2
                                focus-visible:ring-bad/60">
@@ -1088,7 +1088,7 @@ include 'partials/shell.php';
                     </p>
 
                     <label for="am2-restore-file"
-                           class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                           class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.restore_file') ?>
                     </label>
                     <div id="am2-sql-zone" data-input="am2-restore-file"
@@ -1100,7 +1100,7 @@ include 'partials/shell.php';
                                class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
                                       border border-edge bg-card text-sm text-ink-muted
                                       file:me-3 file:cursor-pointer file:border-0 file:bg-card-muted
-                                      file:px-4 file:py-3 file:font-mono file:text-[10px]
+                                      file:px-4 file:py-3 file:font-mono file:text-[11px]
                                       file:uppercase file:tracking-[0.15em] file:text-ink
                                       hover:border-edge-strong focus:border-brand focus:outline-none
                                       focus:ring-2 focus:ring-brand/25">
@@ -1117,12 +1117,12 @@ include 'partials/shell.php';
                             <span data-sql-name class="min-w-0 truncate font-mono text-ink"></span>
                             <span data-sql-size class="shrink-0 font-mono text-xs text-ink-muted"></span>
                         </p>
-                        <p data-sql-kind class="mt-1 font-mono text-[10px] uppercase
+                        <p data-sql-kind class="mt-1 font-mono text-[11px] uppercase
                                   tracking-[0.15em] text-ink-subtle"></p>
 
                         <table class="mt-3 w-full text-sm">
                             <thead>
-                                <tr class="font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+                                <tr class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <th class="pb-1 text-left font-normal"></th>
                                     <th class="pb-1 text-right font-normal"><?= e('set.now') ?></th>
                                     <th class="pb-1 text-right font-normal"><?= e('set.in_file') ?></th>
@@ -1148,7 +1148,7 @@ include 'partials/shell.php';
                     </div>
 
                     <label for="am2-restore-word"
-                           class="mt-5 block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                           class="mt-5 block font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.restore_type', ['word' => t('set.restore_word')]) ?>
                     </label>
                     <!-- The word is an attribute, not a string in the script, so
@@ -1164,7 +1164,7 @@ include 'partials/shell.php';
 
                 <footer class="flex flex-col-reverse gap-2 border-t border-edge px-5 py-4 sm:flex-row sm:justify-end">
                     <button type="button" data-hs-overlay="#am2-restore"
-                            class="h-11 rounded-control border border-edge px-5 font-mono text-[10px]
+                            class="h-11 rounded-control border border-edge px-5 font-mono text-[11px]
                                    font-semibold uppercase tracking-[0.15em] text-ink-muted
                                    transition-colors duration-[var(--duration-micro)]
                                    hover:text-ink focus:outline-none focus-visible:ring-2
@@ -1172,7 +1172,7 @@ include 'partials/shell.php';
                         <?= e('set.cancel') ?>
                     </button>
                     <button type="submit" name="import_db" value="1" id="am2-restore-submit" disabled
-                            class="h-11 rounded-control bg-bad px-5 font-mono text-[10px] font-semibold
+                            class="h-11 rounded-control bg-bad px-5 font-mono text-[11px] font-semibold
                                    uppercase tracking-[0.15em] text-white transition-colors
                                    duration-[var(--duration-micro)] hover:bg-bad/90
                                    disabled:cursor-not-allowed disabled:opacity-40
@@ -1195,7 +1195,7 @@ include 'partials/shell.php';
                 bg-slate-950/60 backdrop-blur-sm">
         <div data-am2-panel
              class="am2-surface mx-auto mt-[8vh] w-[92%] max-w-sm overflow-hidden rounded-card p-6 text-center">
-            <h2 id="am2-qr-zoom-label" class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+            <h2 id="am2-qr-zoom-label" class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                 <?= e('set.scan_to_install') ?>
             </h2>
             <p data-qr-zoom-label class="mt-1 text-sm font-semibold text-ink"></p>
@@ -1205,7 +1205,7 @@ include 'partials/shell.php';
                   class="mt-4 block truncate rounded-control border border-edge bg-card-muted
                          px-2.5 py-2 font-mono text-[11px] text-ink-muted"></code>
             <button type="button" data-hs-overlay="#am2-qr-zoom"
-                    class="mt-4 h-11 w-full rounded-control border border-edge font-mono text-[10px]
+                    class="mt-4 h-11 w-full rounded-control border border-edge font-mono text-[11px]
                            font-semibold uppercase tracking-[0.15em] text-ink-muted transition-colors
                            duration-[var(--duration-micro)] hover:text-ink focus:outline-none
                            focus-visible:ring-2 focus-visible:ring-brand/60">
