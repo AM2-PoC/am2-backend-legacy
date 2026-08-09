@@ -12,8 +12,8 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 
 if ($method == 'GET') {
-    $admin_id = $_GET['admin_id'] ?? null;
-    $admin_role = $_GET['role'] ?? 'admin';
+    // Identity is resolved by the server; see am2_api_identity().
+    [$admin_id, $admin_role] = am2_api_identity();
     $is_superadmin = ($admin_role === 'superadmin');
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
     $params = [];
@@ -61,11 +61,12 @@ if ($method == 'GET') {
 }
 elseif ($method == 'POST') {
     $action = $_POST['action'] ?? '';
-    $current_admin_id = $_POST['admin_id'] ?? null;
+    // Identity is resolved by the server; see am2_api_identity().
+    [$current_admin_id, $current_admin_role] = am2_api_identity();
 
     if ($action == 'force_logout') {
         $user_id = (string)($_POST['user_id'] ?? '');
-        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+        if (!am2_admin_owns_user($pdo, $current_admin_id, $current_admin_role, $user_id)
             && am2_api_authz_denied('kick-foreign-user')) {
             exit;
         }
@@ -95,7 +96,7 @@ elseif ($method == 'POST') {
     }
     elseif ($action == 'update_access') {
         $user_id = (string)($_POST['user_id'] ?? '');
-        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+        if (!am2_admin_owns_user($pdo, $current_admin_id, $current_admin_role, $user_id)
             && am2_api_authz_denied('access-foreign-user')) {
             exit;
         }

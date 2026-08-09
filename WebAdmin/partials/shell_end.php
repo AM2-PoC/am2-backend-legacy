@@ -8,10 +8,18 @@
     nothing new had to be exposed for it.
 -->
 <div x-data="palette()" @open-palette.window="open()" @keydown.window.escape="shown = false">
-    <div x-cloak x-show="shown" x-transition.opacity.duration.120ms
+    <div x-cloak x-show="shown" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm" @click="shown = false"></div>
 
-    <div x-cloak x-show="shown" x-transition.opacity.duration.120ms
+    <div x-cloak x-show="shown" x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0 translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-1"
          class="fixed inset-x-0 top-[12vh] z-[70] mx-auto w-[92%] max-w-xl"
          role="dialog" aria-modal="true" aria-label="<?= e('search.placeholder') ?>">
         <div class="overflow-hidden rounded-card border border-edge bg-card shadow-2xl">

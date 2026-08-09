@@ -61,14 +61,18 @@ if (isset($_POST['save_user_channels'])) {
     }
     $channels = json_decode($_POST['channels'], true) ?: [];
     try {
-        $pdo->beginTransaction();
-        $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$u_id]);
-        if (!empty($channels)) {
-            $stmt = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, 'FULL DUPLEX')");
-            foreach ($channels as $idx => $ch_id) {
-                $stmt->execute([$u_id, $ch_id, ($idx === 0 ? 'true' : 'false')]);
-            }
+        $foreign = am2_first_foreign_channel($pdo, $current_admin_id, $admin_role, $channels);
+        if ($foreign !== null) {
+            echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
+            exit;
         }
+        $pdo->beginTransaction();
+        // This page sends a membership list and nothing else, so the
+        // permission on each surviving channel and the unit's default both
+        // stand. It used to recreate every row as FULL DUPLEX, which handed
+        // transmit rights to receive-only units, and moved the default to
+        // whichever channel happened to come first in the JSON.
+        am2_set_user_channels($pdo, (string) $u_id, $channels);
         $pdo->commit();
         syncUserChannels($u_id);
         echo json_encode(['success' => true]);
@@ -366,16 +370,30 @@ include 'partials/shell.php';
 
     <!-- Toast. The old one showed the same sentence whatever happened; this one
          says what actually changed, and turns red when it did not. -->
-    <div id="liveToast" x-cloak x-show="toast.text" x-transition.opacity
+    <div id="liveToast" x-cloak x-show="toast.text" x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0 translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-1"
          class="fixed bottom-5 right-5 z-[80] rounded-card border px-4 py-2.5 text-sm shadow-lg"
          :class="toast.ok ? 'border-ok bg-card text-ink' : 'border-bad bg-card text-ink'"
          role="status" x-text="toast.text"></div>
 
     <!-- Add -->
-    <div x-cloak x-show="add.open" x-transition.opacity.duration.120ms
+    <div x-cloak x-show="add.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="add.open = false" @keydown.window.escape="add.open = false" role="dialog" aria-modal="true">
-        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="add.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.add_title') ?></h2></div>
             <div class="space-y-4 px-5 py-4">
@@ -410,10 +428,19 @@ include 'partials/shell.php';
     </div>
 
     <!-- Edit -->
-    <div id="editModal" x-cloak x-show="edit.open" x-transition.opacity.duration.120ms
+    <div id="editModal" x-cloak x-show="edit.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="edit.open = false" @keydown.window.escape="edit.open = false" role="dialog" aria-modal="true">
-        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="edit.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="edit_id" id="edit_id" :value="edit.id">
             <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.edit_title') ?></h2></div>
@@ -445,10 +472,19 @@ include 'partials/shell.php';
     </div>
 
     <!-- Quick channel assignment -->
-    <div id="channelModal" x-cloak x-show="ch.open" x-transition.opacity.duration.120ms
+    <div id="channelModal" x-cloak x-show="ch.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="ch.open = false" @keydown.window.escape="ch.open = false" role="dialog" aria-modal="true">
-        <div class="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <div x-show="ch.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" class="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <div class="border-b border-edge px-5 py-4">
                 <h2 class="text-sm font-semibold"><?= e('usr.channels_title') ?></h2>
                 <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand" id="ch_user_name" x-text="ch.name"></p>

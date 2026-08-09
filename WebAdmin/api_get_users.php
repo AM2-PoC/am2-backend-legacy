@@ -2,8 +2,8 @@
 require_once 'config.php';
 am2_api_auth();
 
-$admin_id = $_GET['admin_id'] ?? null;
-$admin_role = $_GET['role'] ?? 'admin';
+// Identity is resolved by the server; see am2_api_identity().
+[$admin_id, $admin_role] = am2_api_identity();
 $is_superadmin = ($admin_role === 'superadmin');
 
 date_default_timezone_set('Asia/Jakarta');

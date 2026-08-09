@@ -41,6 +41,8 @@ if ($isSuper) {
 }
 
 /** Inline SVG rather than an icon font: one fewer network dependency. */
+require_once __DIR__ . '/state.php';
+
 function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 {
     $paths = [
@@ -55,6 +57,10 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         'power'    => '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>',
         'menu'     => '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
         'close'    => '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        'inbox'    => '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z"/>',
+        'alert'    => '<path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/>',
+        'clock'    => '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        'lock'     => '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
         'sun'      => '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
         'moon'     => '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
         'search'   => '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -82,7 +88,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                  'translate-x-0': nav, '-translate-x-full': !nav, 'lg:translate-x-0': true }"
        class="w-64 <?= $rail ? 'lg:w-16' : 'lg:w-64' ?> -translate-x-full lg:translate-x-0
               fixed inset-y-0 left-0 z-50 flex flex-col border-r border-edge bg-card
-              transition-[width,transform] duration-200 ease-out">
+              transition-[width,transform] duration-[var(--duration-drawer)] ease-enter">
 
     <div class="flex h-16 items-center gap-3 border-b border-edge px-3">
         <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt=""
@@ -195,7 +201,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 
 <div x-data="{ get rail() { return $store.nav.collapsed; } }"
      :class="{ 'lg:pl-16': rail, 'lg:pl-64': !rail }"
-     class="<?= $rail ? 'lg:pl-16' : 'lg:pl-64' ?> transition-[padding] duration-200 ease-out">
+     class="<?= $rail ? 'lg:pl-16' : 'lg:pl-64' ?> transition-[padding] duration-[var(--duration-drawer)] ease-enter">
     <header class="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-edge bg-card/85 px-4 backdrop-blur-md lg:px-6">
         <button type="button" @click="nav = true"
                 class="rounded-control p-2 text-ink-muted hover:bg-card-muted lg:hidden"
