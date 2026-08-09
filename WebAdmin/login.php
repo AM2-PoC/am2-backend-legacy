@@ -81,6 +81,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     -->
     <aside class="am2-brand-panel relative hidden overflow-hidden lg:flex lg:flex-col
                   lg:justify-between lg:p-10">
+        <div class="am2-brand-geometry" aria-hidden="true">
+            <span class="am2-brand-grid"></span>
+            <span class="am2-brand-axis am2-brand-axis-x"></span>
+            <span class="am2-brand-axis am2-brand-axis-y"></span>
+            <span class="am2-brand-sweep"></span>
+        </div>
+
         <!-- The mark already draws two orbital arcs. Rings travelling outward
              turn the logo into what it depicts: a signal leaving a
              transmitter. Motion drives them rather than CSS keyframes, so
@@ -93,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <div class="relative grid place-items-center gap-6 py-8">
             <!-- The rings belong to the mark, so they are anchored to it. Centred
                  on the panel instead, they ran straight through the wordmark. -->
-            <div class="relative grid place-items-center">
+            <div class="am2-signal-core relative grid place-items-center">
                 <div class="pointer-events-none absolute inset-0 grid place-items-center"
                      aria-hidden="true">
                     <span data-am2-ring class="am2-ring"></span>
@@ -109,19 +116,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         <!-- What the product does, in the operator's words. Three facts, not a
              pitch: whoever reads this page already bought it. -->
-        <div class="relative">
+        <div class="am2-brand-copy relative">
             <p class="text-2xl font-semibold tracking-tight text-ink">AM²</p>
             <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-subtle">
                 <?= e('login.wordmark_note') ?>
             </p>
 
-            <dl class="mt-6 grid grid-cols-3 gap-4 border-t border-edge pt-5">
+            <dl class="am2-brand-facts mt-6 grid grid-cols-3 gap-0">
                 <?php foreach ([
                     ['login.fact_ptt_label', 'login.fact_ptt'],
                     ['login.fact_channels_label', 'login.fact_channels'],
                     ['login.fact_tracking_label', 'login.fact_tracking'],
                 ] as [$labelKey, $bodyKey]): ?>
-                    <div>
+                    <div class="am2-brand-fact">
                         <dt class="font-mono text-[11px] uppercase tracking-[0.18em] text-brand">
                             <?= e($labelKey) ?>
                         </dt>
@@ -134,9 +141,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     </aside>
 
-    <!-- Form side. -->
-    <main class="flex min-h-dvh flex-col items-center justify-center px-5 py-10 sm:px-8">
-        <div class="w-full max-w-[420px]">
+    <!-- Form side. The geometry belongs to the room around the card, not to the
+         surface users have to read. Its low-contrast shapes frame the action
+         without competing with it. -->
+    <main class="am2-login-stage relative isolate flex min-h-dvh flex-col items-center
+                 justify-center overflow-hidden px-5 py-10 sm:px-8">
+        <div class="am2-login-geometry" aria-hidden="true">
+            <span class="am2-geo am2-geo-grid"></span>
+            <span class="am2-geo am2-geo-steps"></span>
+            <span class="am2-geo am2-geo-orbit"></span>
+            <span class="am2-geo am2-geo-diamond"></span>
+            <span class="am2-geo am2-geo-cross am2-geo-cross-a"></span>
+            <span class="am2-geo am2-geo-cross am2-geo-cross-b"></span>
+        </div>
+
+        <div class="relative z-10 w-full max-w-[420px]">
 
             <!-- The mark repeats above the card on small screens, where the
                  brand panel does not exist at all. -->
