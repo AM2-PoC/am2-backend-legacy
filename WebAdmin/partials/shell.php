@@ -125,7 +125,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
              class="h-9 w-9 shrink-0 rounded-full bg-white object-contain p-0.5">
         <div class="am2-rail-hide min-w-0 flex-1 overflow-hidden">
             <p class="truncate text-sm font-semibold tracking-tight text-ink">AM²</p>
-            <p class="truncate font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
+            <p class="truncate font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                 <?= e('brand.tagline') ?>
             </p>
         </div>
@@ -151,7 +151,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 data-group="<?= htmlspecialchars($groupKey) ?>">
                 <button type="button"
                         class="hs-accordion-toggle am2-rail-hide flex w-full items-center gap-2
-                               rounded-control px-2 py-1.5 text-left font-mono text-[10px]
+                               rounded-control px-2 py-1.5 text-left font-mono text-[11px]
                                uppercase tracking-[0.18em] text-ink-subtle
                                transition-colors duration-[var(--duration-micro)]
                                hover:text-ink focus:outline-none focus-visible:ring-2
@@ -180,7 +180,17 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                                     fails for anyone who cannot separate these
                                     two hues.
                                 -->
+                                <!--
+                                    aria-label, because in rail mode the label
+                                    beside the icon is display:none -- which
+                                    takes it out of the accessibility tree as
+                                    well as off the screen, leaving the link
+                                    announced as its icon and nothing else. The
+                                    visible text stays; this only guarantees a
+                                    name when that text is hidden.
+                                -->
                                 <a href="<?= $href ?>" <?= $on ? 'aria-current="page"' : '' ?>
+                                   aria-label="<?= e($labelKey) ?>"
                                    class="am2-nav-item group relative flex h-11 items-center gap-3
                                           rounded-control px-2 no-underline!
                                           transition-colors duration-[var(--duration-micro)]
@@ -269,15 +279,16 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                     class="hidden h-11 items-center gap-2 rounded-control border border-edge
                            bg-card-muted px-3 text-sm text-ink-subtle
                            transition-colors duration-[var(--duration-micro)]
-                           hover:border-edge-strong hover:text-ink md:flex md:w-56 lg:w-64"
+                           hover:border-brand hover:text-brand md:flex md:w-56 lg:w-64"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette">
                 <?= am2_icon('search', 'h-4 w-4') ?>
                 <span class="flex-1 text-left"><?= e('search.placeholder') ?></span>
-                <kbd class="rounded border border-edge px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+                <kbd class="rounded border border-edge px-1.5 py-0.5 font-mono text-[11px]">⌘K</kbd>
             </button>
             <button type="button" data-hs-overlay="#am2-palette"
                     class="grid h-11 w-11 place-items-center rounded-control border border-edge
-                           text-ink-subtle md:hidden"
+                           text-ink-subtle transition-colors duration-[var(--duration-micro)]
+                           hover:border-brand hover:text-brand md:hidden"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette"
                     aria-label="<?= e('search.placeholder') ?>"><?= am2_icon('search', 'h-4 w-4') ?></button>
 
@@ -296,7 +307,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                               duration-[var(--duration-micro)]
                               <?= $onLoc
                                   ? 'border-brand bg-brand/10 text-brand!'
-                                  : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
+                                  : 'border-edge text-ink-subtle! hover:border-brand hover:text-brand!' ?>">
                         <?= strtoupper($loc) ?>
                     </a>
                 <?php endforeach; ?>
@@ -305,7 +316,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
             <button type="button" id="themeToggle"
                     class="grid h-11 w-11 place-items-center rounded-control border border-edge
                            text-ink-subtle transition-colors duration-[var(--duration-micro)]
-                           hover:border-edge-strong hover:text-ink"
+                           hover:border-brand hover:text-brand"
                     aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
                     aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
                 <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>"><?= am2_icon('moon', 'h-4 w-4') ?></span>
@@ -317,7 +328,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <button id="am2-account" type="button"
                         class="hs-dropdown-toggle flex h-11 items-center gap-2 rounded-control
                                border border-edge px-1.5 transition-colors
-                               duration-[var(--duration-micro)] hover:border-edge-strong"
+                               duration-[var(--duration-micro)] hover:border-brand"
                         aria-haspopup="menu" aria-expanded="false"
                         aria-label="<?= e('nav.account') ?>">
                     <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full
@@ -332,7 +343,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                         <span class="block truncate text-[13px] leading-[1.15] text-ink">
                             <?= htmlspecialchars($displayName) ?>
                         </span>
-                        <span class="mt-0.5 block truncate font-mono text-[9px] uppercase
+                        <span class="mt-0.5 block truncate font-mono text-[11px] uppercase
                                      leading-none tracking-[0.12em] text-ink-subtle">
                             <?= htmlspecialchars($roleName) ?>
                         </span>
@@ -380,7 +391,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         -->
         <div id="am2-status" aria-live="polite"
              class="flex items-center gap-4 overflow-x-auto border-t border-edge
-                    bg-card-muted/60 px-4 py-2 font-mono text-[10px] uppercase
+                    bg-card-muted/60 px-4 py-2 font-mono text-[11px] uppercase
                     tracking-[0.15em] lg:px-6">
             <span class="flex shrink-0 items-center gap-1.5">
                 <span id="am2-relay-dot" class="h-1.5 w-1.5 rounded-full bg-ink-subtle"></span>

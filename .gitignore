@@ -5,9 +5,22 @@
 *.local
 *.local.*
 
-# Codex/local workspace metadata
+# Local AI assistant and planning workspace metadata
 .codex
 .codex/
+.claude/
+.superpowers/
+.hermes/
+
+# AI prompts and plans kept outside the product documentation.
+# Directory-scoped on purpose: a bare docs/**/plan*.md would also swallow
+# docs/planning-guide.md, and the pattern that quietly ignores a real document
+# is the one nobody notices until the file is missing from a checkout.
+docs/ai/
+docs/prompts/
+docs/plans/
+docs/superpowers/
+docs/hermes/
 
 # OS/editor noise
 .DS_Store

@@ -23,6 +23,8 @@
  *   [data-toggle]               a control that flips one field
  */
 
+import { playExit } from './am2-exit.js';
+
 const csrf = () => document.querySelector('input[name="_csrf"]')?.value ?? '';
 
 /** Paint a toggle. Both appearances live on the element, so either can be put back. */
@@ -116,7 +118,19 @@ function setupTable(table) {
         const n = selected();
         const count = document.querySelector('[data-bulk-count]');
         if (count) count.textContent = String(n);
-        if (bar) bar.hidden = n === 0;
+        // Leaving is animated, so `hidden` is set after the bar has travelled
+        // rather than the frame the last row is unticked -- otherwise it
+        // disappears mid-slide and only the arrival is ever seen.
+        if (bar) {
+            if (n === 0 && !bar.hidden) {
+                playExit(bar).then(() => {
+                    // Re-checked: a row can be ticked again while it is leaving.
+                    if (selected() === 0) bar.hidden = true;
+                });
+            } else if (n > 0) {
+                bar.hidden = false;
+            }
+        }
 
         const pageBox = table.querySelector('[data-select-page]');
         if (pageBox) {

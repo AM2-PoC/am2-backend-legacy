@@ -34,6 +34,7 @@
 function am2_create_user(PDO $pdo, string $id, string $name, string $password, $adminId): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
+    am2_audit_expect(__FUNCTION__);
 
     $pdo->prepare(
         "INSERT INTO public.users
@@ -57,6 +58,7 @@ function am2_create_user(PDO $pdo, string $id, string $name, string $password, $
 function am2_update_user(PDO $pdo, string $id, string $name, string $password, $adminId): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
+    am2_audit_expect(__FUNCTION__);
 
     if ($password !== '') {
         $pdo->prepare(
@@ -83,6 +85,7 @@ function am2_update_user(PDO $pdo, string $id, string $name, string $password, $
 function am2_delete_user(PDO $pdo, string $id, $adminId): string
 {
     am2_require_transaction($pdo, __FUNCTION__);
+    am2_audit_expect(__FUNCTION__);
 
     $stmt = $pdo->prepare('SELECT name FROM public.users WHERE id = ?');
     $stmt->execute([$id]);

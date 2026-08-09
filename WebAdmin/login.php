@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     ['login.fact_tracking_label', 'login.fact_tracking'],
                 ] as [$labelKey, $bodyKey]): ?>
                     <div>
-                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
+                        <dt class="font-mono text-[11px] uppercase tracking-[0.18em] text-brand">
                             <?= e($labelKey) ?>
                         </dt>
                         <dd class="mt-1 font-mono text-[11px] leading-relaxed text-ink-muted">
@@ -145,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                      class="h-11 w-11 rounded-full bg-white object-contain p-0.5">
                 <div>
                     <p class="text-sm font-semibold tracking-tight">AM²</p>
-                    <p class="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-subtle">
+                    <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                         <?= e('login.subtitle') ?>
                     </p>
                 </div>
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  class="am2-surface am2-surface-accent rounded-card p-6 sm:p-8">
 
                 <div data-am2-field>
-                    <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-brand">
+                    <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-brand">
                         <?= e('login.eyebrow') ?>
                     </p>
                     <h1 class="mt-1.5 text-xl font-semibold tracking-tight"><?= e('login.heading') ?></h1>
@@ -252,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                              is rejected. Plain JS: one listener, and it is about
                              the keyboard rather than about a component. -->
                         <p id="am2-caps" hidden
-                           class="mt-2 flex items-center gap-1.5 font-mono text-[10px] uppercase
+                           class="mt-2 flex items-center gap-1.5 font-mono text-[11px] uppercase
                                   tracking-[0.15em] text-warn">
                             <span aria-hidden="true">⇪</span><?= e('login.caps_on') ?>
                         </p>
@@ -292,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                   duration-[var(--duration-micro)]
                                   <?= $on
                                       ? 'border-brand bg-brand/10 text-brand!'
-                                      : 'border-edge text-ink-subtle! hover:border-edge-strong hover:text-ink!' ?>">
+                                      : 'border-edge text-ink-subtle! hover:border-brand hover:text-brand!' ?>">
                             <?= strtoupper($loc) ?>
                         </a>
                     <?php endforeach; ?>
@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <button type="button" id="themeToggle"
                         class="grid h-11 w-11 place-items-center rounded-control border border-edge
                                text-ink-subtle transition-colors duration-[var(--duration-micro)]
-                               hover:border-edge-strong hover:text-ink"
+                               hover:border-brand hover:text-brand"
                         aria-pressed="<?= am2_theme() === 'dark' ? 'true' : 'false' ?>"
                         aria-label="<?= e('pref.theme') ?>" title="<?= e('pref.theme') ?>">
                     <span data-theme-icon="light" class="<?= am2_theme() === 'dark' ? 'hidden' : '' ?>">
@@ -326,24 +326,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </div>
 
 <script src="<?= am2_asset('asset/js/am2-ui.min.js') ?>" defer></script>
+<?php include 'partials/theme_toggle.php'; ?>
+
 <script>
 (() => {
     'use strict';
 
-    /* Theme, outside everything else: it has to work whether or not the bundle
-     * arrives. Identical to the shell's, because it is the same control. */
-    document.getElementById('themeToggle')?.addEventListener('click', function () {
-        const root = document.documentElement;
-        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        root.classList.add('am2-theme-switching');
-        root.setAttribute('data-theme', next);
-        requestAnimationFrame(() => requestAnimationFrame(
-            () => root.classList.remove('am2-theme-switching')));
-        document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
-        this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
-        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
-        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
-    });
+    /* Theme lives in partials/theme_toggle.php, included above -- it was a
+     * second copy here and drifted from the shell's. */
 
     /* Caps Lock. */
     const caps = document.getElementById('am2-caps');

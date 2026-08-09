@@ -283,6 +283,42 @@ function am2_sparkline(array $values, string $class = 'text-brand'): string
          . ' points="' . implode(' ', $points) . '"/></svg>';
 }
 
+/**
+ * The change across a series, as a signed count and a percentage.
+ *
+ * Arithmetic on the seven cumulative daily counts each card already carries --
+ * no second query, and nothing new to keep in step with the number above it.
+ *
+ * Returns null rather than a zero when there is nothing to say: a card
+ * reporting "0%" every day is noise, and a single data point has no direction
+ * at all. A card without a series simply does not get one.
+ */
+function am2_delta(?array $series): ?array
+{
+    if (!$series || count($series) < 2) {
+        return null;
+    }
+    $values = array_map('intval', array_values($series));
+    $first = $values[0];
+    $last  = $values[count($values) - 1];
+    $change = $last - $first;
+    if ($change === 0) {
+        return null;
+    }
+    // Against a starting zero any growth is infinite, so the percentage is
+    // withheld and the count speaks for itself.
+    $percent = $first > 0 ? (int) round($change / $first * 100) : null;
+
+    // A single unit added to a fleet of 219 rounds to 0%, and "↑ 0%" is a
+    // contradiction on the face of the card. Below a whole percent the count is
+    // the honest figure -- it is also the smaller number, which is the one that
+    // fits.
+    if ($percent === 0) {
+        $percent = null;
+    }
+    return ['change' => $change, 'percent' => $percent, 'up' => $change > 0];
+}
+
 $cards = [
     ['key' => 'dash.total_users', 'value' => $total_user, 'href' => 'users.php',
      'context' => count($stranded) > 0
@@ -309,13 +345,18 @@ $cards = [
     https://preline.co/docs/card.html
     Every one of these links somewhere, so every one carries the affordance --
     the arrow and the border change. A card that did not link would get neither.
+
+    Four columns from lg, not xl. The band between 1024 and 1279px was the one
+    place these stayed two-up, and with a 272px rail the content budget there is
+    already wide enough for four -- so half the row was empty card while the
+    reader scrolled to find the fourth metric.
 -->
-<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <?php foreach ($cards as $c): ?>
         <a href="<?= $c['href'] ?>" data-kpi
-           class="am2-surface am2-clickable group flex flex-col rounded-card p-5
+           class="am2-surface am2-surface-accent am2-clickable group flex flex-col rounded-card p-5
                   no-underline! text-ink!">
-            <p class="flex items-center justify-between font-mono text-[10px] uppercase
+            <p class="flex items-center justify-between font-mono text-[11px] uppercase
                       tracking-[0.18em] text-ink-subtle">
                 <span><?= e($c['key']) ?></span>
                 <span aria-hidden="true"
@@ -333,6 +374,28 @@ $cards = [
                     <span class="h-2 w-2 rounded-full <?= $user_online > 0 ? 'bg-ok am2-live' : 'bg-edge-strong' ?>"
                           aria-hidden="true"></span>
                 <?php endif; ?>
+
+                <?php
+                /*
+                 * Which way the number has moved over the week the sparkline
+                 * draws. Absent when the series is flat or missing, rather than
+                 * printing a "0%" that says nothing on a card read every day.
+                 *
+                 * Growth is not good news here and a fall is not bad -- more
+                 * units is a bigger fleet, fewer is decommissioning -- so the
+                 * colour stays neutral and only the arrow states direction.
+                 */
+                $delta = am2_delta($c['series'] ?? null);
+                if ($delta): ?>
+                    <span class="ms-auto inline-flex items-baseline gap-1 self-center rounded-control
+                                 bg-card-muted px-1.5 py-0.5 font-mono text-[11px] text-ink-muted"
+                          title="<?= e('dash.delta_since') ?>">
+                        <span aria-hidden="true"><?= $delta['up'] ? '↑' : '↓' ?></span>
+                        <?= $delta['percent'] !== null
+                            ? abs($delta['percent']) . '%'
+                            : ($delta['up'] ? '+' : '−') . abs($delta['change']) ?>
+                    </span>
+                <?php endif; ?>
             </p>
 
             <?php if ($c['context']): ?>
@@ -347,7 +410,7 @@ $cards = [
 
             <!-- Freshness. A number with no time on it is a number you have to
                  trust blindly; this one says when it was true. -->
-            <p class="mt-auto pt-3 font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle">
+            <p class="mt-auto pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span data-kpi-stale hidden class="text-warn">⚠ <?= e('state.stale_title') ?> · </span>
                 <span data-kpi-time><?= $freshness ?></span> WIB
             </p>
@@ -372,7 +435,7 @@ $cards = [
                         <span class="h-1.5 w-1.5 shrink-0 rounded-full <?= $on > 0 ? 'bg-ok' : 'bg-edge-strong' ?>"
                               aria-hidden="true"></span>
                         <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($ch['display_name']) ?></span>
-                        <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                        <span class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                             <?= $on ?> <?= e('rail.online') ?>
                         </span>
                         <span class="w-16 shrink-0 text-right font-mono text-sm tabular-nums">
@@ -404,11 +467,11 @@ $cards = [
                     <li class="flex h-11 items-center gap-3 px-5">
                         <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true"></span>
                         <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($u['name']) ?></span>
-                        <span class="shrink-0 font-mono text-[10px] text-ink-subtle">
+                        <span class="shrink-0 font-mono text-[11px] text-ink-subtle">
                             <?= htmlspecialchars($u['id']) ?>
                         </span>
                         <a href="user_access.php?search=<?= urlencode($u['id']) ?>"
-                           class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                           class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                   no-underline! text-brand! hover:underline!"><?= e('dash.fix') ?></a>
                     </li>
                 <?php endforeach; ?>
@@ -422,7 +485,7 @@ $cards = [
     <header class="flex flex-wrap items-center justify-between gap-3 border-b border-edge px-5 py-4">
         <div>
             <h2 class="text-sm font-semibold tracking-tight"><?= e('dash.traffic') ?></h2>
-            <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <p class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span id="liveClock"><?= $freshness ?></span> WIB
                 <span id="chartSyncIcon" style="display:none" class="ml-2 text-brand">•••</span>
             </p>
@@ -431,12 +494,12 @@ $cards = [
             <?php foreach ([['24h', 'dash.range_24h'], ['7d', 'dash.range_7d']] as [$r, $k]): ?>
                 <button type="button" data-range="<?= $r ?>"
                         aria-pressed="<?= $r === '24h' ? 'true' : 'false' ?>"
-                        class="am2-range h-11 rounded-control border px-3 font-mono text-[10px]
+                        class="am2-range h-11 rounded-control border px-3 font-mono text-[11px]
                                uppercase tracking-[0.15em] transition-colors
                                duration-[var(--duration-micro)]
                                <?= $r === '24h'
                                    ? 'border-brand bg-brand/10 text-brand'
-                                   : 'border-edge text-ink-subtle hover:border-edge-strong hover:text-ink' ?>">
+                                   : 'border-edge text-ink-subtle hover:border-brand hover:text-brand' ?>">
                     <?= e($k) ?>
                 </button>
             <?php endforeach; ?>
@@ -449,7 +512,7 @@ $cards = [
 
         <div id="chartError" hidden class="absolute inset-0 grid place-items-center bg-card/80">
             <?= am2_state('error', t('state.error_title'), t('state.error_body'),
-                          '<button type="button" id="chartRetry" class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">' . e('common.retry') . '</button>') ?>
+                          '<button type="button" id="chartRetry" class="rounded-control border border-edge px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">' . e('common.retry') . '</button>') ?>
         </div>
     </div>
 </section>
@@ -466,7 +529,7 @@ $cards = [
                     <span class="h-1.5 w-1.5 shrink-0 rounded-full <?= $d <= 7 ? 'bg-bad' : 'bg-warn' ?>"
                           aria-hidden="true"></span>
                     <span class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($a['username']) ?></span>
-                    <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                    <span class="shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  <?= $d <= 7 ? 'text-bad' : 'text-warn' ?>">
                         <?= $d ?> <?= e('dash.days_left') ?>
                     </span>

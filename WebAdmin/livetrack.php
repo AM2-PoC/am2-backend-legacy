@@ -74,7 +74,7 @@ include 'partials/shell.php';
         carry meaning for everyone looking at this screen.
     -->
     <div class="absolute bottom-4 left-4 z-20 hidden items-center gap-4 rounded-control
-                border border-edge bg-card/95 px-3 py-2 font-mono text-[10px] uppercase
+                border border-edge bg-card/95 px-3 py-2 font-mono text-[11px] uppercase
                 tracking-[0.15em] text-ink-subtle shadow-pop backdrop-blur-sm lg:flex">
         <span class="flex items-center gap-1.5">
             <span class="h-2 w-2 rounded-full bg-ok" aria-hidden="true"></span><?= e('rail.online') ?>
@@ -87,7 +87,7 @@ include 'partials/shell.php';
     <!-- Transmitting right now. The one pulse in the application. -->
     <div id="tx-indicator" hidden
          class="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-control
-                border border-bad/40 bg-card/95 px-3 py-2 font-mono text-[10px]
+                border border-bad/40 bg-card/95 px-3 py-2 font-mono text-[11px]
                 uppercase tracking-[0.15em] text-bad shadow-pop backdrop-blur-sm">
         <span class="am2-live h-2 w-2 rounded-full bg-bad" aria-hidden="true"></span>
         <?= e('track.transmitting') ?>
@@ -96,7 +96,7 @@ include 'partials/shell.php';
     <!-- Brings the panel back on desktop once it has been collapsed. -->
     <button type="button" id="panelRestore" hidden
             class="absolute right-4 top-4 z-30 hidden h-11 items-center gap-2 rounded-control
-                   border border-edge bg-card px-3 font-mono text-[10px] uppercase
+                   border border-edge bg-card px-3 font-mono text-[11px] uppercase
                    tracking-[0.15em] text-ink shadow-pop lg:flex"
             aria-controls="unitPanel" aria-expanded="false"
             aria-label="<?= e('track.units') ?>">
@@ -107,7 +107,7 @@ include 'partials/shell.php';
     <!-- Opens the panel below lg, where it is a sheet rather than a column. -->
     <button type="button" id="panelToggle" aria-expanded="false" aria-controls="unitPanel"
             class="absolute bottom-4 right-4 z-30 flex h-12 items-center gap-2 rounded-card
-                   border border-edge bg-card px-4 font-mono text-[10px] uppercase
+                   border border-edge bg-card px-4 font-mono text-[11px] uppercase
                    tracking-[0.15em] text-ink shadow-panel lg:hidden">
         <?= am2_icon('users', 'h-4 w-4') ?>
         <span><?= e('track.units') ?></span>
@@ -128,10 +128,10 @@ include 'partials/shell.php';
                   lg:max-h-none lg:translate-y-0">
 
         <header class="flex items-center justify-between gap-3 border-b border-edge px-4 py-3">
-            <h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-subtle">
+            <h2 class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-subtle">
                 <?= e('track.units') ?>
             </h2>
-            <span class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
+            <span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.15em]">
                 <span id="count-online" class="text-ink">0</span>
                 <span class="text-ink-subtle"><?= e('rail.online') ?></span>
             </span>
@@ -149,6 +149,7 @@ include 'partials/shell.php';
 
         <div class="border-b border-edge p-3">
             <input id="unitSearch" type="search" autocomplete="off"
+                   aria-label="<?= e('track.search') ?>"
                    placeholder="<?= e('track.search') ?>"
                    class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm
                           text-ink transition-colors duration-[var(--duration-micro)]
@@ -338,14 +339,14 @@ include 'partials/shell.php';
             top.appendChild(name);
             if (speaking) {
                 const tx = document.createElement('span');
-                tx.className = 'shrink-0 rounded-control bg-bad/10 px-1.5 font-mono text-[9px] text-bad';
+                tx.className = 'shrink-0 rounded-control bg-bad/10 px-1.5 font-mono text-[11px] text-bad';
                 tx.textContent = 'TX';
                 top.appendChild(tx);
             }
 
             const meta = document.createElement('span');
             meta.className = 'mt-0.5 flex items-center justify-between gap-2 font-mono '
-                + 'text-[10px] text-ink-subtle';
+                + 'text-[11px] text-ink-subtle';
             const idEl = document.createElement('span');
             idEl.textContent = '#' + String(u.id);
             const chEl = document.createElement('span');

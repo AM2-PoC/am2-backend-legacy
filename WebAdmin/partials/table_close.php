@@ -29,7 +29,7 @@ for ($i = 1; $i <= $pages; $i++) {
 
     <footer class="flex flex-col gap-3 border-t border-edge px-4 py-3 sm:flex-row
                    sm:items-center sm:justify-between lg:px-5">
-        <p class="text-center font-mono text-[10px] uppercase tracking-[0.15em]
+        <p class="text-center font-mono text-[11px] uppercase tracking-[0.15em]
                   text-ink-subtle sm:text-start">
             <?= e('tbl.showing', [
                 'from'  => number_format($from),
@@ -104,7 +104,7 @@ for ($i = 1; $i <= $pages; $i++) {
                   bg-card-muted px-2.5 py-1.5 text-[11px] text-ink-muted">
             <?= e('tbl.page_selected') ?>
             <button type="button"
-                    class="font-mono text-[10px] uppercase tracking-[0.15em] text-brand underline
+                    class="font-mono text-[11px] uppercase tracking-[0.15em] text-brand underline
                            underline-offset-2">
                 <?= e('tbl.select_all_matching', ['n' => number_format($total)]) ?>
             </button>
@@ -118,7 +118,7 @@ for ($i = 1; $i <= $pages; $i++) {
                  of forty pixels. The count sits with the control that clears
                  it, because they are the same thought. -->
             <div class="flex shrink-0 items-center gap-1.5">
-                <span class="whitespace-nowrap ps-1.5 font-mono text-[9px] uppercase
+                <span class="whitespace-nowrap ps-1.5 font-mono text-[11px] uppercase
                              tracking-[0.12em] text-ink">
                     <span data-bulk-count class="text-brand">0</span> <?= e('tbl.selected') ?>
                 </span>

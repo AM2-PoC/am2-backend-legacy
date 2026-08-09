@@ -18,7 +18,16 @@
     <div data-am2-panel
          class="pointer-events-auto mx-auto mt-[12vh] w-[92%] max-w-xl overflow-hidden
                 am2-surface rounded-card">
-        <div class="flex items-center gap-3 border-b border-edge px-4">
+        <!--
+            The search row is the card's own top edge, so it cannot wear the
+            ordinary focus ring: the input runs the full width inside a 20px
+            radius with overflow hidden, and a 2px ring offset by 2px came out
+            as a rectangle with both ends clipped by the corners and its top
+            against the card edge. The row takes the focus instead -- the
+            hairline under it thickens and colours -- which is a shape that fits
+            what it is drawn inside.
+        -->
+        <div class="am2-palette-field flex items-center gap-3 border-b border-edge px-4">
             <span class="text-ink-subtle"><?= am2_icon('search', 'h-4 w-4') ?></span>
             <label id="am2-palette-label" for="am2-palette-input" class="sr-only">
                 <?= e('search.placeholder') ?>
@@ -26,9 +35,10 @@
             <input id="am2-palette-input" type="text" autocomplete="off" spellcheck="false"
                    role="combobox" aria-expanded="true" aria-controls="am2-palette-list"
                    class="w-full border-0 bg-transparent py-3.5 text-sm text-ink
-                          placeholder:text-ink-subtle focus:outline-none focus:ring-0"
+                          placeholder:text-ink-subtle focus:outline-none focus:ring-0
+                          focus-visible:outline-none"
                    placeholder="<?= e('search.hint') ?>">
-            <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[10px]
+            <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[11px]
                         text-ink-subtle sm:block">ESC</kbd>
         </div>
         <ul id="am2-palette-list" role="listbox" class="max-h-80 overflow-y-auto py-2"></ul>
@@ -81,22 +91,10 @@
     }
 
     /* ---- Theme ------------------------------------------------------- *
-     * Outside every framework on purpose: the theme must work whether or not
-     * anything else loaded. */
-    document.getElementById('themeToggle')?.addEventListener('click', function () {
-        const root = document.documentElement;
-        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        // Switch, do not animate. Without this every bordered control eases to
-        // its new colour at once and the change reads as a sweep.
-        root.classList.add('am2-theme-switching');
-        root.setAttribute('data-theme', next);
-        requestAnimationFrame(() => requestAnimationFrame(
-            () => root.classList.remove('am2-theme-switching')));
-        document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
-        this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
-        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
-        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
-    });
+     * In partials/theme_toggle.php, included at the foot of this file, because
+     * login.php needs the same behaviour and a second copy of it had already
+     * drifted -- the shell gained the ripple and login kept swapping instantly.
+     */
 
     /* ---- Operational status ------------------------------------------ *
      * Reads get-users-ajax.php, the same session-scoped endpoint the tracking
@@ -202,7 +200,7 @@
                 + (i === cursor ? 'bg-brand/10 text-ink' : 'text-ink-muted');
 
             const g = document.createElement('span');
-            g.className = 'shrink-0 font-mono text-[9px] uppercase tracking-[0.15em] '
+            g.className = 'shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] '
                 + (i === cursor ? 'text-brand' : 'text-ink-subtle');
             // textContent, not innerHTML: `label` is whatever was typed.
             g.textContent = item.group;
@@ -310,5 +308,7 @@
     });
 })();
 </script>
+
+<?php include __DIR__ . '/theme_toggle.php'; ?>
 </body>
 </html>

@@ -78,23 +78,32 @@ elseif ($method == 'POST') {
             $stmtU->execute([$user_id]);
             $target_name = $stmtU->fetchColumn() ?: "ID: $user_id";
 
+            // Declared where the change is made, as on the panel's own path.
+            am2_audit_expect('force_logout');
             $sqlKick = "UPDATE public.users SET force_logout = TRUE, status = 'offline', current_device_id = NULL WHERE id = ?";
             $pdo->prepare($sqlKick)->execute([$user_id]);
 
-            if ($current_admin_id) {
-                // Same event as the panel's, with where it came from as a
-                // parameter. It used to be the string " (via Mobile)" glued
-                // onto the end of the sentence, which meant the two could not
-                // be grouped and neither could be translated.
-                am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
-                        ['name' => $target_name, 'via' => 'mobile'], 'users', (string) $user_id);
-            }
+            /*
+             * Same event as the panel's, with where it came from as a
+             * parameter. It used to be the string " (via Mobile)" glued onto
+             * the end of the sentence, which meant the two could not be grouped
+             * and neither could be translated.
+             *
+             * Unconditional now. It used to be skipped when the caller had no
+             * admin id, which is the one case where the trail matters most: a
+             * unit kicked off by nobody identifiable left no record that it had
+             * been kicked at all. am2_log() already stores an absent id as
+             * null, so the row says what is true.
+             */
+            am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
+                    ['name' => $target_name, 'via' => 'mobile'], 'users', (string) $user_id);
 
+            am2_audit_complete();
             $pdo->commit();
             notifyForceLogout($user_id);
             echo json_encode(['success' => true, 'message' => 'User berhasil dikeluarkan.']);
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }
@@ -142,16 +151,28 @@ elseif ($method == 'POST') {
                 $logParams = ['name' => $target_name, 'via' => 'mobile'];
             }
 
-            if ($current_admin_id) {
-                am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
-                        'users', (string) $user_id);
-            }
+            /*
+             * Unconditional, for the same reason the force_logout path above is.
+             *
+             * am2_set_user_channels() declares the audit debt where the change is
+             * made, so it is owed on every call. Skipping the write when the
+             * caller had no admin id left the debt unpaid, and
+             * am2_audit_complete() -- correctly -- threw, which the catch below
+             * turned into a rollback: an access update that used to work now
+             * failed for exactly the caller least able to report it. An API-key
+             * caller that sends no admin_id is a real path (am2_api_identity()
+             * returns null for it), not a hypothetical one. am2_log() stores an
+             * absent id as null, so the row says what is true.
+             */
+            am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                    'users', (string) $user_id);
 
+            am2_audit_complete();
             $pdo->commit();
             syncUserChannels($user_id);
             echo json_encode(['success' => true, 'message' => 'Otoritas akses user berhasil diperbarui.']);
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }

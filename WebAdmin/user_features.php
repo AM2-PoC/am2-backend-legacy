@@ -105,6 +105,13 @@ function am2_set_user_feature(PDO $pdo, string $userId, string $feature, $raw, a
         throw new InvalidArgumentException('Nilai tidak valid');
     }
 
+    /*
+     * Declared after the refusals and before the write: a refused change never
+     * happened, so it owes nothing, and every path that reaches the database
+     * from here is one the caller must record.
+     */
+    am2_audit_expect(__FUNCTION__);
+
     // $feature is a key of AM2_FEATURES by the check above, so it is one of
     // four literals; $value is one of four literals from am2_feature_value().
     // Neither is caller text by the time it reaches here.
