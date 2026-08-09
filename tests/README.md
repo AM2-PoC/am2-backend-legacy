@@ -65,3 +65,18 @@ sudo tests/mutation-check.sh
 Breaks one thing at a time in the staging tree, checks a test notices, and puts
 it back. Every mutation should be reported as `caught`. Anything reported as
 `ESCAPED` is a gap — the first version of this suite escaped three of ten.
+
+## Protocol harness
+
+```bash
+sudo infra/scripts/ptt-harness-fixtures.sh   # once
+node --test tests/protocol/*.test.mjs
+```
+
+Two WebSocket clients sign in, join a channel, key the mic, relay a real audio
+frame and release it, against the staging relay on 5001. This is the surface
+`ws` sits directly under, so run it before and after any change to that package.
+
+`app_login` authenticates but does not put a socket in a room — the client must
+send `join_channel`. Without it, audio goes nowhere and every relay assertion
+fails for a reason that looks like a broken relay.
