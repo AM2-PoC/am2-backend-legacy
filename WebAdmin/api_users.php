@@ -79,23 +79,42 @@ elseif ($method == 'POST') {
             exit;
         }
 
+        /*
+         * Editing had no ownership check at all.
+         *
+         * update_feature and delete each grew one; this branch never did, and
+         * it is the branch that sets a unit's password. A branch admin could
+         * rename and reset the password of any unit in the deployment,
+         * including another tenant's, by naming its id. Adding is exempt: a
+         * unit that does not exist yet cannot belong to anybody, and it is
+         * created under the caller's own admin_id below.
+         */
+        if ($action === 'edit'
+                && !am2_admin_owns_user($pdo, $admin_id, $admin_role, $id)
+                && am2_api_authz_denied('edit-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
             if ($action == 'add') {
-                $pass_hash = password_hash($password, PASSWORD_BCRYPT);
-                $stmt = $pdo->prepare("INSERT INTO public.users (id, name, password, role, status, admin_id, created_at, updated_at) VALUES (?, ?, ?, 'user', 'offline', ?, NOW(), NOW())");
-                $stmt->execute([$id, $name, $pass_hash, $admin_id]);
-
-                $stmt_p = $pdo->prepare("INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, duplex_mode, updated_at) VALUES (?, false, false, false, 'HALF DUPLEX', NOW())");
-                $stmt_p->execute([$id]);
+                // The same call the panel makes. This copy never wrote
+                // created_by, so a unit registered from the app was attributed
+                // to nobody at all.
+                am2_create_user($pdo, $id, $name, $password, $admin_id);
             } else {
-                $sql = "UPDATE public.users SET name = ?, updated_at = NOW() WHERE id = ?";
-                $params = [$name, $id];
-                if (!empty($password)) {
-                    $sql = "UPDATE public.users SET name = ?, password = ?, updated_at = NOW() WHERE id = ?";
-                    $params = [$name, password_hash($password, PASSWORD_BCRYPT), $id];
-                }
-                $pdo->prepare($sql)->execute($params);
+                am2_update_user($pdo, $id, $name, (string) $password, $admin_id);
+            }
+
+            // The panel has always recorded these. This path did not, so a unit
+            // created or renamed from the app left no trace at all.
+            if ($action === 'add') {
+                am2_log($pdo, $admin_id, 'CREATE_USER', 'user.create',
+                        ['name' => $name, 'id' => $id, 'via' => 'mobile'], 'users', $id);
+            } else {
+                am2_log($pdo, $admin_id, 'UPDATE_USER',
+                        empty($password) ? 'user.rename' : 'user.password',
+                        ['id' => $id, 'name' => $name, 'via' => 'mobile'], 'users', $id);
             }
 
             $pdo->commit();
@@ -110,22 +129,30 @@ elseif ($method == 'POST') {
         $channels = json_decode($_POST['channels'] ?? '[]', true) ?: [];
         $channels = array_unique(array_filter($channels));
 
-        try {
-            $pdo->beginTransaction();
-            $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$u_id]);
+        // Both halves of the question. The channels were checked when this
+        // moved onto the shared writer; the unit itself still was not, so a
+        // branch admin could rewrite another tenant's membership using
+        // channels it legitimately owns.
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $u_id)
+                && am2_api_authz_denied('channels-foreign-user')) {
+            exit;
+        }
 
-            if (!empty($channels)) {
-                $stmt = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, 'FULL DUPLEX')");
-                foreach ($channels as $idx => $ch_id) {
-                    $is_default = ($idx === 0);
-                    $stmt->execute([$u_id, $ch_id, $is_default ? 'true' : 'false']);
-                    if ($is_default) {
-                        $pdo->prepare("UPDATE public.users SET last_channel_id = ? WHERE id = ?")->execute([$ch_id, $u_id]);
-                    }
-                }
-            } else {
-                $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$u_id]);
+        try {
+            // A form is not an authorization: the ids arrive over POST, and this
+            // path never checked them against who is asking. The panel has.
+            if (am2_first_foreign_channel($pdo, $admin_id, $admin_role, $channels) !== null) {
+                echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+                exit;
             }
+
+            $pdo->beginTransaction();
+
+            // The same call the panel makes. What it replaces deleted every
+            // membership and rebuilt it as FULL DUPLEX with the first entry as
+            // default -- so re-saving a list from the app reset every
+            // permission and moved where the unit comes up.
+            am2_set_user_channels($pdo, (string) $u_id, $channels);
 
             $pdo->commit();
             syncUserChannels($u_id);
@@ -145,52 +172,39 @@ elseif ($method == 'POST') {
         $u_id = $_POST['u_id'] ?? '';
         $feature = $_POST['feature'] ?? '';
 
-        if ($feature === 'duplex_mode') {
-            $val = $_POST['val'];
-            $sql_val = $pdo->quote($val);
-        } else {
-            $val = ($_POST['val'] === 'true') ? 'true' : 'false';
-            $sql_val = $val;
-        }
-
-        // $feature is interpolated as a column name below. users.php has always
-        // validated it against an allow-list; this copy never did, and this file
-        // takes its caller's word for who they are.
-        //
-        // duplex_mode belongs here. It has its own branch eight lines above --
-        // which is the proof the app calls this endpoint with it -- and leaving
-        // it out made every FULL/HALF toggle in Admin Native answer "Fitur tidak
-        // valid". users.php keeps its own list and still accepts it, so the
-        // panel works and this would not have shown up in panel testing.
-        //
-        // Safe to interpolate for the same reason as the rest: the column name
-        // is a literal from this list, and the value took the $pdo->quote()
-        // branch above.
-        //
-        // Checked before the transaction is opened, so the exit below does not
-        // leave one dangling for the request to unwind.
-        $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video', 'duplex_mode'];
-        if (!in_array($feature, $allowed, true)) {
-            echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
-            exit;
-        }
-
         try {
+            // The asking admin's own rights, which this path never read. An
+            // admin told they may not manage video could enable it from the
+            // app, because only the panel was checking.
+            $stmtAuth = $pdo->prepare(
+                "SELECT can_manage_maps, can_manage_p2p, can_manage_video
+                 FROM public.admin WHERE id = ?");
+            $stmtAuth->execute([$admin_id]);
+            $auth = $stmtAuth->fetch(PDO::FETCH_ASSOC) ?: [];
+            if ($admin_role === 'superadmin') {
+                $auth = ['can_manage_maps' => true, 'can_manage_p2p' => true,
+                         'can_manage_video' => true];
+            }
+
             $pdo->beginTransaction();
+            $val = am2_feature_value($feature, $_POST['val'] ?? '');
+            $row = am2_set_user_feature($pdo, (string) $u_id, $feature, $_POST['val'] ?? '', $auth);
 
-            $sql = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
-                    VALUES (?, $sql_val, NOW())
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET $feature = EXCLUDED.$feature, updated_at = NOW()";
-            $pdo->prepare($sql)->execute([$u_id]);
+            $stmtName = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
+            $stmtName->execute([$u_id]);
+            $targetName = $stmtName->fetchColumn() ?: $u_id;
 
-            $p = $pdo->prepare("SELECT * FROM public.user_app_permissions WHERE user_id = ?");
-            $p->execute([$u_id]);
-            $row = $p->fetch(PDO::FETCH_ASSOC);
+            [$logCode, $logParams] = am2_feature_log(
+                $feature, (string) $val, (string) $u_id, (string) $targetName);
+            $logParams['via'] = 'mobile';
+            am2_log($pdo, $admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', (string) $u_id);
 
             $pdo->commit();
             notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
             echo json_encode(['success' => true]);
+        } catch (InvalidArgumentException | RuntimeException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => am2_feature_reason($e)]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
@@ -204,9 +218,21 @@ elseif ($method == 'POST') {
         }
 
         try {
-            $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
+            // Was a bare DELETE with no transaction and no log. The trigger on
+            // public.users reads created_by to decide whose activity a removal
+            // was, so without the line am2_delete_user() writes first, the
+            // record named whoever created the unit rather than whoever
+            // removed it.
+            $pdo->beginTransaction();
+            $oldName = am2_delete_user($pdo, (string) $id, $admin_id);
+            am2_log($pdo, $admin_id, 'DELETE_USER', 'user.delete',
+                    ['name' => $oldName, 'id' => $id, 'via' => 'mobile'], 'users', (string) $id);
+            $pdo->commit();
             echo json_encode(['success' => true]);
-        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]); }
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
+        }
     }
 }
 ?>

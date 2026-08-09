@@ -159,25 +159,23 @@ test('the escaping helper is reachable from every caller', () => {
 test('the feature endpoint still accepts the one the app actually sends', () => {
     /*
      * The allow-list that closed a SQL-injection hole dropped duplex_mode,
-     * which has its own branch eight lines above it -- so every FULL/HALF
-     * toggle in Admin Native answered "Fitur tidak valid". users.php keeps its
-     * own list and still accepted it, so the panel worked and panel testing
-     * would not have found this.
+     * which the app sends -- so every FULL/HALF toggle answered "Fitur tidak
+     * valid". The panel kept its own longer list and worked, so panel testing
+     * would not have found it.
+     *
+     * The two lists have since been consolidated into one table in
+     * user_features.php, which is the real fix: a single rule cannot disagree
+     * with itself. This checks the rule wherever it lives -- the point is that
+     * the features the app sends are accepted, not which file spells them out.
      */
-    const src = code('api_users.php');
-    const allowed = src.match(/\$allowed\s*=\s*\[([^\]]*)\]/);
-    assert.ok(allowed, 'the feature allow-list is gone');
+    const src = code('user_features.php') + code('api_users.php') + code('users.php');
     for (const feature of ['enable_maps', 'enable_p2p', 'enable_ptt_video', 'duplex_mode']) {
-        assert.match(allowed[1], new RegExp(`'${feature}'`),
+        assert.match(src, new RegExp(`'${feature}'`),
             `${feature} is not accepted; the app that sends it gets "Fitur tidak valid"`);
     }
-    /*
-     * Validated before the transaction opens, so the rejection does not exit
-     * with one dangling. Measured inside this handler: the file opens several
-     * transactions, and comparing against the first one in the file compares
-     * against a different action entirely.
-     */
-    const block = src.slice(src.indexOf("'update_feature'"));
-    assert.ok(block.indexOf('$allowed') < block.indexOf('beginTransaction'),
-        'the allow-list is checked after the transaction opens');
+    // And the column name still cannot be chosen by the caller.
+    const api = code('api_users.php');
+    assert.doesNotMatch(api, /\$feature\s*,?\s*updated_at\)\s*VALUES/,
+        'the feature name reaches SQL without passing the shared rule');
 });
+

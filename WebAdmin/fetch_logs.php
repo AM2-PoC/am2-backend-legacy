@@ -35,7 +35,7 @@ try {
     $sql_adm = "SELECT a.id, a.aksi, to_char(a.waktu, 'HH24:MI:SS') as jam,
                 to_char(a.waktu, 'DD/MM/YYYY') as tanggal,
                 a.waktu as raw_time,
-                a.keterangan as target,
+                a.event_code, a.event_params, a.keterangan,
                 COALESCE(adm.username, 'System/External') as pelaksana,
                 a.admin_id::text as pelaksana_id, 'ADM' as kategori
                 FROM public.admin_activity_logs a
@@ -46,6 +46,19 @@ try {
     if($role_admin !== 'superadmin') $stmt_adm->bindValue(':admin_id', $current_admin_id);
     $stmt_adm->execute();
     $adm_logs = $stmt_adm->fetchAll(PDO::FETCH_ASSOC);
+
+    /*
+     * The sentence is made here, in the language being read.
+     *
+     * `target` stays a plain string because that is what both readers of this
+     * shape expect. Rows written before migration 002 have no code and render
+     * from their keterangan, which is what that column is now for.
+     */
+    foreach ($adm_logs as &$row) {
+        $row['target'] = am2_log_text($row['event_code'], $row['event_params'], $row['keterangan']);
+        unset($row['event_code'], $row['event_params'], $row['keterangan']);
+    }
+    unset($row);
 
     header('Content-Type: application/json');
     echo json_encode(['ptt' => $ptt_logs, 'adm' => $adm_logs]);

@@ -36,18 +36,6 @@
 </div>
 
 <script src="<?= am2_asset('asset/js/am2-ui.min.js') ?>" defer></script>
-<?php /* Alpine still drives the bodies of pages this release has not reached.
-         It controls nothing in the shell; it goes when the last page lands. */ ?>
-<?php if (!empty($pageUsesAlpine)): ?>
-    <?php /*
-        Only the pages that still have Alpine markup. It was loaded on all of
-        them, which meant every migrated page paid for a second runtime it did
-        not use -- and on users.php, whose 4,500 nodes Alpine walks at startup,
-        that was measured at 800ms of the 1,750ms to DOMContentLoaded on a
-        four-times-slower CPU. Deleted outright once the last page migrates.
-    */ ?>
-    <script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
-<?php endif; ?>
 
 <script>
 (() => {

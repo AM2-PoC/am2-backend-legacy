@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R2 fixtures: dedicated accounts in am2_staging for the contract tests.
+# Fixtures: dedicated accounts in am2_staging for the contract tests.
 # Never touches existing rows. Idempotent. Staging database only.
 set -euo pipefail
 
@@ -65,12 +65,24 @@ UPDATE public.admin SET password_hash='$H_SUPER' WHERE username='ct_super';
 UPDATE public.admin SET password_hash='$H_A'     WHERE username='ct_branch_a';
 UPDATE public.admin SET password_hash='$H_B'     WHERE username='ct_branch_b';
 
--- Users, two under branch A and one under branch B, for tenant isolation --
+-- Users, four under branch A and one under branch B ----------------------
+--
+-- One unit per test file that mutates one. Sharing a fixture between files is
+-- how this suite has already produced two intermittent failures: the files run
+-- in parallel, and the second writer wins whichever assertion the first was
+-- making. The owners:
+--
+--   CT_A1  channel-access.test.mjs
+--   CT_A2  session-order.test.mjs
+--   CT_A3  panel-endpoints.test.mjs
+--   CT_A4  activity-log.test.mjs
+--   CT_B1  the other tenant, for isolation assertions
 INSERT INTO public.users (id, name, role, status, admin_id, created_by, password)
 SELECT v.id, v.name, 'user', 'offline', a.id, a.id, '\$2y\$10\$notarealloginhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 FROM (VALUES ('CT_A1','CT USER A1','ct_branch_a'),
              ('CT_A2','CT USER A2','ct_branch_a'),
              ('CT_A3','CT USER A3','ct_branch_a'),
+             ('CT_A4','CT USER A4','ct_branch_a'),
              ('CT_B1','CT USER B1','ct_branch_b')) AS v(id,name,owner)
 JOIN public.admin a ON a.username = v.owner
 ON CONFLICT (id) DO NOTHING;
@@ -79,6 +91,7 @@ INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enabl
 VALUES ('CT_A1', false, false, false, 'HALF DUPLEX'),
        ('CT_A3', false, false, false, 'HALF DUPLEX'),
        ('CT_A2', false, false, false, 'HALF DUPLEX'),
+       ('CT_A4', false, false, false, 'HALF DUPLEX'),
        ('CT_B1', false, false, false, 'HALF DUPLEX')
 ON CONFLICT (user_id) DO NOTHING;
 
@@ -87,6 +100,19 @@ INSERT INTO public.channels (name, display_name, category, created_by)
 SELECT 'ct_channel_a', 'CT CHANNEL A', 'public', a.id
 FROM public.admin a WHERE a.username='ct_branch_a'
   AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name='ct_channel_a');
+
+-- A third channel, so the file that puts a unit on a channel and asserts it
+-- is still there does not share one with the file that empties a channel's
+-- roster to prove that emptying it works.
+--
+--   ct_channel_a   channel-access.test.mjs, settings-authz.test.mjs
+--   ct_channel_a2  channel-access.test.mjs (somewhere to move a default to)
+--   ct_channel_a3  panel-endpoints.test.mjs
+--   ct_channel_b   the other tenant
+INSERT INTO public.channels (name, display_name, category, created_by)
+SELECT 'ct_channel_a3', 'CT CHANNEL A3', 'public', a.id
+FROM public.admin a WHERE a.username='ct_branch_a'
+  AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name='ct_channel_a3');
 
 -- A second channel for the same tenant: the default-channel invariants need
 -- somewhere to move the default to.

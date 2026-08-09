@@ -84,12 +84,14 @@ describe('the roster renders a page, not the whole fleet', () => {
         // markup, which gzip removes on the wire and which costs the browser
         // nothing. What the browser pays for is nodes.
         const html = await (await get('/users.php', sup)).text();
-        // 1,058 measured: the shell is about 450 of them and twenty rows with
-        // four toggles apiece are the rest. The ceiling is set from that with
-        // room to breathe -- it is here to catch a return to rendering the
-        // whole fleet, which was four and a half thousand.
+        // 1,228 measured. It was 1,058 until every row gained a chevron and a
+        // summary line for the stacked list on a phone -- a deliberate trade of
+        // about 170 elements for a roster that can be scanned. The ceiling is
+        // set from the measurement with room to breathe; it is here to catch a
+        // return to rendering the whole fleet, which was four and a half
+        // thousand, not to police a row growing by three tags.
         const elements = (html.match(/<[a-zA-Z][^>]*>/g) ?? []).length;
-        assert.ok(elements < 1200,
+        assert.ok(elements < 1400,
             `${elements} elements for one page of twenty rows plus the shell`);
     });
 });
