@@ -169,13 +169,6 @@ function am2_api_identity(): array
     ];
 }
 
-/** True when the caller is a superadmin, as established by am2_api_identity(). */
-function am2_api_is_super(): bool
-{
-    [, $role] = am2_api_identity();
-    return strtolower($role) === 'superadmin';
-}
-
 /**
  * Stop a caller that is not a superadmin. Returns true when the response has
  * been written and the endpoint must exit.
@@ -445,4 +438,7 @@ try {
 require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/node_client.php';
 require_once __DIR__ . '/channel_access.php';
+require_once __DIR__ . '/activity_log.php';
+require_once __DIR__ . '/user_features.php';
+require_once __DIR__ . '/user_rules.php';
 ?>

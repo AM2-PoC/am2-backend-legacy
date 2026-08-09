@@ -79,7 +79,8 @@ describe('api_*.php response contracts (consumed by the Admin Native app)', () =
 
 describe('KNOWN BROKEN — locked here so the security release must change them on purpose', () => {
     test('api_*.php accept an unauthenticated caller claiming to be superadmin', async () => {
-        // R3 will make this fail. When it does, update this test; do not delete it.
+        // Tightening the API credential will make this fail. When it does, update
+        // this test; do not delete it.
         const res = await get('/api_dashboard_stats.php?admin_id=1&role=superadmin', null);
         assert.equal(res.status, 200, 'today: no authentication at all');
         const body = await json(res);
@@ -124,7 +125,8 @@ describe('node relay routes', () => {
     });
 
     test('the admin routes still require no credential', async () => {
-        // R3 will change this. The assertion documents the starting point.
+        // Tightening the API credential will change this. The assertion documents
+        // the starting point.
         const res = await fetch(`${NODE_URL}/api/admin/force-logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

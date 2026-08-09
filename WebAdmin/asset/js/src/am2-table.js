@@ -178,8 +178,6 @@ function setupTable(table) {
             return;
         }
 
-        const toggle = e.target.closest('[data-toggle]');
-        if (toggle && !toggle.disabled) runToggle(toggle);
     });
 
     /**
@@ -289,6 +287,23 @@ function setupTable(table) {
     paint();
 }
 
+/*
+ * Toggles are delegated from the document, not from the table.
+ *
+ * The unit sheet borrows a row's cells, so the control moves out of the table
+ * while it is open -- and a listener bound to the table stops hearing it. The
+ * button carries everything the request needs, so the table was never the
+ * right place to listen from. Bound once, whatever the page holds.
+ */
+let toggleBound = false;
+
 export function initTables(root = document) {
+    if (!toggleBound) {
+        document.addEventListener('click', (e) => {
+            const toggle = e.target.closest('[data-toggle]');
+            if (toggle && !toggle.disabled) runToggle(toggle);
+        });
+        toggleBound = true;
+    }
     root.querySelectorAll('[data-am2-table]').forEach(setupTable);
 }

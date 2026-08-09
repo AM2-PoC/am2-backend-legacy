@@ -64,7 +64,7 @@ One behaviour, one owner:
 - **Vanilla JS** — fetch, polling, and the business state the pages already had.
 
 Alpine still drives page bodies that have not been migrated yet. No element is
-controlled by both; Alpine is removed once the last R7 page is done.
+controlled by both; Alpine is removed once the last page is done.
 
 ## Components adapted
 

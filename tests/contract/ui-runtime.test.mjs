@@ -159,3 +159,88 @@ describe('settings.php keeps the ids its script writes into', () => {
             'a file input was replaced by a drop zone');
     });
 });
+
+/*
+ * Alpine is gone.
+ *
+ * It came out one page at a time, and each page that landed left the runtime
+ * loading for the ones that had not -- so "no Alpine on this page" was true
+ * long before "no Alpine" was. This is the assertion that the last of it left:
+ * no directive in any template, no gate in the shell, no file to load.
+ */
+describe('no Alpine residue', () => {
+    const pages = fs.readdirSync(SRC)
+        .filter((f) => f.endsWith('.php'))
+        .concat(fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`)
+            .filter((f) => f.endsWith('.php')));
+
+    test('no template carries an Alpine directive', () => {
+        // Comments stripped first: a note about why Alpine left is not Alpine,
+        // and a guard that trips on its own explanation is one people learn to
+        // route around.
+        const bad = [];
+        for (const page of pages) {
+            const code = readSrc(page)
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/^\s*\/\/.*$/gm, '');
+            if (/\sx-(data|show|model|text|cloak|transition)[=\s>]|\s@click[=.]|\s:class=/.test(code)) {
+                bad.push(page);
+            }
+        }
+        assert.deepEqual(bad, [], `Alpine markup came back in: ${bad.join(', ')}`);
+    });
+
+    test('the shell no longer gates on $pageUsesAlpine', () => {
+        assert.ok(!readSrc('partials/shell_end.php').includes('pageUsesAlpine'),
+            'the gate is back, so some page is asking for the runtime again');
+    });
+
+    test('the runtime is not shipped', () => {
+        assert.ok(!fs.existsSync(`${SRC}/asset/js/alpine.min.js`),
+            'alpine.min.js is being served again');
+    });
+});
+
+/*
+ * Nothing is fetched from a third party.
+ *
+ * Bootstrap and Font Awesome came from jsdelivr and cloudflare on the pages
+ * that had not been rebuilt yet. A police dispatch panel that cannot paint its
+ * own buttons without two other companies being reachable is a panel that goes
+ * down when they do -- and every one of those requests told them who was
+ * looking at it.
+ *
+ * Cloudflare's own beacon is injected at the edge on the proxied domain, so it
+ * appears in a browser and not here. This reads the source, which is the part
+ * this repository decides.
+ */
+describe('no third-party assets', () => {
+    const pages = fs.readdirSync(SRC)
+        .filter((f) => f.endsWith('.php'))
+        .concat(fs.readdirSync(`${SRC}/partials`)
+            .filter((f) => f.endsWith('.php'))
+            .map((f) => `partials/${f}`));
+
+    test('no page loads a stylesheet or script from another host', () => {
+        const bad = [];
+        for (const page of pages) {
+            // Only what the page *loads*: a <link> or a <script>. An <a> to
+            // openstreetmap.org is an attribution notice the map licence
+            // requires, and matching every href made the guard demand its
+            // removal.
+            const m = readSrc(page)
+                .match(/<(?:link|script)\b[^>]*(?:href|src)=["']https?:\/\/[^"']+/gi) ?? [];
+            for (const hit of m) bad.push(`${page}: ${hit.slice(0, 80)}`);
+        }
+        assert.deepEqual(bad, [], `an off-site asset came back:\n${bad.join('\n')}`);
+    });
+
+    test('Bootstrap and Font Awesome are gone by name', () => {
+        for (const page of pages) {
+            const src = readSrc(page);
+            assert.ok(!/bootstrap(\.bundle)?\.min|font-awesome|fa-[a-z-]+"/.test(src),
+                `${page} still speaks Bootstrap or Font Awesome`);
+        }
+    });
+});

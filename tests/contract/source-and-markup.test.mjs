@@ -6,7 +6,7 @@
 // assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, get, readSrc, SRC, SERVER_JS } from './helpers.mjs';
+import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
 
 let sup;
@@ -18,7 +18,7 @@ describe('form field names are the API', () => {
     // Asserting only one end lets a rename of the other pass unnoticed.
     const submitted = {
         'users.php':        ['add_user', 'edit_user'],
-        'channels.php':     ['add_channel', 'save_channel_access', 'edit_channel'],
+        'channels.php':     ['add_channel', 'edit_channel', 'delete_channel'],
         'user_access.php':  ['update_multi_access'],
         'admin_panel.php':  ['save_admin', 'update_delegation'],
         'settings.php':     ['update_password', 'export_db', 'import_db', 'upload_apk'],
@@ -28,6 +28,11 @@ describe('form field names are the API', () => {
     // so the second end to check is the append call.
     const scripted = {
         'users.php': ['save_user_channels', 'update_feature'],
+        // The access roster left the form when the page moved onto the shared
+        // table frame: one dialogue now serves a single channel and a
+        // selection, and a selection cannot be a form submit. Same field name,
+        // same PHP branch, different end to check.
+        'channels.php': ['save_channel_access', 'export_selected'],
     };
 
     for (const [file, names] of Object.entries(submitted)) {
@@ -52,8 +57,13 @@ describe('form field names are the API', () => {
                 // helper that appends. What matters is that the literal field
                 // name still appears in the code that builds the request, so
                 // renaming one side of the pair breaks this.
+                // append(), the local add() that wraps it, or an object key
+                // handed to a helper that appends. An export answers with a
+                // file, so it is built as a real form and never touches
+                // FormData -- pinning only append() would have left that
+                // branch unpinned.
                 const built = new RegExp(
-                    `append\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
+                    `(?:append|add)\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
                 assert.ok(built,
                     `${file}: nothing posts ${n} — the branch is now unreachable`);
             }
@@ -70,7 +80,11 @@ describe('form field names are the API', () => {
     });
 
     test('array-shaped fields keep their bracket syntax', () => {
-        assert.match(readSrc('channels.php'), /name=["']users\[\]["']/);
+        // channels.php builds its unit list in the browser, so the bracket
+        // lives in the object handed to the request rather than in a name=
+        // attribute. Same field, same PHP branch reading $_POST['users'],
+        // different end to check.
+        assert.match(readSrc('channels.php'), /['"`]users\[\]['"`]\s*:/);
         assert.match(readSrc('user_access.php'), /name=["']channels\[\]["']/);
         // permissions[<channelId>] is a keyed array, read as $permissions_input[$ch_id].
         assert.match(readSrc('user_access.php'), /name=["']permissions\[/);
@@ -97,7 +111,7 @@ describe('form field names are the API', () => {
 });
 
 describe('the node relay contract', () => {
-    const src = fs.readFileSync(SERVER_JS, 'utf8');
+    const src = serverSrc();
 
     test('every admin route still exists', () => {
         for (const r of ['set-app-version', 'sync-channels', 'refresh-branch-permissions',
@@ -107,6 +121,48 @@ describe('the node relay contract', () => {
             assert.ok(src.includes(`/api/admin/${r}`), `route ${r} disappeared`);
         }
         assert.ok(src.includes('/api/check-update'));
+    });
+
+    test('the relay speaks English on the wire and in its own console', () => {
+        // Scoped to what actually reaches someone: a data.message the field
+        // app displays verbatim, an HTTP `message`/`error` field, or a
+        // console.* line that ends up in journalctl. Code comments are not
+        // in scope here -- protocol.js and routes.js still narrate their own
+        // logic in Indonesian, which nobody but the next reader ever sees.
+        const src = serverSrc();
+        const words = /\b(yang|dan|atau|tidak|sudah|telah|akan|dengan|untuk|dari|harap|gagal|berhasil|diperbarui|dikeluarkan|instansi|salah|nonaktif|kembali|masa aktif)\b/i;
+
+        const bad = [];
+        for (const m of src.matchAll(/(?:message|error)\s*:\s*[`'"][^`'"]*[`'"]/g)) {
+            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
+        }
+        for (const m of src.matchAll(/console\.(log|error|warn)\([^)]*\)/g)) {
+            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
+        }
+
+        assert.deepEqual(bad, [],
+            `Indonesian text reached a wire message or a console line:\n${bad.join('\n')}`);
+    });
+
+    test('the relay stays split by concern', () => {
+        // 1048 lines held the protocol, the state, the database and the
+        // routes. Each of those grew into the others because there was no
+        // edge to stop at; this is the edge.
+        const wiring = fs.readFileSync(SERVER_JS, 'utf8');
+
+        assert.ok(!/app\.(get|post|put|delete)\s*\(/.test(wiring),
+            'a route handler is back in server.js — endpoints belong in lib/routes.js');
+        assert.ok(!/wss\.on\s*\(\s*['"`]connection/.test(wiring),
+            'the connection handler is back in server.js — the protocol belongs in lib/protocol.js');
+        assert.ok(!/new Pool\s*\(/.test(wiring),
+            'the pool is back in server.js — persistence belongs in lib/db.js');
+        assert.ok(!/new Map\s*\(\)/.test(wiring),
+            'in-process state is back in server.js — it belongs in lib/state.js');
+
+        // Wiring only: requiring, mounting, listening.
+        const lines = wiring.split('\n').filter((l) => l.trim() && !l.trim().startsWith('//')).length;
+        assert.ok(lines < 200,
+            `server.js is ${lines} lines of code; it is meant to be wiring, not a place to put things`);
     });
 
     test('websocket message types the field app depends on still exist', () => {
@@ -322,7 +378,7 @@ describe('alpine expressions in attributes', () => {
     // This guard has caught the json_encode-in-an-attribute bug three times, so
     // it follows the migration rather than being pinned to one page. It asserts
     // over whichever pages still render an Alpine expression into an attribute,
-    // and once none do -- which is the end state R7 is walking towards -- it
+    // and once none do -- which is the end state this work walks towards -- it
     // asserts that instead, so it never quietly passes on an empty set.
     const ALPINE_ATTR = /(?:x-text|x-show|:class|:disabled)="([^"]*)"/g;
 
@@ -451,8 +507,11 @@ describe('motion rules that decay quietly', () => {
 
     test('the built stylesheet carries the motion tokens', () => {
         const css = fs.readFileSync(`${SRC}/asset/css/am2-tailwind.css`, 'utf8');
+        // --duration-modal is deliberately absent: Motion owns the dialogue
+        // timing, and the token's only readers were the x-transition
+        // attributes on the pages that have since been rebuilt.
         for (const token of ['--ease-enter', '--ease-exit', '--duration-drawer',
-                             '--duration-modal', 'am2-skeleton', 'prefers-reduced-motion']) {
+                             '--duration-micro', 'am2-skeleton', 'prefers-reduced-motion']) {
             assert.ok(css.includes(token), `the build dropped ${token}`);
         }
     });

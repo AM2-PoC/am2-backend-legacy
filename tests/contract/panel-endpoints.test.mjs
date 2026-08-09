@@ -10,8 +10,15 @@ import { asSuper, asBranchA, get, postForm, json , ctChannelId} from './helpers.
 // This file owns CT_A3. It used to write CT_A1, which channel-access.test.mjs
 // seeds and asserts on -- the two ran concurrently and the cross-tenant
 // assertion failed on membership this file had rewritten underneath it.
+//
+// The same mistake, one level up: it owned the unit but shared ct_channel_a
+// with channel-access.test.mjs, which empties that channel's roster to prove
+// that emptying it works. As superadmin that removes every member, including
+// the one this file had just put there -- so "save_user_channels then read it
+// back" came back empty roughly one run in eight. The channel is owned now
+// too.
 const PANEL_UNIT = 'CT_A3';
-const PANEL_CHANNEL = ctChannelId('ct_channel_a');
+const PANEL_CHANNEL = ctChannelId('ct_channel_a3');
 
 let sup, branchA;
 before(async () => {

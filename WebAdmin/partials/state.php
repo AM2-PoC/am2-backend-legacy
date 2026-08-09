@@ -49,36 +49,3 @@ function am2_state(string $variant, string $title, string $body = '', ?string $a
     return $html . '</div>';
 }
 
-/**
- * Rows the same shape as the ones being fetched.
- *
- * A spinner in the middle of a table tells the reader that something is
- * happening; it does not tell them what is coming. These do.
- */
-function am2_skeleton_rows(int $rows = 5, int $cols = 4): string
-{
-    $html = '<tbody aria-hidden="true">';
-    for ($r = 0; $r < $rows; $r++) {
-        $html .= '<tr class="border-b border-edge">';
-        for ($c = 0; $c < $cols; $c++) {
-            // Uneven widths: a column of identical bars reads as a pattern
-            // rather than as text that has not arrived.
-            $w = [70, 45, 85, 55, 60][($r + $c) % 5];
-            $html .= '<td class="px-4 py-3 lg:px-5">'
-                   . '<span class="am2-skeleton block h-3" style="width:' . $w . '%"></span>'
-                   . '</td>';
-        }
-        $html .= '</tr>';
-    }
-    return $html . '</tbody>';
-}
-
-/** A retry button that re-runs an Alpine method. */
-function am2_retry_button(string $call): string
-{
-    return '<button type="button" @click="' . htmlspecialchars($call, ENT_QUOTES) . '"'
-         . ' class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px]'
-         . ' uppercase tracking-[0.15em] text-ink-muted transition-colors duration-[var(--duration-micro)]'
-         . ' hover:border-brand hover:text-brand">'
-         . e('common.retry') . '</button>';
-}
