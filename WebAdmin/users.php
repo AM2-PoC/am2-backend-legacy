@@ -201,6 +201,13 @@ if (isset($_POST['delete_user'])) {
         $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, 'DELETE_USER', ?, NOW())")->execute([$current_admin_id, "Menghapus user: $old_name ($del_id)"]);
 
         $pdo->commit();
+        // The bulk path asks over fetch and cannot follow a redirect into a
+        // page it then throws away. Same guard, same query, different reply.
+        if (!empty($_POST['ajax'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true]);
+            exit;
+        }
         header("Location: users.php?success=deleted"); exit;
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -208,26 +215,133 @@ if (isset($_POST['delete_user'])) {
     }
 }
 
+/*
+ * Export exactly the units that were selected, as CSV.
+ *
+ * Scoped by the same ownership rule the list uses, so a branch admin cannot
+ * widen the selection by editing the ids it posts -- the ids narrow the query,
+ * they never widen it.
+ */
+if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST['ids'])) {
+    $ids = array_values(array_filter(array_map('strval', $_POST['ids'])));
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $args = $ids;
+
+    $sqlx = "SELECT u.id, u.name, u.status, p.duplex_mode,
+                    p.enable_maps, p.enable_p2p, p.enable_ptt_video
+             FROM public.users u
+             LEFT JOIN public.user_app_permissions p ON u.id = p.user_id
+             WHERE u.role = 'user' AND u.id IN ({$marks})";
+    if ($admin_role !== 'superadmin') {
+        $sqlx .= " AND u.admin_id = ?";
+        $args[] = $current_admin_id;
+    }
+    $stmt_x = $pdo->prepare($sqlx . " ORDER BY u.id");
+    $stmt_x->execute($args);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="UNIT_' . date('Ymd_His') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['id', 'nama', 'status', 'duplex', 'maps', 'p2p', 'video']);
+    foreach ($stmt_x as $r) {
+        fputcsv($out, [
+            $r['id'], $r['name'], $r['status'], $r['duplex_mode'],
+            $r['enable_maps'] ? '1' : '0',
+            $r['enable_p2p'] ? '1' : '0',
+            $r['enable_ptt_video'] ? '1' : '0',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
+/** Page size. Twenty rows fill a screen without needing two scrolls. */
+const AM2_USER_PAGE = 20;
+
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+/*
+ * Chips are filters that mean something operationally. "Tanpa channel default"
+ * is a unit that cannot talk to anyone, and nothing in this panel said so
+ * before. There is deliberately no "memancar" chip: users.is_speaking is false
+ * on all 218 rows because nothing maintains it, so the filter would match
+ * nothing forever. Transmitting is shown live in the row instead, from the
+ * poll that computes it from the logs.
+ */
+$chip = in_array($_GET['chip'] ?? '', ['online', 'nochannel', 'full'], true)
+    ? (string) $_GET['chip'] : '';
+
+// Whitelisted. Neither the column nor the direction is ever interpolated from
+// what arrived in the query string.
+$sortable = ['id' => 'u.id', 'name' => 'u.name', 'duplex' => 'p.duplex_mode', 'seen' => 'u.updated_at'];
+$sortCol  = $sortable[$_GET['sort'] ?? ''] ?? 'u.created_at';
+$sortDir  = ($_GET['dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
+
+$where  = ["u.role = 'user'"];
 $params = [];
-$sql = "SELECT u.*, p.enable_maps, p.enable_p2p, p.enable_ptt_video, p.duplex_mode FROM public.users u
-        LEFT JOIN public.user_app_permissions p ON u.id = p.user_id 
-        WHERE u.role = 'user'";
 
 if ($admin_role !== 'superadmin') {
-    $sql .= " AND u.admin_id = ?";
+    $where[] = 'u.admin_id = ?';
     $params[] = $current_admin_id;
 }
-
 if ($search !== '') {
-    $sql .= " AND (u.name ILIKE ? OR u.id ILIKE ?)";
+    $where[] = '(u.name ILIKE ? OR u.id ILIKE ?)';
     $params[] = "%$search%";
     $params[] = "%$search%";
 }
+if ($chip === 'online') {
+    $where[] = "u.status = 'online'";
+} elseif ($chip === 'nochannel') {
+    $where[] = "NOT EXISTS (SELECT 1 FROM public.user_channels uc
+                            WHERE uc.user_id = u.id AND uc.is_default)";
+} elseif ($chip === 'full') {
+    $where[] = "p.duplex_mode = 'FULL DUPLEX'";
+}
 
-$stmt_users = $pdo->prepare($sql . " ORDER BY u.created_at DESC");
+$fromWhere = "FROM public.users u
+              LEFT JOIN public.user_app_permissions p ON u.id = p.user_id
+              WHERE " . implode(' AND ', $where);
+
+$stmt_count = $pdo->prepare("SELECT COUNT(*) {$fromWhere}");
+$stmt_count->execute($params);
+$total = (int) $stmt_count->fetchColumn();
+
+$pages  = max(1, (int) ceil($total / AM2_USER_PAGE));
+$page   = min(max(1, (int) ($_GET['p'] ?? 1)), $pages);
+$offset = ($page - 1) * AM2_USER_PAGE;
+
+$stmt_users = $pdo->prepare(
+    "SELECT u.*, p.enable_maps, p.enable_p2p, p.enable_ptt_video, p.duplex_mode
+     {$fromWhere} ORDER BY {$sortCol} {$sortDir}, u.id ASC
+     LIMIT " . AM2_USER_PAGE . " OFFSET {$offset}");
 $stmt_users->execute($params);
 $users = $stmt_users->fetchAll();
+
+// Every id the filter matches, so "pilih semua yang cocok" can mean it rather
+// than quietly meaning the twenty on screen. Two hundred call signs is under
+// two kilobytes; the alternative is an endpoint that exists to answer a
+// question this request already knows.
+$stmt_all = $pdo->prepare("SELECT u.id {$fromWhere} ORDER BY u.id");
+$stmt_all->execute($params);
+$allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
+
+// The channels each visible unit holds, default first. One query for the page,
+// not one per row.
+$rowChannels = [];
+if ($users) {
+    $ids = array_column($users, 'id');
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $stmt_rc = $pdo->prepare(
+        "SELECT uc.user_id, uc.is_default, c.display_name
+         FROM public.user_channels uc
+         JOIN public.channels c ON c.id = uc.channel_id
+         WHERE uc.user_id IN ({$marks})
+         ORDER BY uc.is_default DESC, c.display_name ASC");
+    $stmt_rc->execute($ids);
+    foreach ($stmt_rc as $r) {
+        $rowChannels[$r['user_id']][] = $r;
+    }
+}
 
 if ($admin_role === 'superadmin') {
     $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER BY display_name ASC")->fetchAll();
@@ -239,13 +353,61 @@ if ($admin_role === 'superadmin') {
 ?>
 <?php
 $pageTitle = t('usr.heading');
-$pageLede  = t('usr.lede', ['n' => count($users)]);
+$pageLede  = t('usr.lede', ['n' => number_format($total)]);
 
 /** Feature switches, in the order they appear on a row. */
 $features = [
     ['enable_maps',      'usr.f_maps',  (bool) ($auth['can_manage_maps'] ?? false)],
     ['enable_p2p',       'usr.f_p2p',   (bool) ($auth['can_manage_p2p'] ?? false)],
     ['enable_ptt_video', 'usr.f_video', (bool) ($auth['can_manage_video'] ?? false)],
+];
+
+/** The table frame reads these. See partials/table_open.php. */
+$tableId = 'am2-roster';
+$searchPlaceholder = 'usr.search';
+$countKey = 'usr.count';
+$chips = [
+    ['value' => '',          'key' => 'usr.chip_all'],
+    ['value' => 'online',    'key' => 'usr.chip_online',    'dot' => 'bg-ok'],
+    ['value' => 'nochannel', 'key' => 'usr.chip_nochannel', 'dot' => 'bg-warn'],
+    ['value' => 'full',      'key' => 'usr.chip_full'],
+];
+$columns = [
+    ['key' => 'usr.unit',     'sort' => 'name'],
+    ['key' => 'usr.channel'],
+    ['key' => 'usr.features'],
+    ['key' => 'usr.duplex',   'sort' => 'duplex'],
+    ['key' => 'usr.actions',  'align' => 'right'],
+];
+$pageSize = AM2_USER_PAGE;
+
+/*
+ * The page's own verb, handed to the table's toolbar.
+ *
+ * It was in the shell's header slot, which is where the application's
+ * navigation lives -- theme, language, the account. A button that creates a
+ * unit is not navigation, and putting it up there meant it sat beside the
+ * search box on every page whether or not the page could create anything.
+ */
+$tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+    . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
+    . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
+    . e('usr.add') . '</button>';
+
+// Every verb here is owned by this page: each one needs to ask something
+// first -- which channels, which mode, which feature, are you sure -- so none
+// of them can be declared as a single fixed request on a button.
+$bulkActions = [
+    ['verb' => 'channels', 'key' => 'usr.bulk_channels', 'icon' => 'radio',
+     'data' => ['hs-overlay' => '#am2-channels']],
+    ['verb' => 'duplex',   'key' => 'usr.bulk_duplex',   'icon' => 'swap',
+     'data' => ['hs-overlay' => '#am2-bulk-duplex']],
+    ['verb' => 'feature',  'key' => 'usr.bulk_feature',  'icon' => 'sliders',
+     'data' => ['hs-overlay' => '#am2-bulk-feature']],
+    ['verb' => 'export',   'key' => 'usr.bulk_export',   'icon' => 'download'],
+    ['verb' => 'delete',   'key' => 'usr.bulk_delete',   'icon' => 'trash', 'danger' => true,
+     'data' => ['hs-overlay' => '#am2-bulk-delete']],
 ];
 
 include 'partials/head.php';
@@ -259,367 +421,604 @@ include 'partials/shell.php';
     <p role="alert" class="mb-5 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm"><?= htmlspecialchars($error_msg) ?></p>
 <?php endif; ?>
 
-<section class="rounded-card border border-edge bg-card" x-data="usersPage()">
+<?php include 'partials/table_open.php'; ?>
 
-    <div class="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 lg:px-5">
-        <!-- Search is a GET round trip because the list is paged by the server
-             and always has been; filtering only what is on screen would lie. -->
-        <form method="GET" class="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm">
-            <input name="search" type="search" value="<?= htmlspecialchars($search ?? '') ?>"
-                   class="w-full rounded-control border border-edge bg-card px-3 py-1.5 text-sm
-                          transition-colors hover:border-edge-strong focus:border-brand focus:outline-none"
-                   placeholder="<?= e('usr.search') ?>">
-            <button type="submit"
-                    class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">
-                <?= e('usr.find') ?>
-            </button>
-            <?php if (!empty($search)): ?>
-                <a href="users.php" class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle! no-underline! hover:text-ink!"><?= e('usr.clear') ?></a>
-            <?php endif; ?>
-        </form>
-
-        <button type="button" @click="add.open = true"
-                class="ml-auto rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px]
-                       uppercase tracking-[0.15em] text-slate-950 transition-colors hover:bg-brand-hover">
-            <?= e('usr.add') ?>
-        </button>
-    </div>
-
-    <?php if (empty($users)): ?>
-        <p class="px-5 py-12 text-center text-sm text-ink-muted"><?= e('usr.empty') ?></p>
-    <?php else: ?>
-    <div class="overflow-x-auto">
-        <table class="data-table w-full text-sm">
-            <thead>
-                <tr class="border-b border-edge text-left font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
-                    <th scope="col" class="px-4 py-2.5 font-normal lg:px-5"><?= e('usr.unit') ?></th>
-                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('usr.features') ?></th>
-                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('usr.duplex') ?></th>
-                    <th scope="col" class="px-4 py-2.5 text-right font-normal"><?= e('usr.actions') ?></th>
-                </tr>
-            </thead>
             <tbody class="divide-y divide-edge">
-                <?php foreach ($users as $u): $uid = (string) $u['id']; ?>
-                    <tr class="transition-colors hover:bg-card-muted">
-                        <td data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle lg:px-5">
-                            <span class="block font-medium"><?= htmlspecialchars($u['name']) ?></span>
-                            <span class="block font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($uid) ?></span>
+                <?php if (!$users): ?>
+                    <!-- Two empty states, not one. "Nothing yet" and "nothing
+                         matched" are different problems and want different
+                         next steps; the same blank panel for both is a dead
+                         end half the time. -->
+                    <tr>
+                        <td colspan="6" class="px-5 py-16 text-center">
+                            <?php $filtered = $search !== '' || $chip !== ''; ?>
+                            <p class="text-sm text-ink-muted">
+                                <?= $filtered ? e('usr.empty_filtered') : e('usr.empty') ?>
+                            </p>
+                            <?php if ($filtered): ?>
+                                <a href="users.php"
+                                   class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
+                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          text-ink-muted! no-underline! transition-colors
+                                          duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
+                                    <?= e('usr.clear_filter') ?>
+                                </a>
+                            <?php else: ?>
+                                <button type="button" data-hs-overlay="#am2-add-unit"
+                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[10px]
+                                               font-semibold uppercase tracking-[0.15em] text-slate-950
+                                               transition-colors duration-[var(--duration-micro)]
+                                               hover:bg-brand-hover">
+                                    <?= e('usr.add') ?>
+                                </button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
+                <?php foreach ($users as $u):
+                    $uid    = (string) $u['id'];
+                    $online = ($u['status'] ?? '') === 'online';
+                    $chans  = $rowChannels[$uid] ?? [];
+                    $primary = $chans[0] ?? null;
+                    $full   = ($u['duplex_mode'] ?? 'HALF DUPLEX') === 'FULL DUPLEX';
+                    $seen   = !empty($u['updated_at']) ? strtotime((string) $u['updated_at']) : null;
+                ?>
+                    <tr data-row-id="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                        class="transition-colors hover:bg-card-muted">
+
+                        <td data-cell="select" data-label="<?= e('tbl.select') ?>" class="w-10 px-4 align-middle lg:ps-5">
+                            <input type="checkbox" data-select
+                                   aria-label="<?= e('usr.select_unit', ['unit' => $uid]) ?>"
+                                   class="h-4 w-4 cursor-pointer rounded border-edge-strong text-brand
+                                          focus:ring-brand/40">
                         </td>
 
-                        <td data-label="<?= e('usr.features') ?>" class="px-4 py-2.5 align-middle">
+                        <td data-cell="unit" data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle">
+                            <span class="flex items-start gap-2.5">
+                                <span data-presence
+                                      class="mt-1.5 h-2 w-2 shrink-0 rounded-full <?= $online ? 'bg-ok' : 'bg-edge-strong' ?>"
+                                      aria-hidden="true"></span>
+                                <span class="min-w-0">
+                                    <span class="flex items-center gap-2">
+                                        <span class="truncate font-mono text-sm text-ink"><?= htmlspecialchars($uid) ?></span>
+                                        <span data-tx hidden
+                                              class="shrink-0 rounded-control bg-bad/10 px-1.5 font-mono
+                                                     text-[9px] uppercase tracking-[0.1em] text-bad">TX</span>
+                                    </span>
+                                    <span class="block truncate text-sm text-ink-muted"><?= htmlspecialchars((string) $u['name']) ?></span>
+                                    <span data-seen class="block font-mono text-[10px] text-ink-subtle">
+                                        <?= $online
+                                            ? e('usr.online_now')
+                                            : ($seen ? e('usr.last_seen', ['when' => date('d M H:i', $seen)]) : '') ?>
+                                    </span>
+                                </span>
+                            </span>
+                        </td>
+
+                        <td data-cell="channel" data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
+                            <?php if ($primary): ?>
+                                <span class="block truncate text-sm text-ink"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                <?php if (count($chans) > 1): ?>
+                                    <span class="block font-mono text-[10px] text-ink-subtle">
+                                        <?= e('usr.more_channels', ['n' => count($chans) - 1]) ?>
+                                    </span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="inline-flex items-center gap-1.5 rounded-control border border-warn/40
+                                             bg-warn/5 px-2 py-1 font-mono text-[9px] uppercase
+                                             tracking-[0.1em] text-warn">
+                                    <?= am2_icon('alert', 'h-3 w-3') ?><?= e('usr.no_channel') ?>
+                                </span>
+                            <?php endif; ?>
+                        </td>
+
+                        <td data-cell="features" data-label="<?= e('usr.features') ?>" class="px-4 py-2.5 align-middle">
                             <div class="flex flex-wrap gap-1.5">
-                                <?php foreach ($features as [$key, $labelKey, $allowed]):
+                                <?php
+                                $base = 'am2-chip';
+                                $onCls  = 'border-brand bg-brand/10 text-brand';
+                                $offCls = 'border-edge text-ink-subtle';
+                                foreach ($features as [$key, $labelKey, $allowed]):
                                     $on = (bool) ($u[$key] ?? false); ?>
-                                    <button type="button"
-                                            <?= $allowed ? '' : 'disabled' ?>
-                                            @click="toggle($el, <?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, '<?= $key ?>')"
+                                    <button type="button" data-toggle
+                                            data-row-id="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-endpoint="update_feature"
+                                            data-field="<?= $key ?>"
                                             data-on="<?= $on ? '1' : '0' ?>"
-                                            :class="$el.dataset.on === '1'
-                                                ? 'border-brand bg-brand/10 text-brand'
-                                                : 'border-edge text-ink-subtle'"
-                                            class="rounded-control border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em]
-                                                   transition-colors enabled:hover:border-brand disabled:cursor-not-allowed disabled:opacity-40
-                                                   <?= $on ? 'border-brand bg-brand/10 text-brand' : 'border-edge text-ink-subtle' ?>"
-                                            title="<?= $allowed ? e($labelKey) : e('usr.not_permitted') ?>">
+                                            data-base-class="<?= htmlspecialchars($base, ENT_QUOTES) ?>"
+                                            data-on-class="<?= $onCls ?>"
+                                            data-off-class="<?= $offCls ?>"
+                                            data-ok-message="<?= e('usr.saved') ?>"
+                                            data-fail-message="<?= e('usr.failed') ?>"
+                                            aria-pressed="<?= $on ? 'true' : 'false' ?>"
+                                            <?= $allowed ? '' : 'disabled title="' . e('usr.not_permitted') . '"' ?>
+                                            class="<?= $base . ' ' . ($on ? $onCls : $offCls) ?>">
                                         <?= e($labelKey) ?>
                                     </button>
                                 <?php endforeach; ?>
                             </div>
                         </td>
 
-                        <td data-label="<?= e('usr.duplex') ?>" class="px-4 py-2.5 align-middle">
-                            <?php $full = ($u['duplex_mode'] ?? 'HALF DUPLEX') === 'FULL DUPLEX'; ?>
-                            <button type="button"
-                                    @click="toggleDuplex($el, <?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>)"
-                                    data-full="<?= $full ? '1' : '0' ?>"
-                                    :class="$el.dataset.full === '1' ? 'border-accent bg-accent/10 text-accent' : 'border-edge text-ink-subtle'"
-                                    class="rounded-control border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors hover:border-accent
-                                           <?= $full ? 'border-accent bg-accent/10 text-accent' : 'border-edge text-ink-subtle' ?>"
-                                    x-text="$el.dataset.full === '1' ? <?= js('usr.full') ?> : <?= js('usr.half') ?>"><?= $full ? e('usr.full') : e('usr.half') ?></button>
+                        <td data-cell="duplex" data-label="<?= e('usr.duplex') ?>" class="px-4 py-2.5 align-middle">
+                            <?php
+                            $dBase = 'am2-chip';
+                            $dOn  = 'border-accent bg-accent/10 text-accent';
+                            $dOff = 'border-edge text-ink-subtle';
+                            ?>
+                            <button type="button" data-toggle
+                                    data-row-id="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-endpoint="update_feature"
+                                    data-field="duplex_mode"
+                                    data-on="<?= $full ? '1' : '0' ?>"
+                                    data-on-value="FULL DUPLEX"
+                                    data-off-value="HALF DUPLEX"
+                                    data-on-label="<?= e('usr.full') ?>"
+                                    data-off-label="<?= e('usr.half') ?>"
+                                    data-base-class="<?= htmlspecialchars($dBase, ENT_QUOTES) ?>"
+                                    data-on-class="<?= $dOn ?>"
+                                    data-off-class="<?= $dOff ?>"
+                                    data-ok-message="<?= e('usr.saved') ?>"
+                                    data-fail-message="<?= e('usr.failed') ?>"
+                                    aria-pressed="<?= $full ? 'true' : 'false' ?>"
+                                    class="<?= $dBase . ' ' . ($full ? $dOn : $dOff) ?>">
+                                <?= $full ? e('usr.full') : e('usr.half') ?>
+                            </button>
                         </td>
 
-                        <td data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
-                            <div class="inline-flex gap-1.5">
-                                <button type="button"
-                                        @click="openChannels(<?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($u['name']), ENT_QUOTES, 'UTF-8') ?>)"
-                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                        <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
+                            <span class="inline-flex items-center gap-2">
+                                <span data-row-result class="w-3 font-mono text-xs"></span>
+
+                                <button type="button" data-row-channels
+                                        data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
+                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               transition-colors duration-[var(--duration-micro)]
+                                               hover:border-brand hover:text-brand">
                                     <?= e('usr.channels') ?>
                                 </button>
-                                <button type="button"
-                                        @click="openEdit(<?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($u['name']), ENT_QUOTES, 'UTF-8') ?>)"
-                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+
+                                <button type="button" data-row-edit
+                                        data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
+                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               transition-colors duration-[var(--duration-micro)]
+                                               hover:border-brand hover:text-brand">
                                     <?= e('usr.edit') ?>
                                 </button>
+
                                 <form method="POST" class="inline"
                                       onsubmit="return confirm(<?= htmlspecialchars(json_encode(t('usr.delete_confirm')), ENT_QUOTES) ?>)">
                                     <?= am2_csrf_field() ?>
                                     <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
                                     <button type="submit"
-                                            class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle transition-colors hover:border-bad hover:text-bad">
+                                            class="h-8 rounded-control border border-edge px-2.5 font-mono
+                                                   text-[9px] uppercase tracking-[0.12em] text-bad
+                                                   transition-colors duration-[var(--duration-micro)]
+                                                   hover:border-bad/50 hover:bg-bad/10">
                                         <?= e('usr.delete') ?>
                                     </button>
                                 </form>
-                            </div>
+                            </span>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
-        </table>
-    </div>
-    <?php endif; ?>
 
-    <!-- Toast. The old one showed the same sentence whatever happened; this one
-         says what actually changed, and turns red when it did not. -->
-    <div id="liveToast" x-cloak x-show="toast.text" x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0 translate-y-1"
-         x-transition:enter-end="opacity-100 translate-y-0"
-         x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100 translate-y-0"
-         x-transition:leave-end="opacity-0 translate-y-1"
-         class="fixed bottom-5 right-5 z-[80] rounded-card border px-4 py-2.5 text-sm shadow-lg"
-         :class="toast.ok ? 'border-ok bg-card text-ink' : 'border-bad bg-card text-ink'"
-         role="status" x-text="toast.text"></div>
+<?php include 'partials/table_close.php'; ?>
 
-    <!-- Add -->
-    <div x-cloak x-show="add.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
-         @click.self="add.open = false" @keydown.window.escape="add.open = false" role="dialog" aria-modal="true">
-        <form x-show="add.open"
-              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
-              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
-              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
-              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
-              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+<?php
+/*
+ * The dialogues. Preline owns open, close, Escape and the focus trap; this
+ * page only decides what a dialogue is about before Preline shows it. Nothing
+ * here opens an overlay from script -- opening one that way is what left the
+ * command palette unclosable once.
+ */
+$ovl = 'hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto bg-slate-950/50 backdrop-blur-sm';
+$card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-card';
+$fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
+          . ' transition-colors duration-[var(--duration-micro)] hover:border-edge-strong'
+          . ' focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25';
+$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+          . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
+          . ' duration-[var(--duration-micro)] hover:text-ink';
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+          . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
+          . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
+?>
+
+<!-- Add a unit. Field names are the contract: the handler reads id, name, password. -->
+<div id="am2-add-unit" role="dialog" tabindex="-1" aria-labelledby="am2-add-label" class="<?= $ovl ?>">
+    <div data-am2-panel class="<?= $card ?>">
+        <form method="POST">
             <?= am2_csrf_field() ?>
-            <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.add_title') ?></h2></div>
-            <div class="space-y-4 px-5 py-4">
+            <header class="border-b border-edge px-5 py-4">
+                <h2 id="am2-add-label" class="text-base font-semibold text-ink"><?= e('usr.add_title') ?></h2>
+            </header>
+            <div class="space-y-4 p-5">
                 <div>
-                    <label for="id" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.id') ?></label>
-                    <input id="id" name="id" type="text" required
-                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
+                    <label for="id" class="<?= $labelCls ?>"><?= e('usr.id') ?></label>
+                    <input id="id" name="id" type="text" required class="<?= $fieldCls ?> font-mono">
                 </div>
                 <div>
-                    <label for="name" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.name') ?></label>
-                    <input id="name" name="name" type="text" required
-                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none">
+                    <label for="name" class="<?= $labelCls ?>"><?= e('usr.name') ?></label>
+                    <input id="name" name="name" type="text" required class="<?= $fieldCls ?>">
                 </div>
-                <div x-data="{ shown: false }">
-                    <label for="pass_add" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.password') ?></label>
-                    <div class="mt-2 flex gap-2">
-                        <input id="pass_add" name="password" required :type="shown ? 'text' : 'password'"
-                               class="w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
-                        <button type="button" @click="shown = !shown" :aria-pressed="shown ? 'true' : 'false'"
-                                class="rounded-control border border-edge px-2 font-mono text-[10px] uppercase text-ink-subtle hover:text-ink"
-                                x-text="shown ? <?= js('login.hide_password') ?> : <?= js('login.show_password') ?>"><?= e('login.show_password') ?></button>
+                <div>
+                    <label for="pass_add" class="<?= $labelCls ?>"><?= e('usr.password') ?></label>
+                    <div class="relative">
+                        <input id="pass_add" name="password" type="password" required
+                               class="<?= $fieldCls ?> pe-12 font-mono">
+                        <button type="button" data-hs-toggle-password='{"target": "#pass_add"}'
+                                aria-label="<?= e('login.show_password') ?>"
+                                class="absolute inset-y-0 end-0 top-2 grid w-12 place-items-center
+                                       rounded-e-control text-ink-subtle transition-colors
+                                       duration-[var(--duration-micro)] hover:text-brand">
+                            <svg class="hs-password-active:hidden h-5 w-5" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true">
+                                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <svg class="hs-password-active:block hidden h-5 w-5" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true">
+                                <path d="m2 2 20 20"/><path d="M10.7 5.1A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.2 3.2"/>
+                                <path d="M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/>
+                                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
-            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
-                <button type="button" @click="add.open = false"
-                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
-                <button type="submit" name="add_user" value="1"
-                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover"><?= e('ch.save') ?></button>
-            </div>
+            <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
+                <button type="button" data-hs-overlay="#am2-add-unit" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
+                <button type="submit" name="add_user" value="1" class="<?= $btnBrand ?>"><?= e('ch.save') ?></button>
+            </footer>
         </form>
     </div>
+</div>
 
-    <!-- Edit -->
-    <div id="editModal" x-cloak x-show="edit.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
-         @click.self="edit.open = false" @keydown.window.escape="edit.open = false" role="dialog" aria-modal="true">
-        <form x-show="edit.open"
-              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
-              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
-              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
-              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
-              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+<!--
+    Edit, as a side panel rather than a modal, so the table stays visible and
+    the row being changed is still in view. Below lg it becomes a sheet.
+-->
+<div id="am2-edit-unit" role="dialog" tabindex="-1" aria-labelledby="am2-edit-label" class="<?= $ovl ?>">
+    <!-- A card in the middle, like the channel dialogue. A drawer for a
+         two-field form put the controls where nothing else on this page puts
+         them. -->
+    <div data-am2-panel class="<?= $card ?>">
+        <form method="POST">
             <?= am2_csrf_field() ?>
-            <input type="hidden" name="edit_id" id="edit_id" :value="edit.id">
-            <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.edit_title') ?></h2></div>
-            <div class="space-y-4 px-5 py-4">
+            <header class="border-b border-edge px-5 py-4">
+                <h2 id="am2-edit-label" class="text-base font-semibold text-ink"><?= e('usr.edit_title') ?></h2>
+                <p data-edit-unit class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            </header>
+            <div class="space-y-4 p-5">
+                <input type="hidden" name="edit_id" id="edit_id" value="">
                 <div>
-                    <label for="edit_name" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.name') ?></label>
-                    <input id="edit_name" name="edit_name" type="text" required x-model="edit.name"
-                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none">
+                    <label for="edit_name" class="<?= $labelCls ?>"><?= e('usr.name') ?></label>
+                    <input id="edit_name" name="edit_name" type="text" required class="<?= $fieldCls ?>">
                 </div>
-                <div x-data="{ shown: false }">
-                    <label for="pass_edit" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.new_password') ?></label>
-                    <div class="mt-2 flex gap-2">
-                        <input id="pass_edit" name="edit_password" :type="shown ? 'text' : 'password'"
-                               class="w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
-                        <button type="button" @click="shown = !shown" :aria-pressed="shown ? 'true' : 'false'"
-                                class="rounded-control border border-edge px-2 font-mono text-[10px] uppercase text-ink-subtle hover:text-ink"
-                                x-text="shown ? <?= js('login.hide_password') ?> : <?= js('login.show_password') ?>"><?= e('login.show_password') ?></button>
-                    </div>
-                    <p class="mt-1.5 text-xs text-ink-subtle"><?= e('usr.password_hint') ?></p>
+                <div>
+                    <label for="pass_edit" class="<?= $labelCls ?>"><?= e('usr.password_optional') ?></label>
+                    <input id="pass_edit" name="edit_password" type="password" class="<?= $fieldCls ?> font-mono"
+                           placeholder="<?= e('usr.password_keep') ?>">
                 </div>
             </div>
-            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
-                <button type="button" @click="edit.open = false"
-                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
-                <button type="submit" name="edit_user" value="1"
-                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover"><?= e('ch.save') ?></button>
-            </div>
+            <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
+                <button type="button" data-hs-overlay="#am2-edit-unit" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
+                <button type="submit" name="edit_user" value="1" class="<?= $btnBrand ?>"><?= e('ch.save') ?></button>
+            </footer>
         </form>
     </div>
+</div>
 
-    <!-- Quick channel assignment -->
-    <div id="channelModal" x-cloak x-show="ch.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
-         @click.self="ch.open = false" @keydown.window.escape="ch.open = false" role="dialog" aria-modal="true">
-        <div x-show="ch.open"
-              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
-              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
-              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
-              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
-              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" class="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
-            <div class="border-b border-edge px-5 py-4">
-                <h2 class="text-sm font-semibold"><?= e('usr.channels_title') ?></h2>
-                <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand" id="ch_user_name" x-text="ch.name"></p>
-                <input type="hidden" id="ch_user_id" :value="ch.id">
-            </div>
-            <div class="flex items-center justify-between border-b border-edge px-5 py-2.5">
-                <label class="flex items-center gap-2 text-sm">
-                    <input type="checkbox" id="selectAllChannels" @change="toggleAllChannels($event.target.checked)"
-                           class="h-4 w-4 rounded-sm border-edge-strong accent-brand">
-                    <?= e('ch.select_all') ?>
-                </label>
-                <!-- The first ticked channel becomes the default, and without a
-                     valid default the unit cannot sign in at all. -->
-                <span class="font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.first_is_default') ?></span>
-            </div>
-            <div class="flex-1 overflow-y-auto px-5 py-3">
-                <?php foreach ($all_channels as $c): ?>
-                    <label class="flex items-center gap-3 rounded-control px-2 py-1.5 text-sm hover:bg-card-muted">
-                        <input type="checkbox" class="quick-ch-checkbox h-4 w-4 rounded-sm border-edge-strong accent-brand"
-                               value="<?= (int) $c['id'] ?>">
-                        <span class="min-w-0 flex-1 truncate"><?= htmlspecialchars($c['display_name']) ?></span>
-                    </label>
-                <?php endforeach; ?>
-            </div>
-            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
-                <button type="button" @click="ch.open = false"
-                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
-                <button type="button" @click="saveChannels()" :disabled="ch.saving"
-                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover disabled:opacity-60"><?= e('ch.save') ?></button>
-            </div>
+<!-- Channels. One dialogue for a single row and for a selection; the heading
+     says which, so the two can never be confused. -->
+<div id="am2-channels" role="dialog" tabindex="-1" aria-labelledby="am2-channels-label" class="<?= $ovl ?>">
+    <div data-am2-panel class="<?= $card ?>">
+        <header class="border-b border-edge px-5 py-4">
+            <h2 id="am2-channels-label" class="text-base font-semibold text-ink"><?= e('usr.channels_title') ?></h2>
+            <p data-channels-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+        </header>
+        <div class="max-h-[50vh] overflow-y-auto p-5">
+            <?php if (!$all_channels): ?>
+                <p class="text-sm text-ink-muted"><?= e('usr.no_channels_available') ?></p>
+            <?php else: ?>
+                <ul class="space-y-1">
+                    <?php foreach ($all_channels as $c): ?>
+                        <li>
+                            <label class="flex h-11 cursor-pointer items-center gap-3 rounded-control px-2
+                                          transition-colors duration-[var(--duration-micro)] hover:bg-card-muted">
+                                <input type="checkbox" data-channel-pick
+                                       value="<?= (int) $c['id'] ?>"
+                                       class="h-4 w-4 rounded border-edge-strong text-brand focus:ring-brand/40">
+                                <span class="truncate text-sm text-ink"><?= htmlspecialchars((string) $c['display_name']) ?></span>
+                            </label>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+                <p class="mt-3 text-xs text-ink-muted"><?= e('usr.first_is_default') ?></p>
+            <?php endif; ?>
+        </div>
+        <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
+            <button type="button" data-hs-overlay="#am2-channels" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
+            <button type="button" data-channels-apply class="<?= $btnBrand ?>"><?= e('ch.save') ?></button>
+        </footer>
+    </div>
+</div>
+
+<!-- Duplex, for a selection. -->
+<div id="am2-bulk-duplex" role="dialog" tabindex="-1" aria-labelledby="am2-duplex-label" class="<?= $ovl ?>">
+    <div data-am2-panel class="<?= $card ?>">
+        <header class="border-b border-edge px-5 py-4">
+            <h2 id="am2-duplex-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_duplex_title') ?></h2>
+            <p data-duplex-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+        </header>
+        <div class="flex gap-2 p-5">
+            <button type="button" data-apply-duplex="HALF DUPLEX"
+                    class="h-12 flex-1 rounded-control border border-edge font-mono text-[11px] uppercase
+                           tracking-[0.15em] text-ink transition-colors duration-[var(--duration-micro)]
+                           hover:border-accent hover:text-accent"><?= e('usr.half') ?></button>
+            <button type="button" data-apply-duplex="FULL DUPLEX"
+                    class="h-12 flex-1 rounded-control border border-edge font-mono text-[11px] uppercase
+                           tracking-[0.15em] text-ink transition-colors duration-[var(--duration-micro)]
+                           hover:border-accent hover:text-accent"><?= e('usr.full') ?></button>
         </div>
     </div>
-</section>
+</div>
+
+<!-- Features, for a selection. -->
+<div id="am2-bulk-feature" role="dialog" tabindex="-1" aria-labelledby="am2-feature-label" class="<?= $ovl ?>">
+    <div data-am2-panel class="<?= $card ?>">
+        <header class="border-b border-edge px-5 py-4">
+            <h2 id="am2-feature-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_feature_title') ?></h2>
+            <p data-feature-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+        </header>
+        <div class="divide-y divide-edge">
+            <?php foreach ($features as [$key, $labelKey, $allowed]): ?>
+                <div class="flex items-center justify-between gap-3 px-5 py-3">
+                    <span class="text-sm <?= $allowed ? 'text-ink' : 'text-ink-subtle' ?>"><?= e($labelKey) ?></span>
+                    <span class="flex gap-1.5">
+                        <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="false"
+                                <?= $allowed ? '' : 'disabled' ?>
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                       uppercase tracking-[0.15em] text-ink-muted transition-colors
+                                       duration-[var(--duration-micro)] hover:border-bad hover:text-bad
+                                       disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.off') ?></button>
+                        <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="true"
+                                <?= $allowed ? '' : 'disabled' ?>
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                       uppercase tracking-[0.15em] text-ink-muted transition-colors
+                                       duration-[var(--duration-micro)] hover:border-brand hover:text-brand
+                                       disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.on') ?></button>
+                    </span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Deleting a selection. The count is the sentence, and it has to be typed:
+     fifty deletions is fifty times the damage of one. -->
+<div id="am2-bulk-delete" role="dialog" tabindex="-1" aria-labelledby="am2-del-label" class="<?= $ovl ?>">
+    <div data-am2-panel class="<?= $card ?>">
+        <header class="flex items-start gap-3 border-b border-edge px-5 py-4">
+            <span class="mt-0.5 text-bad"><?= am2_icon('alert', 'h-5 w-5') ?></span>
+            <div>
+                <h2 id="am2-del-label" data-delete-title class="text-base font-semibold text-ink"></h2>
+                <p class="mt-1 text-sm text-ink-muted"><?= e('usr.bulk_delete_body') ?></p>
+            </div>
+        </header>
+        <div class="p-5">
+            <label for="am2-delete-count" class="<?= $labelCls ?>" data-delete-prompt></label>
+            <input id="am2-delete-count" type="text" inputmode="numeric" autocomplete="off"
+                   class="<?= $fieldCls ?> font-mono text-base">
+        </div>
+        <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
+            <button type="button" data-hs-overlay="#am2-bulk-delete" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
+            <button type="button" data-delete-apply disabled
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                           tracking-[0.15em] text-white transition-colors duration-[var(--duration-micro)]
+                           hover:bg-bad/90 disabled:cursor-not-allowed disabled:opacity-40">
+                <?= e('usr.bulk_delete') ?>
+            </button>
+        </footer>
+    </div>
+</div>
 
 <?php include 'partials/shell_end.php'; ?>
 
 <script>
-    const AM2_CSRF = <?= json_encode(am2_csrf_token()) ?>;
-    const USR_MSG = <?= json_encode([
-        'saved'   => t('usr.saved'),
-        'failed'  => t('usr.failed'),
-        'offline' => t('usr.offline'),
-    ]) ?>;
+(() => {
+    'use strict';
 
-    function usersPage() {
-        return {
-            toast: { text: '', ok: true },
-            add:  { open: false },
-            edit: { open: false, id: null, name: '' },
-            ch:   { open: false, id: null, name: '', saving: false },
+    const $ = (id) => document.getElementById(id);
+    const table = $('am2-roster');
+    const T = <?= json_encode([
+        'one'    => t('usr.scope_one'),
+        'many'   => t('usr.scope_many'),
+        'done'   => t('usr.bulk_done'),
+        'del'    => t('usr.bulk_delete_title'),
+        'prompt' => t('usr.bulk_delete_prompt'),
+        'saved'  => t('usr.saved'),
+        'failed' => t('usr.failed'),
+    ], JSON_UNESCAPED_UNICODE) ?>;
 
-            say(text, ok = true) {
-                this.toast = { text, ok };
-                setTimeout(() => { this.toast.text = ''; }, 3000);
-            },
+    /** What the next dialogue is about: a row, or the selection. */
+    let scope = { ids: [], label: '' };
 
-            async post(fields) {
-                const fd = new FormData();
-                Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
-                fd.append('_csrf', AM2_CSRF);
-                const res = await fetch('users.php', { method: 'POST', body: fd });
-                return res.json();
-            },
+    const setScope = (ids, label) => {
+        scope = { ids, label };
+        document.querySelectorAll('[data-channels-scope], [data-duplex-scope], [data-feature-scope]')
+            .forEach((el) => { el.textContent = label; });
+    };
 
-            // The button holds its own state in a data attribute, so a failed
-            // request can put it back rather than leaving the row lying.
-            async toggle(el, uid, feature) {
-                const next = el.dataset.on !== '1';
-                el.dataset.on = next ? '1' : '0';
-                try {
-                    const r = await this.post({ update_feature: '1', u_id: uid, feature, val: next ? 'true' : 'false' });
-                    if (!r.success) throw new Error(r.msg || 'failed');
-                    this.say(USR_MSG.saved);
-                } catch (err) {
-                    el.dataset.on = next ? '0' : '1';
-                    this.say(String(err.message || USR_MSG.failed), false);
+    const scopeLabel = (n) => (n === 1 ? T.one : T.many.replace(':n', String(n)));
+
+    // A bulk verb the table runtime handed back because it needs to ask
+    // something first. Preline opens the dialogue; this only says what it is
+    // about, and must run before the operator can answer.
+    table?.addEventListener('am2:bulk', (e) => {
+        const { verb, ids } = e.detail;
+        setScope(ids, scopeLabel(ids.length));
+        if (verb === 'delete') {
+            document.querySelector('[data-delete-title]').textContent = T.del.replace(':n', String(ids.length));
+            document.querySelector('[data-delete-prompt]').textContent =
+                T.prompt.replace(':n', String(ids.length));
+            const input = $('am2-delete-count');
+            input.value = '';
+            document.querySelector('[data-delete-apply]').disabled = true;
+        }
+        if (verb === 'export') exportSelection(ids);
+    });
+
+    // A single row. The button carries data-hs-overlay as well, so Preline
+    // opens the dialogue through its own trigger.
+    document.querySelectorAll('[data-row-channels]').forEach((btn) => {
+        btn.setAttribute('data-hs-overlay', '#am2-channels');
+        btn.addEventListener('click', () => {
+            setScope([btn.dataset.unit], btn.dataset.unit + ' · ' + btn.dataset.name);
+            document.querySelectorAll('[data-channel-pick]').forEach((c) => { c.checked = false; });
+        });
+    });
+
+    document.querySelectorAll('[data-row-edit]').forEach((btn) => {
+        btn.setAttribute('data-hs-overlay', '#am2-edit-unit');
+        btn.addEventListener('click', () => {
+            $('edit_id').value = btn.dataset.unit;
+            $('edit_name').value = btn.dataset.name;
+            $('pass_edit').value = '';
+            document.querySelector('[data-edit-unit]').textContent = btn.dataset.unit;
+        });
+    });
+
+    /**
+     * One request per unit, against the endpoints this page already has, so
+     * the tenant checks come along for free. Every row is given its own
+     * outcome: one spinner turning into a tick says nothing about the three
+     * that failed.
+     */
+    async function applyToScope(fieldsFor, closeSelector) {
+        const csrf = document.querySelector('input[name="_csrf"]').value;
+        let ok = 0;
+        const failed = [];
+        for (const id of scope.ids) {
+            const cell = table?.querySelector(`tr[data-row-id="${CSS.escape(id)}"] [data-row-result]`);
+            if (cell) { cell.textContent = '·'; cell.className = 'w-3 font-mono text-xs text-ink-subtle'; }
+            try {
+                const body = new FormData();
+                body.append('_csrf', csrf);
+                for (const [k, v] of Object.entries(fieldsFor(id))) {
+                    if (Array.isArray(v)) v.forEach((x) => body.append(k, x));
+                    else body.append(k, v);
                 }
-            },
-
-            async toggleDuplex(el, uid) {
-                const next = el.dataset.full !== '1';
-                el.dataset.full = next ? '1' : '0';
-                try {
-                    const r = await this.post({
-                        update_feature: '1', u_id: uid, feature: 'duplex_mode',
-                        val: next ? 'FULL DUPLEX' : 'HALF DUPLEX',
-                    });
-                    if (!r.success) throw new Error(r.msg || 'failed');
-                    this.say(USR_MSG.saved);
-                } catch (err) {
-                    el.dataset.full = next ? '0' : '1';
-                    this.say(String(err.message || USR_MSG.failed), false);
-                }
-            },
-
-            openEdit(id, name) { this.edit = { open: true, id, name }; },
-
-            async openChannels(id, name) {
-                this.ch = { open: true, id, name, saving: false };
-                document.querySelectorAll('.quick-ch-checkbox').forEach((c) => { c.checked = false; });
-                document.getElementById('selectAllChannels').checked = false;
-                try {
-                    const res = await fetch(`users.php?get_user_channels=1&u_id=${encodeURIComponent(id)}`);
-                    const ids = new Set((await res.json() ?? []).map(String));
-                    document.querySelectorAll('.quick-ch-checkbox').forEach((c) => {
-                        c.checked = ids.has(String(c.value));
-                    });
-                } catch {
-                    this.say(USR_MSG.offline, false);
-                }
-            },
-
-            toggleAllChannels(on) {
-                document.querySelectorAll('.quick-ch-checkbox').forEach((c) => { c.checked = on; });
-            },
-
-            async saveChannels() {
-                this.ch.saving = true;
-                const picked = [...document.querySelectorAll('.quick-ch-checkbox:checked')]
-                    .map((c) => Number(c.value));
-                try {
-                    const r = await this.post({
-                        save_user_channels: '1', u_id: this.ch.id, channels: JSON.stringify(picked),
-                    });
-                    if (!r.success) throw new Error(r.msg || 'failed');
-                    this.ch.open = false;
-                    this.say(USR_MSG.saved);
-                } catch (err) {
-                    this.say(String(err.message || USR_MSG.failed), false);
-                } finally {
-                    this.ch.saving = false;
-                }
-            },
-        };
+                const r = await (await fetch(location.pathname, { method: 'POST', body })).json();
+                if (!r || r.success === false) throw new Error(r?.msg || '');
+                ok += 1;
+                if (cell) { cell.textContent = '✓'; cell.className = 'w-3 font-mono text-xs text-ok'; }
+            } catch {
+                failed.push(id);
+                if (cell) { cell.textContent = '✕'; cell.className = 'w-3 font-mono text-xs text-bad'; }
+            }
+        }
+        if (closeSelector) {
+            window.HSOverlay?.close(document.querySelector(closeSelector));
+        }
+        window.AM2?.toast(
+            T.done.replace(':ok', String(ok)).replace(':failed', String(failed.length)),
+            failed.length === 0);
+        setTimeout(() => window.location.reload(), failed.length ? 2600 : 900);
     }
+
+    document.querySelector('[data-channels-apply]')?.addEventListener('click', () => {
+        const picked = [...document.querySelectorAll('[data-channel-pick]:checked')].map((c) => c.value);
+        applyToScope((id) => ({ save_user_channels: '1', u_id: id, channels: JSON.stringify(picked) }),
+                     '#am2-channels');
+    });
+
+    document.querySelectorAll('[data-apply-duplex]').forEach((btn) => {
+        btn.addEventListener('click', () => applyToScope(
+            (id) => ({ update_feature: '1', u_id: id, feature: 'duplex_mode', val: btn.dataset.applyDuplex }),
+            '#am2-bulk-duplex'));
+    });
+
+    document.querySelectorAll('[data-apply-feature]').forEach((btn) => {
+        btn.addEventListener('click', () => applyToScope(
+            (id) => ({ update_feature: '1', u_id: id, feature: btn.dataset.applyFeature, val: btn.dataset.applyValue }),
+            '#am2-bulk-feature'));
+    });
+
+    // The count has to be typed. The number is the whole sentence.
+    const delInput = $('am2-delete-count');
+    delInput?.addEventListener('input', () => {
+        document.querySelector('[data-delete-apply]').disabled =
+            delInput.value.trim() !== String(scope.ids.length);
+    });
+    document.querySelector('[data-delete-apply]')?.addEventListener('click', () => {
+        applyToScope((id) => ({ delete_user: id, ajax: '1' }), '#am2-bulk-delete');
+    });
+
+    /** A native POST, because the answer to it is a file. */
+    function exportSelection(ids) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = location.pathname;
+        form.innerHTML = '';
+        const add = (n, v) => {
+            const el = document.createElement('input');
+            el.type = 'hidden';
+            el.name = n;
+            el.value = v;
+            form.appendChild(el);
+        };
+        add('_csrf', document.querySelector('input[name="_csrf"]').value);
+        add('export_selected', '1');
+        ids.forEach((id) => add('ids[]', id));
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+    }
+
+    /**
+     * The roster is live. The same endpoint the shell polls and the map reads,
+     * so the three cannot disagree; paused while the tab is hidden.
+     */
+    async function syncPresence() {
+        try {
+            const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
+            if (!res.ok) return;
+            const online = new Map((await res.json()).map((u) => [String(u.id), u]));
+            table?.querySelectorAll('tr[data-row-id]').forEach((tr) => {
+                const live = online.get(tr.dataset.rowId);
+                const dot = tr.querySelector('[data-presence]');
+                const tx = tr.querySelector('[data-tx]');
+                if (dot) dot.className = 'mt-1.5 h-2 w-2 shrink-0 rounded-full '
+                    + (live ? 'bg-ok' : 'bg-edge-strong');
+                if (tx) tx.hidden = !(live && Number(live.is_speaking) === 1);
+                if (tx && !tx.hidden) tx.classList.add('am2-live');
+            });
+        } catch {
+            // Leave the server-rendered state alone rather than claim everyone
+            // dropped off because one request failed.
+        }
+    }
+
+    let presenceTimer = null;
+    const startPresence = () => {
+        if (presenceTimer) return;
+        syncPresence();
+        presenceTimer = setInterval(syncPresence, 30000);
+    };
+    const stopPresence = () => { clearInterval(presenceTimer); presenceTimer = null; };
+    document.addEventListener('visibilitychange',
+        () => (document.hidden ? stopPresence() : startPresence()));
+    if (!document.hidden) startPresence();
+})();
 </script>
 </body>
 </html>

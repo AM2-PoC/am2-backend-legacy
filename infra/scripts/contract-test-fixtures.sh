@@ -70,12 +70,14 @@ INSERT INTO public.users (id, name, role, status, admin_id, created_by, password
 SELECT v.id, v.name, 'user', 'offline', a.id, a.id, '\$2y\$10\$notarealloginhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 FROM (VALUES ('CT_A1','CT USER A1','ct_branch_a'),
              ('CT_A2','CT USER A2','ct_branch_a'),
+             ('CT_A3','CT USER A3','ct_branch_a'),
              ('CT_B1','CT USER B1','ct_branch_b')) AS v(id,name,owner)
 JOIN public.admin a ON a.username = v.owner
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, duplex_mode)
 VALUES ('CT_A1', false, false, false, 'HALF DUPLEX'),
+       ('CT_A3', false, false, false, 'HALF DUPLEX'),
        ('CT_A2', false, false, false, 'HALF DUPLEX'),
        ('CT_B1', false, false, false, 'HALF DUPLEX')
 ON CONFLICT (user_id) DO NOTHING;

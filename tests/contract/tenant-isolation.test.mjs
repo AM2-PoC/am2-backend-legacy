@@ -116,7 +116,10 @@ test('every value livetrack interpolates into markup is escaped', () => {
     const raw = [...src.matchAll(/\$\{\s*(?:u|user)\.[a-z_]+\s*\}/g)].map((m) => m[0]);
     assert.deepEqual(raw, [],
         `livetrack.php interpolates unescaped values into markup: ${raw.join(', ')}`);
-    assert.match(src, /function esc\(/, 'the escaping helper is gone');
+    // Either declaration form: the page was later rebuilt and the helper
+    // became `const esc = (v) => ...`. What matters is that one exists, not
+    // which keyword introduced it.
+    assert.match(src, /function esc\s*\(|const esc\s*=/, 'the escaping helper is gone');
 });
 
 test('the escaping helper is reachable from every caller', () => {
@@ -125,13 +128,32 @@ test('the escaping helper is reachable from every caller', () => {
     // invisible to any test that only greps for the calls.
     const src = readFileSync(join(WEBADMIN, 'livetrack.php'), 'utf8');
     const script = src.slice(src.lastIndexOf('<script>') + 8, src.lastIndexOf('</script>'));
-    const escAt = script.indexOf('function esc(');
-    assert.notEqual(escAt, -1, 'esc() is not defined in the page script');
-    // Top-level: no unclosed brace before it.
+    const def = script.match(/function esc\s*\(|const esc\s*=/);
+    assert.ok(def, 'esc() is not defined in the page script');
+    const escAt = def.index;
+
+    /*
+     * Every call must come after the definition and no deeper than it.
+     *
+     * The first version of this checked only that the definition sat at depth
+     * zero -- which was right for a function declaration hoisted to the top of
+     * the script, and wrong once the page was rebuilt with the helper and its
+     * callers together inside one IIFE. What actually breaks is a call the
+     * definition cannot reach: `const` is not hoisted, so a use before it
+     * throws, and a use outside its block does too.
+     */
     const before = script.slice(0, escAt);
-    const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
-    assert.equal(depth, 0,
-        'esc() is nested inside another function, so callers outside it throw ReferenceError');
+    const defDepth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+
+    for (const m of script.matchAll(/\besc\s*\(/g)) {
+        if (m.index <= escAt) {
+            assert.fail(`esc() is called at ${m.index}, before it is defined at ${escAt}`);
+        }
+        const upto = script.slice(0, m.index);
+        const depth = (upto.match(/\{/g) ?? []).length - (upto.match(/\}/g) ?? []).length;
+        assert.ok(depth >= defDepth,
+            'esc() is called from outside the block that defines it, which throws ReferenceError');
+    }
 });
 
 test('the feature endpoint still accepts the one the app actually sends', () => {

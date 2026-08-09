@@ -66,9 +66,12 @@ before(async () => {
 });
 
 after(() => {
-    // Leave no membership behind for the next run to trip over.
-    sql(`DELETE FROM public.user_channels WHERE user_id IN ('CT_A1','CT_A2','CT_B1')`);
-    sql(`UPDATE public.users SET last_channel_id = NULL WHERE id IN ('CT_A1','CT_A2','CT_B1')`);
+    // Only the units this file touches. It used to clear CT_A2 as well, which
+    // session-order.test.mjs is using -- the runner executes files in parallel,
+    // so that cleanup was deleting rows out from under another file's
+    // assertions. It failed roughly one run in ten and looked like a flake.
+    sql(`DELETE FROM public.user_channels WHERE user_id IN ('CT_A1','CT_B1')`);
+    sql(`UPDATE public.users SET last_channel_id = NULL WHERE id IN ('CT_A1','CT_B1')`);
 });
 
 /** Put the unit into a known state: two channels, A default, A2 receive-only. */
@@ -173,8 +176,14 @@ describe('a form is not an authorization', () => {
             'channels[]': [CH_A],
             default_channel: CH_A,
         });
+        // Reports both states on failure. This assertion has failed
+        // intermittently, roughly one run in five; one cause was found and
+        // fixed (a cleanup hook in this file clearing a unit another file was
+        // using) and whatever remains has not reproduced since. Until it does,
+        // the message has to carry enough to identify it.
         assert.deepStrictEqual(membership(OTHER_TENANT_UNIT), before,
-            'another tenant\'s unit must be untouched');
+            `another tenant's unit must be untouched. before=${JSON.stringify(before)} `
+            + `after=${JSON.stringify(membership(OTHER_TENANT_UNIT))}`);
     });
 
     test('a branch admin cannot grant a channel it does not hold', async () => {
@@ -186,8 +195,11 @@ describe('a form is not an authorization', () => {
             'channels[]': [CH_A, CH_B],
             default_channel: CH_A,
         });
-        assert.deepStrictEqual(membership(UNIT), before,
-            'a channel belonging to another tenant must not be grantable');
+        const after = membership(UNIT);
+        assert.deepStrictEqual(after, before,
+            `a channel belonging to another tenant must not be grantable. `
+            + `CH_A=${CH_A} CH_A2=${CH_A2} CH_B=${CH_B} `
+            + `before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
     });
 
     test('a branch admin cannot add another tenant\'s unit to a roster', async () => {

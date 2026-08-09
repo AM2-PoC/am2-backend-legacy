@@ -203,7 +203,14 @@ describe('untrusted text is not rendered as markup', () => {
         const interpolated = [...src.matchAll(/\$\{\s*(?:row|log)\.[a-z_]+/g)].map((m) => m[0]);
         assert.deepEqual(interpolated, [],
             `log fields interpolated into a string: ${interpolated.join(', ')}`);
-        assert.match(src, /x-text="row\.target"/, 'the detail column must render as text');
+        // Mechanism-agnostic: Alpine's x-text and a textContent assignment are
+        // both fine, and pinning the test to one of them made it fail the
+        // moment the page stopped using Alpine rather than when it stopped
+        // being safe.
+        assert.ok(!/\b(?:outerHTML\s*=|insertAdjacentHTML)/.test(src),
+            'log rows must not be inserted as markup');
+        assert.match(src, /x-text="row\.target"|textContent\s*=\s*(?:r|row)\.target/,
+            'the detail column must reach the DOM as text');
     });
 
     test('livetrack.php does not build a handler argument from a raw id', () => {
@@ -312,15 +319,45 @@ describe('alpine expressions in attributes', () => {
         });
     }
 
+    // This guard has caught the json_encode-in-an-attribute bug three times, so
+    // it follows the migration rather than being pinned to one page. It asserts
+    // over whichever pages still render an Alpine expression into an attribute,
+    // and once none do -- which is the end state R7 is walking towards -- it
+    // asserts that instead, so it never quietly passes on an empty set.
+    const ALPINE_ATTR = /(?:x-text|x-show|:class|:disabled)="([^"]*)"/g;
+
     test('a rendered attribute keeps its quotes escaped', async () => {
-        const html = await (await get('/login.php', null)).text();
-        const m = html.match(/x-text="([^"]*)"/g) ?? [];
-        assert.ok(m.length > 0, 'no x-text attribute rendered');
-        for (const attr of m) {
-            assert.ok(!/\?\s*$/.test(attr),
-                `attribute truncated at a quote: ${attr.slice(0, 60)}`);
+        const sup = await asSuper();
+        const pages = ['/login.php', ...fs.readdirSync(SRC)
+            .filter((f) => f.endsWith('.php'))
+            .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+            .map((f) => '/' + f)];
+
+        let checked = 0;
+        for (const path of pages) {
+            const html = await (await get(path, path === '/login.php' ? null : sup)).text();
+            for (const attr of html.match(ALPINE_ATTR) ?? []) {
+                checked++;
+                // json_encode in an attribute terminates it at the first inner
+                // quote, leaving a fragment ending in `?` or `:` that still
+                // renders its server-side fallback and so looks fine.
+                assert.ok(!/[?:]\s*$/.test(attr),
+                    `${path}: attribute truncated at a quote: ${attr.slice(0, 70)}`);
+                // An attribute delimited by " cannot contain a raw " -- the
+                // parser ends it there. Truncation above is therefore the whole
+                // observable signal, and checking for inner quotes here would
+                // only ever match the attribute's own delimiters.
+            }
         }
-        assert.match(html, /&quot;/, 'quotes inside alpine expressions must be entities');
+
+        if (checked === 0) {
+            // Alpine is gone. Prove it rather than pass on an empty loop.
+            const html = await (await get('/dashboard.php', sup)).text();
+            assert.ok(!/\sx-(data|show|text|cloak)[=\s]/.test(html),
+                'no Alpine attributes were checked, but Alpine markup is still rendered');
+            return;
+        }
+        assert.ok(checked > 0);
     });
 });
 
@@ -375,10 +412,18 @@ describe('motion rules that decay quietly', () => {
         .concat(fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`))
         .filter((f) => f.endsWith('.php'));
 
+    // Comments are stripped first: a note explaining why Preline's own example
+    // was rewritten is not markup, and a guard that trips on prose is a guard
+    // people learn to route around.
+    const markupOf = (f) => readSrc(f)
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+
     test('nothing animates with transition-all', () => {
         // transition-all animates properties nobody chose, including layout
         // ones, which is how a hover ends up repainting a table.
-        const offenders = pages().filter((f) => /transition-all/.test(readSrc(f)));
+        const offenders = pages().filter((f) => /transition-all/.test(markupOf(f)));
         assert.deepEqual(offenders, [], 'declare the properties being animated');
     });
 
@@ -399,7 +444,7 @@ describe('motion rules that decay quietly', () => {
         // backdrop and a panel crossing the viewport move identically.
         for (const f of pages()) {
             const src = readSrc(f);
-            assert.ok(!/x-transition(?![:.\w-])/.test(src),
+            assert.ok(!/x-transition(?![:.\w-])/.test(markupOf(f)),
                 `${f}: bare x-transition, give it enter and leave`);
         }
     });
@@ -419,5 +464,64 @@ describe('motion rules that decay quietly', () => {
         // both have to stop, not merely slow down.
         assert.ok(/am2-live/.test(block) && /am2-skeleton/.test(block),
             'the looping animations must be switched off under reduced motion');
+    });
+});
+
+describe('probes may only name fixtures', () => {
+    // Staging holds a copy of production. A probe that hardcoded admin_id=1
+    // overwrote the real superadmin's password hash, because it was run against
+    // a build where the guard it was testing for did not exist yet. The
+    // assertion ran afterwards and could not undo it.
+    const TESTS = '/home/am2deploy/am2-main/tests/contract';
+    // Panel pages dispatch on the presence of a field name, not an `action`
+    // value, so the gate has to know both shapes -- it skipped the file that
+    // actually caused a cross-file collision.
+    const MUTATING = new RegExp([
+        'new_password',
+        "action:\\s*'(save|delete|update_password|update_feature|force_logout)'",
+        '(save_user_channels|update_multi_access|save_channel_access|update_feature):',
+    ].join('|'));
+
+    test('no mutating probe hardcodes a database id', () => {
+        for (const f of fs.readdirSync(TESTS).filter((n) => n.endsWith('.test.mjs'))) {
+            const src = fs.readFileSync(`${TESTS}/${f}`, 'utf8');
+            if (!MUTATING.test(src)) continue;
+            const literals = [
+                ...src.matchAll(/admin_id:\s*['"`](\d+)['"`]/g),
+                // A literal channel id names whatever real channel holds
+                // that sequence value on the production copy.
+                ...src.matchAll(/channels:\s*JSON\.stringify\(\[\s*\d/g),
+            ];
+            assert.deepEqual(literals.map((m) => m[0]), [],
+                `${f}: resolve the target with ctAdminId('ct_...') instead of a literal id`);
+        }
+    });
+
+    test('the fixture guard refuses a real account', async () => {
+        const { guardCtTarget } = await import('./helpers.mjs');
+        for (const real of ['superadmin', 'am²', '1', '']) {
+            assert.throws(() => guardCtTarget(real), /only ct_\* rows may be mutated/,
+                `guardCtTarget let "${real}" through`);
+        }
+        assert.equal(guardCtTarget('ct_super'), 'ct_super');
+    });
+});
+
+describe('translated strings arrive substituted', () => {
+    // t() prepends the colon itself, so the caller passes 'n' and not ':n'.
+    // Passing ':n' produces '::n', which matches nothing and renders the
+    // placeholder to the operator. It looked fine in every test until someone
+    // read the page.
+    test('no unsubstituted placeholder reaches a rendered page', async () => {
+        const sup = await asSuper();
+        for (const path of ['/dashboard.php', '/users.php', '/channels.php',
+                            '/user_access.php', '/logs.php', '/settings.php']) {
+            const html = await (await get(path, sup)).text();
+            const body = html.replace(/<script[\s\S]*?<\/script>/g, '')
+                             .replace(/<[^>]+>/g, ' ');
+            const left = [...body.matchAll(/(?:^|\s):([a-z][a-z0-9_]{0,14})(?=\s|%|\b)/gi)]
+                .map((m) => m[0].trim());
+            assert.deepEqual(left, [], `${path}: placeholder never substituted`);
+        }
     });
 });
