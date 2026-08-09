@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -62,11 +63,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 // key until it is updated. So this records rather than rejects until
 // AM2_API_AUTH_MODE is set to "enforce".
 const API_KEY = process.env.AM2_API_KEY || '';
+
+/**
+ * Compare a presented key against the real one in constant time.
+ *
+ * `===` on strings returns as soon as two bytes differ, so how long the
+ * comparison takes says how much of the key was right. PHP has always done this
+ * side correctly with hash_equals(); this half of the same credential check did
+ * not, which is the kind of asymmetry that survives precisely because both
+ * halves "work". It becomes load-bearing the moment AM2_API_AUTH_MODE is set to
+ * enforce.
+ *
+ * timingSafeEqual throws on a length mismatch, so length is checked first --
+ * and length is not the secret.
+ */
+function sameKey(sent, real) {
+    const a = Buffer.from(String(sent));
+    const b = Buffer.from(String(real));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 const API_AUTH_MODE = (process.env.AM2_API_AUTH_MODE || 'log').toLowerCase();
 
 app.use('/api/admin', (req, res, next) => {
     const sent = req.get('X-AM2-Api-Key') || req.query.api_key || '';
-    if (API_KEY && sent && sent === API_KEY) return next();
+    if (API_KEY && sent && sameKey(sent, API_KEY)) return next();
 
     console.warn('[api-auth] REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
         req.method, req.originalUrl,

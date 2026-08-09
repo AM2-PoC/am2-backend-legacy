@@ -64,14 +64,43 @@ reachable until that app can present a credential.
 
 ## Still open
 
-- The six Admin Native `/api/admin/*` routes, and all ten `api_*.php` files.
-- No CSRF protection anywhere. Destructive actions are bare `GET ?delete=<id>` guarded only by a
-  client-side `confirm()`.
-- No `session_regenerate_id()` on login, so session fixation is possible; no idle timeout; no
-  explicit cookie hardening.
-- No rate limiting on `login.php` or `api_login.php`. Because bcrypt is deliberately slow, the
-  latter is both a credential oracle and a cheap denial-of-service vector.
-- Authorization is authentication-only in most places: a logged-in branch admin can act on another
-  branch's users, because the mutation paths check *that* you are logged in but not *what you own*.
-- `app.use(cors())` allows any origin.
-- A stored-XSS sink in `logs.php`, which renders admin-controlled free text unescaped.
+One item, and it is a decision rather than an oversight.
+
+**The Admin Native credential.** `AM2_API_AUTH_MODE` defaults to `log` in both halves
+(`WebAdmin/config.php`, `server/server.js`), so an unauthenticated caller reaching the six remaining
+`/api/admin/*` routes or the `api_*.php` files is recorded and then allowed through — and, having no
+session, is free to claim `role=superadmin` in the request body. The mechanism that closes this is
+already built and tested: key check, identity resolution, superadmin gate, structured rejection
+logging, and an immediate refusal for anyone presenting a session instead.
+
+What is missing is the switch, and flipping it is blocked outside this repository: the Admin Native
+app has to ship a build that presents a key first. `tests/contract/identity.test.mjs` marks this
+`KNOWN OPEN` and asserts both halves of it — the hole as it exists today, and the refusal that must
+appear under `enforce`. Treat it as an accepted risk with a named owner and a release it is waiting
+on, not as a bug nobody has got to.
+
+## Closed since this document was first written
+
+Everything below was listed as open here long after it had been fixed. That is worse than an
+incomplete document: this is the page a reviewer reads first, and it understated the posture by six
+items while sending anyone who trusted it to re-solve solved problems. Each line names the code that
+settles it.
+
+- **CSRF.** `am2_csrf_require()` runs in the `config.php` bootstrap; tokens are emitted per form and
+  carried by the fetch paths.
+- **Session fixation.** `session_regenerate_id(true)` on successful login in `login.php`.
+- **Idle timeout.** `am2_expire_idle_session()`, invoked from the same bootstrap.
+- **Cookie hardening.** `WebAdmin/session_boot.php` sets `HttpOnly`, `SameSite=Lax`, and `Secure`
+  whenever the request arrived over HTTPS — including through nginx, via `X-Forwarded-Proto`. Every
+  entry point that opens a session goes through it.
+- **Login rate limiting.** In the application (`am2_login_blocked()` / `am2_login_failed()` /
+  `am2_login_succeeded()`, keyed per client over a fifteen-minute window) and at the edge
+  (`limit_req zone=am2_webadmin_login`, now on staging as well as production).
+- **Cross-tenant authorization.** `am2_admin_owns_user()` guards the mutation paths, so a branch
+  admin can no longer act on another branch's units.
+- **CORS.** `server/server.js` takes an allowlist and answers `false` for anything else, replacing
+  the bare `app.use(cors())`.
+- **Stored XSS in the log view.** `logs.php` builds every row with `textContent`; a contract test
+  fails the build if `innerHTML` returns to that file.
+- **API key comparison.** Constant-time on both sides now — `hash_equals()` in PHP,
+  `crypto.timingSafeEqual` in Node.
