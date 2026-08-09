@@ -76,53 +76,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
     $default_channel_id = $_POST['default_channel'] ?? null;
     $permissions_input = $_POST['permissions'] ?? [];
 
-    try {
-        $pdo->beginTransaction();
+    // The form is rendered from this admin's own units and channels, but a
+    // form is not an authorization: the ids arrive over POST and had never
+    // been checked against who is asking.
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, (string) $user_id)) {
+        $error_msg = t('common.denied');
+    } elseif (am2_first_foreign_channel($pdo, $current_admin_id, $role_user, $selected_channels) !== null) {
+        $error_msg = t('common.denied');
+    } else {
+        try {
+            $pdo->beginTransaction();
 
-        $stmtUser = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
-        $stmtUser->execute([$user_id]);
-        $target_name = $stmtUser->fetchColumn() ?: "ID: $user_id";
+            $stmtUser = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
+            $stmtUser->execute([$user_id]);
+            $target_name = $stmtUser->fetchColumn() ?: "ID: $user_id";
 
-        $pdo->prepare("DELETE FROM public.user_channels WHERE user_id = ?")->execute([$user_id]);
+            // The one surface that states permissions and the default outright.
+            $result = am2_set_user_channels(
+                $pdo, (string) $user_id, $selected_channels, $default_channel_id, $permissions_input
+            );
 
-        $channel_names_added = [];
-
-        if (!empty($selected_channels)) {
-            if (!$default_channel_id || !in_array($default_channel_id, $selected_channels)) {
-                $default_channel_id = $selected_channels[0];
-            }
-
-            $stmtIns = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, ?, ?)");
-            $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
-
-            foreach ($selected_channels as $ch_id) {
-                $is_default = ($ch_id == $default_channel_id);
-                $perm = (isset($permissions_input[$ch_id]) && $permissions_input[$ch_id] == 'RX') ? 'RX' : 'FULL DUPLEX';
-                $stmtIns->execute([$user_id, $ch_id, $is_default ? 'true' : 'false', $perm]);
-                
-                if ($is_default) {
-                    $pdo->prepare("UPDATE public.users SET last_channel_id = ? WHERE id = ?")->execute([$ch_id, $user_id]);
+            if ($selected_channels) {
+                $stmtChName = $pdo->prepare("SELECT display_name FROM public.channels WHERE id = ?");
+                $channel_names_added = [];
+                foreach ($selected_channels as $ch_id) {
+                    $stmtChName->execute([$ch_id]);
+                    $c_name = $stmtChName->fetchColumn();
+                    $is_default = ((string) $ch_id === (string) $result['default']);
+                    $perm = $result['permissions'][(string) $ch_id] ?? 'FULL DUPLEX';
+                    $channel_names_added[] = $c_name . ($is_default ? " (Main)" : "") . " [$perm]";
                 }
-
-                $stmtChName->execute([$ch_id]);
-                $c_name = $stmtChName->fetchColumn();
-                $channel_names_added[] = $c_name . ($is_default ? " (Main)" : "") . " [$perm]";
+                $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
+            } else {
+                $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
             }
-            $keterangan_log = "Update akses $target_name ke: " . implode(", ", $channel_names_added);
-        } else {
-            $pdo->prepare("UPDATE public.users SET last_channel_id = NULL WHERE id = ?")->execute([$user_id]);
-            $keterangan_log = "Mencabut semua akses channel dari user: $target_name";
+
+            $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
+            $stmtLogAccess->execute([$current_admin_id, 'UPDATE_ACCESS', $keterangan_log]);
+
+            $pdo->commit();
+            syncUserChannels($user_id);
+            $success_msg = "Otoritas akses user berhasil diperbarui.";
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
         }
-
-        $stmtLogAccess = $pdo->prepare("INSERT INTO public.admin_activity_logs (admin_id, aksi, keterangan, waktu) VALUES (?, ?, ?, NOW())");
-        $stmtLogAccess->execute([$current_admin_id, 'UPDATE_ACCESS', $keterangan_log]);
-
-        $pdo->commit();
-        syncUserChannels($user_id);
-        $success_msg = "Otoritas akses user berhasil diperbarui.";
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
     }
 }
 
@@ -275,10 +273,19 @@ include 'partials/shell.php';
     </div>
     <?php endif; ?>
 
-    <div id="accessModal" x-cloak x-show="m.open" x-transition.opacity.duration.120ms
+    <div id="accessModal" x-cloak x-show="m.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="m.open = false" @keydown.window.escape="m.open = false" role="dialog" aria-modal="true">
-        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="m.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="user_id" id="m_user_id" :value="m.id">
             <input type="hidden" name="default_channel" id="m_default_channel" :value="m.def">

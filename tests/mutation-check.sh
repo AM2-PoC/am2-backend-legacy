@@ -50,13 +50,13 @@ echo
 
 mutate "rename dispatch field add_user, PHP side"   "$W/users.php"       "s/'add_user'/'add_userX'/g"
 mutate "rename dispatch field add_user, HTML side"  "$W/users.php"       's/name="add_user"/name="add_userX"/g'
-mutate "drop one data-label from a table cell"      "$W/channels.php"    '0,/data-label="Pembuat"/s///'
+mutate "drop one data-label from a table cell"      "$W/channels.php"    '0,/data-label=/s///'
 mutate "rename a JSON key the log screen reads"     "$W/fetch_logs.php"  's/ as aksi/ as action/g'
 mutate "rename a node admin route"                  "$S/server.js"       's#/api/admin/force-logout#/api/admin/fl2#'
 mutate "break the def_label_ id convention"         "$W/user_access.php" 's/id="def_label_/id="deflabel/g'
 mutate "rename a leaflet divIcon class"             "$W/livetrack.php"   's/pulse-dot/pulsedot/g'
 mutate "switch users.php error key msg to message"  "$W/users.php"       "s/'msg'/'message'/g"
-mutate "unlink the shared stylesheet"               "$W/logs.php"        's#asset/css/am2-ui.css#asset/css/gone.css#'
+mutate "unlink the shared stylesheet"               "$W/partials/head.php" 's#asset/css/am2-tailwind.css#asset/css/gone.css#'
 mutate "wrap a bare array response in an envelope"  "$W/users.php" \
     's/echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));/echo json_encode(["data"=>$stmt->fetchAll(PDO::FETCH_COLUMN)]);/'
 

@@ -7,6 +7,13 @@
  *
  */
 return [
+    'common.retry' => 'Try again',
+    'state.error_title' => 'Could not load this',
+    'state.error_body' => 'The connection to the server dropped. What is on screen may no longer be true.',
+    'state.stale_title' => 'Not up to date',
+    'state.stale_body' => 'The last refresh failed, so these figures may have moved since.',
+    'common.session_expired' => 'Your session has ended. Please sign in again.',
+    'common.denied' => 'Access denied.',
     'nav.close_menu' => 'Close menu',
     'rail.transmitting' => 'Transmitting',
     'rail.online' => 'online',

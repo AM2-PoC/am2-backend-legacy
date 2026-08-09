@@ -3,8 +3,8 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-$current_admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
-$admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';
+// Identity is resolved by the server; see am2_api_identity().
+[$current_admin_id, $admin_role] = am2_api_identity();
 // 24h buckets by hour, 7d buckets by day. Anything else falls back to 24h
 // rather than erroring, so a stale bookmark still renders.
 $range = ($_GET['range'] ?? '24h') === '7d' ? '7d' : '24h';

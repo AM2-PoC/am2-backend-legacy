@@ -129,6 +129,89 @@ function am2_api_auth(): void
 }
 
 /**
+ * Who the caller is, decided by the server.
+ *
+ * Every api_*.php file used to read `admin_id` and `role` straight off the
+ * query string. That is the Admin Native contract and it cannot change, but
+ * it also meant any authenticated browser session could append
+ * `&role=superadmin` and act as one -- api_settings.php `action=export`
+ * hands back the whole database on that basis.
+ *
+ * So: when the caller proved itself with a panel session, identity comes from
+ * the session and the request fields are ignored. Only a caller holding the
+ * shared key -- the mobile app, which has no session -- may still state its
+ * own identity, which is the contract those endpoints were written against.
+ *
+ * @return array{0: ?string, 1: string, 2: string}  [admin_id, role, via]
+ */
+function am2_api_identity(): array
+{
+    // Independent of whether am2_api_auth() ran first, so call order in the
+    // endpoints cannot quietly turn a session caller into an anonymous one.
+    if (session_status() === PHP_SESSION_NONE
+        && isset($_COOKIE[session_name()])
+        && !headers_sent()) {
+        session_start();
+    }
+    if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_logged_in'])) {
+        return [
+            isset($_SESSION['admin_id']) ? (string) $_SESSION['admin_id'] : null,
+            (string) ($_SESSION['admin_role'] ?? 'admin'),
+            'session',
+        ];
+    }
+
+    $claimed = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
+    return [
+        ($claimed === null || $claimed === '') ? null : (string) $claimed,
+        (string) ($_GET['role'] ?? $_POST['role'] ?? 'admin'),
+        'key',
+    ];
+}
+
+/** True when the caller is a superadmin, as established by am2_api_identity(). */
+function am2_api_is_super(): bool
+{
+    [, $role] = am2_api_identity();
+    return strtolower($role) === 'superadmin';
+}
+
+/**
+ * Stop a caller that is not a superadmin. Returns true when the response has
+ * been written and the endpoint must exit.
+ *
+ * A browser session is refused straight away: the panel never asks these
+ * endpoints to do anything a branch admin is allowed to do, so a session
+ * arriving here with role=admin is either a bug or an escalation attempt.
+ * A key-bearing caller still goes through the AM2_API_AUTH_MODE switch,
+ * because that is the Admin Native contract and it has not been updated yet.
+ */
+function am2_api_require_super(string $what): bool
+{
+    [, $role, $via] = am2_api_identity();
+    if (strtolower($role) === 'superadmin') {
+        return false;
+    }
+
+    if ($via === 'session') {
+        error_log(sprintf(
+            'AM2 api-authz REJECT %s %s from %s reason=%s role=%s',
+            $_SERVER['REQUEST_METHOD'] ?? '?',
+            $_SERVER['REQUEST_URI'] ?? '?',
+            am2_client_ip(),
+            $what,
+            $role
+        ));
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+        return true;
+    }
+
+    return am2_api_authz_denied($what);
+}
+
+/**
  * The per-session CSRF token, created on first use.
  */
 function am2_csrf_token(): string
@@ -192,6 +275,12 @@ function am2_csrf_require(): void
  * redirect, AJAX endpoints answer JSON — so destroying the session and letting
  * the existing guard fire keeps that behaviour intact.
  */
+/** True when this request arrived on a session that had gone idle. */
+function am2_session_timed_out(): bool
+{
+    return !empty($GLOBALS['am2_session_timed_out']);
+}
+
 function am2_expire_idle_session(int $maxIdleSeconds = 28800): void
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -203,6 +292,7 @@ function am2_expire_idle_session(int $maxIdleSeconds = 28800): void
     if (isset($_SESSION['last_seen']) && (time() - $_SESSION['last_seen']) > $maxIdleSeconds) {
         $_SESSION = [];
         session_destroy();
+        $GLOBALS['am2_session_timed_out'] = true;
         return;
     }
     $_SESSION['last_seen'] = time();
@@ -334,6 +424,14 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
+    // Start the session here, before expiry and before any guard runs.
+    // Cookie-guarded so a keyless API caller is not handed a session it
+    // never asked for, which would change the headers Admin Native sees.
+    if (session_status() === PHP_SESSION_NONE
+        && isset($_COOKIE[session_name()])
+        && !headers_sent()) {
+        session_start();
+    }
     am2_expire_idle_session();
     am2_csrf_require();
 } catch (PDOException $e) {
@@ -346,4 +444,5 @@ try {
 // helper defined above.
 require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/node_client.php';
+require_once __DIR__ . '/channel_access.php';
 ?>

@@ -72,19 +72,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
         $stmt_old->execute([$ch_id]);
         $old_users = $stmt_old->fetchAll(PDO::FETCH_COLUMN);
 
-        if (strtolower($role_user) === 'superadmin') {
-            $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ?")->execute([$ch_id]);
-        } else {
-            $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ? AND user_id IN (SELECT id FROM public.users WHERE admin_id = ?)")
-                ->execute([$ch_id, $current_admin_id]);
-        }
+        // Only the units this admin owns may be added or dropped; a shared
+        // channel keeps another tenant's units on it either way.
+        $scope = null;
+        if (strtolower($role_user) !== 'superadmin') {
+            $stmtScope = $pdo->prepare("SELECT id FROM public.users WHERE admin_id = ?");
+            $stmtScope->execute([$current_admin_id]);
+            $scope = array_map('strval', array_column($stmtScope->fetchAll(), 'id'));
 
-        if (!empty($selected_users)) {
-            $stmt_ins = $pdo->prepare("INSERT INTO public.user_channels (user_id, channel_id, is_default, permission) VALUES (?, ?, 'false', 'FULL DUPLEX')");
-            foreach ($selected_users as $u_id) {
-                $stmt_ins->execute([$u_id, $ch_id]);
+            $foreign = array_diff(array_map('strval', $selected_users), $scope);
+            if ($foreign) {
+                throw new RuntimeException('Akses ditolak');
             }
         }
+
+        // Recreating the roster used to write is_default = 'false' for every
+        // member, so editing a channel stripped the default from every unit
+        // on it while users.last_channel_id went on pointing here.
+        am2_set_channel_members($pdo, (string) $ch_id, $selected_users, $scope);
 
         $pdo->commit();
 
@@ -312,11 +317,20 @@ include 'partials/shell.php';
 
     <!-- Access modal. The user list is rendered server-side and ticked from the
          endpoint, the same shape the page has always used. -->
-    <div id="accessModal" x-cloak x-show="access.open" x-transition.opacity.duration.120ms
+    <div id="accessModal" x-cloak x-show="access.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="access.open = false" @keydown.window.escape="access.open = false"
          role="dialog" aria-modal="true">
-        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="access.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="manage_ch_id" id="target_ch_id" :value="access.id">
 
@@ -362,11 +376,20 @@ include 'partials/shell.php';
         </form>
     </div>
 
-    <div id="editModal" x-cloak x-show="edit.open" x-transition.opacity.duration.120ms
+    <div id="editModal" x-cloak x-show="edit.open" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
          @click.self="edit.open = false" @keydown.window.escape="edit.open = false"
          role="dialog" aria-modal="true">
-        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+        <form x-show="edit.open"
+              x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
+              x-transition:enter-start="opacity-0 translate-y-2 scale-[0.99]"
+              x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+              x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
+              x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+              x-transition:leave-end="opacity-0 translate-y-2 scale-[0.99]" method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
             <?= am2_csrf_field() ?>
             <input type="hidden" name="edit_id" :value="edit.id">
             <div class="border-b border-edge px-5 py-4">

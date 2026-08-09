@@ -346,3 +346,78 @@ describe('js() and json_encode belong in different places', () => {
         });
     }
 });
+
+describe('the shell actually serves its stylesheets', () => {
+    // A mutation that deleted the stylesheet link escaped the suite: every
+    // assertion was about markup, so the app could lose all of its CSS and
+    // still be reported green.
+    test('every stylesheet the dashboard links resolves and is not empty', async () => {
+        const cookie = await asSuper();
+        const html = await (await get('/dashboard.php', cookie)).text();
+        const hrefs = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)]
+            .map((m) => m[1]);
+
+        assert.ok(hrefs.length >= 1, 'the shell must link at least one stylesheet');
+        assert.ok(hrefs.some((h) => /tailwind/.test(h)),
+            'the built Tailwind sheet is what the redesigned pages are styled with');
+
+        for (const href of hrefs) {
+            const res = await get('/' + href.replace(/^\//, ''), cookie);
+            assert.strictEqual(res.status, 200, `${href} must resolve`);
+            const body = await res.text();
+            assert.ok(body.length > 1000, `${href} came back with ${body.length} bytes`);
+        }
+    });
+});
+
+describe('motion rules that decay quietly', () => {
+    const pages = () => fs.readdirSync(SRC).filter((f) => f.endsWith('.php'))
+        .concat(fs.readdirSync(`${SRC}/partials`).map((f) => `partials/${f}`))
+        .filter((f) => f.endsWith('.php'));
+
+    test('nothing animates with transition-all', () => {
+        // transition-all animates properties nobody chose, including layout
+        // ones, which is how a hover ends up repainting a table.
+        const offenders = pages().filter((f) => /transition-all/.test(readSrc(f)));
+        assert.deepEqual(offenders, [], 'declare the properties being animated');
+    });
+
+    test('table rows change colour and nothing else', () => {
+        // A row that lifts or scales pulls the eye off the column being read
+        // down. Rows are scanned, not browsed.
+        for (const f of pages()) {
+            const src = readSrc(f);
+            for (const m of src.matchAll(/<tr[^>]*>/g)) {
+                assert.ok(!/hover:(scale|-?translate)/.test(m[0]),
+                    `${f}: a table row must not lift or scale on hover`);
+            }
+        }
+    });
+
+    test('every dialog states its own enter and leave', () => {
+        // Alpine's bare x-transition is one linear curve for everything, so a
+        // backdrop and a panel crossing the viewport move identically.
+        for (const f of pages()) {
+            const src = readSrc(f);
+            assert.ok(!/x-transition(?![:.\w-])/.test(src),
+                `${f}: bare x-transition, give it enter and leave`);
+        }
+    });
+
+    test('the built stylesheet carries the motion tokens', () => {
+        const css = fs.readFileSync(`${SRC}/asset/css/am2-tailwind.css`, 'utf8');
+        for (const token of ['--ease-enter', '--ease-exit', '--duration-drawer',
+                             '--duration-modal', 'am2-skeleton', 'prefers-reduced-motion']) {
+            assert.ok(css.includes(token), `the build dropped ${token}`);
+        }
+    });
+
+    test('reduced motion is honoured, not just declared', () => {
+        const css = fs.readFileSync(`${SRC}/asset/css/am2-tailwind.css`, 'utf8');
+        const block = css.slice(css.indexOf('prefers-reduced-motion'));
+        // The pulse and the skeleton shimmer are the two loops in the app;
+        // both have to stop, not merely slow down.
+        assert.ok(/am2-live/.test(block) && /am2-skeleton/.test(block),
+            'the looping animations must be switched off under reduced motion');
+    });
+});
