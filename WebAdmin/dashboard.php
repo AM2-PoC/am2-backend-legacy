@@ -52,7 +52,7 @@ try {
     $ptt_activity = $stmt_ptt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
-    die("Kesalahan Database: " . $e->getMessage());
+    die("Kesalahan Database: " . am2_safe_error($e, 'dashboard'));
 }
 
 if (empty($ptt_activity)) {
@@ -328,6 +328,8 @@ if (empty($ptt_activity)) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    const AM2_ADMIN_ID = <?= json_encode((string) $current_admin_id) ?>;
+    const AM2_ADMIN_ROLE = <?= json_encode((string) $admin_role) ?>;
     let myChart;
 
     function updateClock() {
@@ -345,7 +347,8 @@ if (empty($ptt_activity)) {
         if(syncIcon) syncIcon.style.display = 'inline-block';
 
         try {
-            const response = await fetch('api_dashboard_chart.php');
+            const response = await fetch(
+                `api_dashboard_chart.php?admin_id=${AM2_ADMIN_ID}&role=${AM2_ADMIN_ROLE}`);
             const data = await response.json();
 
             if(data.error) throw new Error(data.error);

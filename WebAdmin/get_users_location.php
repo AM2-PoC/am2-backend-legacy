@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config.php';
+am2_api_auth();
 
 if (ob_get_length()) ob_clean();
 
@@ -81,7 +82,7 @@ try {
     header('Content-Type: application/json', true, 500);
     echo json_encode([
         'error' => 'Database Error',
-        'message' => $e->getMessage()
+        'message' => am2_safe_error($e, 'get_users_location')
     ]);
 }
 ?>

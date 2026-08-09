@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 $admin_id = $_GET['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? 'admin';
@@ -35,6 +36,6 @@ try {
         'total_channel' => (int)$total_channel
     ]);
 } catch (PDOException $e) {
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => am2_safe_error($e, 'api_dashboard_stats')]);
 }
 ?>

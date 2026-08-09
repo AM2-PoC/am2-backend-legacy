@@ -73,11 +73,20 @@ describe('form field names are the API', () => {
 
     test('GET dispatch parameters survive', () => {
         assert.match(readSrc('users.php'), /\$_GET\['get_user_channels'\]/);
-        assert.match(readSrc('users.php'), /\$_GET\['delete'\]/);
         assert.match(readSrc('channels.php'), /ajax_action/);
-        assert.match(readSrc('channels.php'), /\$_GET\['delete'\]/);
-        assert.match(readSrc('admin_panel.php'), /\$_GET\['delete_id'\]/);
         assert.match(readSrc('user_access.php'), /db_force_logout/);
+    });
+
+    test('deleting is a POST, not a link', () => {
+        // Moved off GET deliberately: a link that deletes can be followed by a
+        // prefetch or a crawler, and the only guard was a client-side confirm().
+        // These are panel-internal, so no external client is affected.
+        assert.match(readSrc('users.php'), /\$_POST\['delete_user'\]/);
+        assert.match(readSrc('channels.php'), /\$_POST\['delete_channel'\]/);
+        assert.match(readSrc('admin_panel.php'), /\$_POST\['delete_admin_id'\]/);
+        for (const f of ['users.php', 'channels.php', 'admin_panel.php']) {
+            assert.ok(!/href="\?delete/.test(readSrc(f)), `${f} still deletes via a link`);
+        }
     });
 });
 
@@ -171,6 +180,37 @@ describe('rendered markup that the CSS and JS depend on', () => {
                          '/settings.php', '/user_access.php', '/livetrack.php', '/admin_panel.php']) {
             const html = await (await get(p, sup)).text();
             assert.ok(html.includes('asset/css/am2-ui.css'), `${p} lost the stylesheet`);
+        }
+    });
+});
+
+describe('untrusted text is not rendered as markup', () => {
+    test('logs.php escapes every value it interpolates', () => {
+        const src = readSrc('logs.php');
+        assert.ok(/function esc\(/.test(src), 'the escaping helper is gone');
+        // keterangan is admin-controlled free text, also written by a database
+        // trigger, and it is inserted with innerHTML.
+        const raw = [...src.matchAll(/\$\{log\.[a-z_]+\}/g)].map((m) => m[0]);
+        assert.deepEqual(raw, [],
+            `these interpolations bypass esc(): ${raw.join(', ')}`);
+    });
+
+    test('livetrack.php does not build a handler argument from a raw id', () => {
+        const src = readSrc('livetrack.php');
+        assert.ok(!/gotoUnit\(\$\{u\.lat\}, \$\{u\.lng\}, '\$\{u\.id\}'\)/.test(src),
+            "an id containing a quote used to break out of the onclick attribute");
+    });
+
+    test('no page echoes exception text', () => {
+        for (const f of ['users.php', 'channels.php', 'settings.php', 'admin_panel.php',
+                         'user_access.php', 'dashboard.php', 'api_users.php',
+                         'api_channels.php', 'api_settings.php', 'api_login.php']) {
+            const src = readSrc(f);
+            for (const line of src.split('\n')) {
+                if (line.includes('error_log')) continue;
+                assert.ok(!line.includes('$e->getMessage()'),
+                    `${f} still echoes PDO exception text, which carries the failing SQL`);
+            }
         }
     });
 });

@@ -205,6 +205,20 @@ $pageTitle = "LIVE TRACKING UNIT";
         });
     }
 
+    /*
+     * Unit names, ids and channel names are admin-typed free text that arrives
+     * here as JSON and is written into markup with innerHTML and bindPopup.
+     * users.php only uppercases the name on the way in, and an uppercase tag is
+     * still a tag -- so this is the only thing standing between a unit called
+     * <IMG SRC=X ONERROR=...> and every admin who opens this page, superadmin
+     * included. Same helper as logs.php.
+     */
+    function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
     function updateMarkers() {
         let activeIds = userCache.map(u => u.id.toString());
         let txFound = false;
@@ -221,7 +235,7 @@ $pageTitle = "LIVE TRACKING UNIT";
 
             const icon = L.divIcon({
                 className: isSpeaking ? 'custom-marker speaking-marker' : 'custom-marker',
-                html: `<div class="marker-label">${user.name}</div><div class="pulse-dot"></div>`,
+                html: `<div class="marker-label">${esc(user.name)}</div><div class="pulse-dot"></div>`,
                 iconSize: [100, 40],
                 iconAnchor: [50, 35]
             });
@@ -240,7 +254,7 @@ $pageTitle = "LIVE TRACKING UNIT";
             } else {
                 markers[uid] = L.marker([lat, lng], {icon: icon}).addTo(map);
                 markers[uid]._speakingState = isSpeaking;
-                markers[uid].bindPopup(`<b>${user.name}</b><br><small>Channel: ${user.channel_name}</small>`);
+                markers[uid].bindPopup(`<b>${esc(user.name)}</b><br><small>Channel: ${esc(user.channel_name)}</small>`);
             }
         });
 
@@ -267,19 +281,20 @@ $pageTitle = "LIVE TRACKING UNIT";
         filtered.forEach(u => {
             const isSpeaking = parseInt(u.is_speaking) === 1;
             html += `
-                <div class="unit-item ${isSpeaking ? 'speaking-active' : ''}" onclick="gotoUnit(${u.lat}, ${u.lng}, '${u.id}')">
+                <div class="unit-item ${isSpeaking ? 'speaking-active' : ''}" data-lat="${esc(u.lat)}" data-lng="${esc(u.lng)}" data-uid="${esc(u.id)}"
+                     onclick="gotoUnit(this.dataset.lat, this.dataset.lng, this.dataset.uid)">
                     <div class="position-relative me-3">
                         <div style="width:12px; height:12px; border-radius:50%; background:${isSpeaking ? 'var(--color-danger)' : 'var(--color-success)'};"></div>
                         ${isSpeaking ? '<div class="spinner-grow text-danger position-absolute" style="width:12px; height:12px; top:0; left:0; opacity:0.4;"></div>' : ''}
                     </div>
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="small fw-bold text-dark text-truncate d-flex justify-content-between">
-                            <span>${u.name}</span>
+                            <span>${esc(u.name)}</span>
                             ${isSpeaking ? '<span class="badge bg-danger" style="font-size:7px;">TX</span>' : ''}
                         </div>
                         <div class="text-muted d-flex justify-content-between" style="font-size:9px;">
-                            <span>#${u.id}</span>
-                            <span>${u.channel_name}</span>
+                            <span>#${esc(u.id)}</span>
+                            <span>${esc(u.channel_name)}</span>
                         </div>
                     </div>
                 </div>`;

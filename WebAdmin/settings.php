@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_password'])) {
             $stmt->execute([$hashed_password, $admin_id]);
             $msg = "Password profil berhasil diperbarui.";
         } catch (PDOException $e) {
-            $error = "Gagal memperbarui database: " . $e->getMessage();
+            $error = "Gagal memperbarui database: " . am2_safe_error($e, 'settings');
         }
     } else {
         $error = "Konfirmasi password tidak cocok.";
@@ -91,7 +91,7 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
 
             $msg = "Proses pemulihan data berhasil dijalankan.";
         } catch (Exception $e) {
-            $error = "Gagal memulihkan database: " . $e->getMessage();
+            $error = "Gagal memulihkan database: " . am2_safe_error($e, 'settings');
         }
     }
 }
@@ -121,7 +121,7 @@ try {
         $sisa_channel = max(0, (int)$settings['channel_quota'] - (int)$total_channels);
     }
 } catch (PDOException $e) {
-    die("Kesalahan database: " . $e->getMessage());
+    die("Kesalahan database: " . am2_safe_error($e, 'settings'));
 }
 ?>
 
@@ -224,6 +224,7 @@ try {
                     <div class="card settings-card p-4 h-100">
                         <h6 class="fw-bold border-bottom pb-2 mb-3"><i class="fas fa-lock me-2 text-danger"></i> Keamanan Akun</h6>
                         <form method="POST">
+                    <?= am2_csrf_field() ?>
                             <div class="mb-3 small fw-bold">USERNAME: <span class="text-primary"><?= htmlspecialchars($settings['username']) ?></span></div>
                             
                             <div class="mb-3">
@@ -254,11 +255,13 @@ try {
                         <div class="safety-panel mt-4">
                              <h6 class="fw-bold mb-3"><i class="fas fa-database me-2 text-danger"></i> Management Database</h6>
                              <form method="POST" class="mb-3">
+                    <?= am2_csrf_field() ?>
                                 <button type="submit" name="export_db" class="btn btn-backup w-100 shadow-sm py-2">
                                     <i class="fas fa-file-export me-2"></i> EKSPOR DATA (.SQL)
                                 </button>
                              </form>
                              <form method="POST" enctype="multipart/form-data">
+                    <?= am2_csrf_field() ?>
                                 <label class="small fw-bold text-danger mb-2 text-uppercase" style="font-size: 0.65rem;">Pulihkan Cadangan</label>
                                 <div class="input-group input-group-sm">
                                     <input type="file" name="sql_file" class="form-control" accept=".sql" required>
@@ -322,6 +325,7 @@ try {
                             <h6 class="fw-bold mb-2 text-uppercase text-dark small" style="font-size: 0.7rem;"><i class="fas fa-cloud-upload-alt me-2 text-primary"></i> App Distribution</h6>
                             <div class="p-3 bg-light rounded border border-dashed shadow-sm">
                                 <form method="POST" enctype="multipart/form-data">
+                    <?= am2_csrf_field() ?>
                                     <div class="input-group input-group-sm safety-input-group mb-2">
                                         <input type="file" name="apk_file" class="form-control" accept=".apk" required>
                                         <button type="submit" name="upload_apk" class="btn btn-upload-apk px-3">
