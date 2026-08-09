@@ -176,16 +176,30 @@ elseif ($method == 'POST') {
             $sql_val = $val;
         }
 
+        // $feature is interpolated as a column name below. users.php has always
+        // validated it against an allow-list; this copy never did, and this file
+        // takes its caller's word for who they are.
+        //
+        // duplex_mode belongs here. It has its own branch eight lines above --
+        // which is the proof the app calls this endpoint with it -- and leaving
+        // it out made every FULL/HALF toggle in Admin Native answer "Fitur tidak
+        // valid". users.php keeps its own list and still accepts it, so the
+        // panel works and this would not have shown up in panel testing.
+        //
+        // Safe to interpolate for the same reason as the rest: the column name
+        // is a literal from this list, and the value took the $pdo->quote()
+        // branch above.
+        //
+        // Checked before the transaction is opened, so the exit below does not
+        // leave one dangling for the request to unwind.
+        $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video', 'duplex_mode'];
+        if (!in_array($feature, $allowed, true)) {
+            echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
-            // $feature is interpolated as a column name below. users.php has
-            // always validated it against an allow-list; this copy never did,
-            // and this file takes its caller's word for who they are.
-            $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video'];
-            if (!in_array($feature, $allowed, true)) {
-                echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
-                exit;
-            }
 
             $sql = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
                     VALUES (?, $sql_val, NOW())

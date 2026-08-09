@@ -85,6 +85,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])) {
     $user_id = $_POST['user_id'];
+
+    /*
+     * The same guard the force-logout path above carries, and the one this page
+     * most needed: this block deletes the target's entire channel membership,
+     * writes a new one, moves last_channel_id, and pushes the result to the
+     * relay. Without it a branch admin could post another branch's user id --
+     * from their own page, with their own valid CSRF token -- and take that
+     * unit off every channel it belongs to, or graft it onto one of theirs.
+     *
+     * The API twin of this action was guarded and the panel original was not,
+     * which is the harder half to notice: the endpoint that looks like the
+     * dangerous one had the check.
+     */
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, $user_id)) {
+        http_response_code(403);
+        exit('Akses ditolak');
+    }
+
     $selected_channels = $_POST['channels'] ?? [];
     $default_channel_id = $_POST['default_channel'] ?? null;
     $permissions_input = $_POST['permissions'] ?? [];

@@ -57,6 +57,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
     $ch_id = (int)$_POST['manage_ch_id'];
     $selected_users = $_POST['users'] ?? [];
 
+    /*
+     * Both halves of this form are attacker-chosen, and only the DELETE below
+     * was scoped.
+     *
+     * The channel: without this check a branch admin could post another
+     * branch's channel id and manage its membership. The users: the INSERT loop
+     * further down ran over whatever ids arrived, so a foreign unit could be
+     * grafted onto a channel this admin controls -- and syncUserChannels()
+     * pushes that to the relay, which means being able to hear and transmit on
+     * another branch's traffic. Filtering here rather than inside the loop
+     * keeps the membership write a single scoped statement.
+     */
+    if (strtolower($role_user) !== 'superadmin') {
+        $stmtOwn = $pdo->prepare("SELECT 1 FROM public.channels WHERE id = ? AND created_by = ?");
+        $stmtOwn->execute([$ch_id, $current_admin_id]);
+        if (!$stmtOwn->fetchColumn()) {
+            http_response_code(403);
+            exit('Akses ditolak');
+        }
+
+        $selected_users = array_values(array_filter(
+            $selected_users,
+            fn($u) => am2_admin_owns_user($pdo, $current_admin_id, $role_user, (string) $u)
+        ));
+    }
+
     try {
         $pdo->beginTransaction();
 
