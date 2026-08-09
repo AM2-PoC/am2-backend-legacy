@@ -5,6 +5,39 @@ require_once 'config.php';
 am2_api_auth();
 
 /*
+ * The one action here that is deliberately public.
+ *
+ * Admin Native calls this to learn whether a newer APK exists; it has no
+ * session and, until it ships a key, no credential either. The answer is the
+ * published version, its download URL and its changelog -- all of which the
+ * download endpoint already serves to anyone. Gating it behind the session
+ * added below broke update checks for every handset in the field, which a
+ * contract test caught by name.
+ *
+ * Placed before the gate rather than exempted inside it, so the reason is
+ * visible at the point it applies.
+ */
+if (($_GET['action'] ?? '') === 'check_update') {
+
+    $json_path = 'update/admin_version.json';
+    if (file_exists($json_path)) {
+        $data = json_decode(file_get_contents($json_path), true);
+        echo json_encode([
+            'latest_version' => $data['version_name'],
+            'download_url' => $data['download_url'],
+            'changelog' => $data['changelog']
+        ]);
+    } else {
+        echo json_encode([
+            'latest_version' => '1.0.0',
+            'download_url' => 'https://am2-poc.com/update/admin.apk',
+            'changelog' => 'Versi awal.'
+        ]);
+    }
+    exit;
+}
+
+/*
  * Who is allowed in here, decided before anything else runs.
  *
  * This file had no authentication of any kind. It took the caller's word for
@@ -93,24 +126,6 @@ if ($method == 'GET') {
     $admin_id = (int) ($_SESSION['admin_id'] ?? 0);
     $role = $session_role;
 
-    if ($action == 'check_update') {
-        $json_path = 'update/admin_version.json';
-        if (file_exists($json_path)) {
-            $data = json_decode(file_get_contents($json_path), true);
-            echo json_encode([
-                'latest_version' => $data['version_name'],
-                'download_url' => $data['download_url'],
-                'changelog' => $data['changelog']
-            ]);
-        } else {
-            echo json_encode([
-                'latest_version' => '1.0.0',
-                'download_url' => 'https://am2-poc.com/update/admin.apk',
-                'changelog' => 'Versi awal.'
-            ]);
-        }
-        exit;
-    }
 
     try {
         $stmt = $pdo->prepare("SELECT username, role, user_quota, channel_quota, expired_at, can_manage_maps, can_manage_p2p, can_manage_video FROM public.admin WHERE id = ?");
@@ -155,10 +170,26 @@ elseif ($method == 'POST') {
 
     if ($action == 'update_password') {
         /*
-         * Your own, always. This took admin_id from the request, so any signed-in
-         * admin could rewrite the superadmin's password by naming its id -- and
-         * before the gate above, so could anyone at all.
+         * Your own, always -- and said so, rather than done quietly.
+         *
+         * This took admin_id from the request, so any signed-in admin could
+         * rewrite the superadmin's password by naming its id, and before the
+         * session gate above so could anyone at all. Ignoring the parameter
+         * closes that, but silently: a caller asking to change admin 5's
+         * password had admin 6's changed instead and was told it worked. A
+         * contract test caught it by having its own fixture password rewritten
+         * underneath it.
+         *
+         * So a request that names someone else is refused outright. There is
+         * no legitimate caller for it: this endpoint has never had a
+         * change-another-admin's-password feature.
          */
+        $named = $_POST['admin_id'] ?? null;
+        if ($named !== null && (string) $named !== (string) $admin_id) {
+            http_response_code(403);
+            exit(json_encode(['success' => false, 'message' => 'Akses ditolak']));
+        }
+
         $new_pass = $_POST['new_password'] ?? '';
         if (strlen($new_pass) < 8) {
             echo json_encode(['success' => false, 'message' => 'Password minimal 8 karakter']);
