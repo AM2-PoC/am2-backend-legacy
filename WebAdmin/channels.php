@@ -13,7 +13,7 @@ $current_admin_id = $_SESSION['admin_id'];
 $role_user = $_SESSION['admin_role'];
 
 function syncUserChannels($userId) {
-    $url = "http://localhost:5000/api/admin/sync-channels?userId=" . urlencode($userId);
+    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

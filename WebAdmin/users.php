@@ -13,12 +13,12 @@ $current_admin_id = $_SESSION['admin_id'];
 $admin_role = $_SESSION['admin_role'];
 
 function syncUserChannels($userId) {
-    $url = "http://localhost:5000/api/admin/sync-channels?userId=" . urlencode($userId);
+    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
     @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 2]]));
 }
 
 function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'FULL DUPLEX') {
-    $url = "http://localhost:5000/api/admin/update-permissions";
+    $url = AM2_NODE_BASE . "/api/admin/update-permissions";
     $data = [
         'userId' => $userId,
         'enable_maps' => (bool)$maps,

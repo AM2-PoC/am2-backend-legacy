@@ -1,0 +1,20 @@
+[Unit]
+Description=AM2 Node API (staging)
+After=network.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=am2deploy
+Group=www-data
+WorkingDirectory=/var/www/am2/staging/current/server
+EnvironmentFile=/etc/am2/api.staging.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/var/www/am2/staging /var/log/am2-staging
+
+[Install]
+WantedBy=multi-user.target
