@@ -1,41 +1,15 @@
 <?php
-session_start();
+require_once 'auth.php';
 require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: login.php");
-    exit;
-}
+
 
 $success_msg = "";
 $error_msg = "";
 $current_admin_id = $_SESSION['admin_id'];
 $admin_role = $_SESSION['admin_role'];
 
-function syncUserChannels($userId) {
-    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
-    @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 2]]));
-}
 
-function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'FULL DUPLEX') {
-    $url = AM2_NODE_BASE . "/api/admin/update-permissions";
-    $data = [
-        'userId' => $userId,
-        'enable_maps' => (bool)$maps,
-        'enable_p2p' => (bool)$p2p,
-        'enable_ptt_video' => (bool)$video,
-        'duplex_mode' => $duplex
-    ];
-    $options = [
-        'http' => [
-            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
-            'method'  => 'POST',
-            'content' => json_encode($data),
-            'timeout' => 2
-        ]
-    ];
-    @file_get_contents($url, false, stream_context_create($options));
-}
 
 $stmt_auth = $pdo->prepare("SELECT can_manage_maps, can_manage_p2p, can_manage_video FROM public.admin WHERE id = ?");
 $stmt_auth->execute([$current_admin_id]);
@@ -261,7 +235,7 @@ if ($admin_role === 'superadmin') {
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">

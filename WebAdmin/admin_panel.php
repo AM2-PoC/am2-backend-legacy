@@ -1,29 +1,12 @@
 <?php
-session_start();
+require_once 'auth.php';
 require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_role'] !== 'superadmin') {
-    header("Location: dashboard.php");
-    exit;
-}
+require_superadmin();
 
 $success_msg = "";
 $error_msg = "";
 
-function notifyNodeServerToRefresh($adminId) {
-    $url = AM2_NODE_BASE . "/api/admin/refresh-branch-permissions";
-    $data = array('adminId' => $adminId);
-    $options = array(
-        'http' => array(
-            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
-            'method'  => 'POST',
-            'content' => json_encode($data),
-            'timeout' => 2
-        )
-    );
-    $context  = stream_context_create($options);
-    @file_get_contents($url, false, $context);
-}
 
 if (isset($_POST['delete_admin_id'])) {
     $id_to_delete = (int)$_POST['delete_admin_id'];
@@ -139,7 +122,7 @@ $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER 
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">

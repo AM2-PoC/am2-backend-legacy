@@ -1,17 +1,14 @@
 <?php
+require_once 'auth.php';
 require_once 'config.php';
-session_start();
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: login.php");
-    exit;
-}
+
 
 $pageTitle = "LIVE TRACKING UNIT";
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
