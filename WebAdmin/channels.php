@@ -452,7 +452,7 @@ $columns = [
 
 /** The page's own verb, in the toolbar with the thing it acts on. */
 $tableAction = '<button type="button" data-hs-overlay="#am2-add-channel"'
-    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('ch.add') . '</button>';
@@ -499,14 +499,14 @@ include 'partials/shell.php';
                             <?php if ($filtered): ?>
                                 <a href="channels.php"
                                    class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
-                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          px-4 font-mono text-[11px] uppercase tracking-[0.15em]
                                           text-ink-muted! no-underline! transition-colors
                                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
                                     <?= e('ch.clear_filter') ?>
                                 </a>
                             <?php else: ?>
                                 <button type="button" data-hs-overlay="#am2-add-channel"
-                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[10px]
+                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[11px]
                                                font-semibold uppercase tracking-[0.15em] text-slate-950
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:bg-brand-hover">
@@ -544,7 +544,7 @@ include 'partials/shell.php';
                                     <span class="block truncate text-sm font-medium text-ink">
                                         <?= htmlspecialchars((string) $c['display_name']) ?>
                                     </span>
-                                    <span class="block truncate font-mono text-[10px] text-ink-subtle">
+                                    <span class="block truncate font-mono text-[11px] text-ink-subtle">
                                         <?= htmlspecialchars((string) $c['name']) ?>
                                     </span>
 
@@ -570,7 +570,7 @@ include 'partials/shell.php';
 
                                 <!-- Everything else about this channel is one tap
                                      away, and the chevron is what says so. -->
-                                <button type="button" data-open-sheet
+                                <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-channel-sheet"
                                         data-ch="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $c['display_name'], ENT_QUOTES, 'UTF-8') ?>"
@@ -592,17 +592,17 @@ include 'partials/shell.php';
                         <td data-cell="access" data-label="<?= e('ch.access') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($units === 0): ?>
                                 <span class="inline-flex items-center gap-1.5 rounded-control border border-warn/40
-                                             bg-warn/5 px-2 py-1 font-mono text-[9px] uppercase
+                                             bg-warn/5 px-2 py-1 font-mono text-[11px] uppercase
                                              tracking-[0.1em] text-warn">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('ch.no_units') ?>
                                 </span>
                             <?php else: ?>
                                 <span class="font-mono text-sm tabular-nums text-ink"><?= $units ?></span>
-                                <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                                <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <?= e('ch.units') ?>
                                 </span>
                                 <?php if ($live > 0): ?>
-                                    <span class="ms-1 font-mono text-[10px] text-ok">
+                                    <span class="ms-1 font-mono text-[11px] text-ok">
                                         <?= e('ch.live', ['n' => $live]) ?>
                                     </span>
                                 <?php endif; ?>
@@ -613,21 +613,21 @@ include 'partials/shell.php';
                             <span class="text-sm text-ink-muted"><?= htmlspecialchars((string) ($c['creator_name'] ?? 'System')) ?></span>
                             <?php if (!$mine): ?>
                                 <span class="ms-1 rounded-control bg-accent/10 px-1.5 py-0.5 font-mono
-                                             text-[9px] uppercase tracking-[0.1em] text-accent">
+                                             text-[11px] uppercase tracking-[0.1em] text-accent">
                                     <?= e('ch.delegated_tag') ?>
                                 </span>
                             <?php endif; ?>
                         </td>
 
                         <td data-cell="actions" data-label="<?= e('ch.actions') ?>" class="px-4 py-2.5 text-right align-middle">
-                            <span class="inline-flex items-center gap-2">
+                            <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
                                 <button type="button" data-row-access
                                         data-ch="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $c['display_name'], ENT_QUOTES, 'UTF-8') ?>"
                                         class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               text-[11px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('ch.manage_access') ?>
@@ -637,7 +637,7 @@ include 'partials/shell.php';
                                         data-ch="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $c['display_name'], ENT_QUOTES, 'UTF-8') ?>"
                                         class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
+                                               text-[11px] uppercase tracking-[0.12em] text-ink-muted
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:border-brand hover:text-brand">
                                     <?= e('ch.edit') ?>
@@ -649,7 +649,7 @@ include 'partials/shell.php';
                                     <input type="hidden" name="delete_channel" value="<?= (int) $c['id'] ?>">
                                     <button type="submit"
                                             class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                                   text-[9px] uppercase tracking-[0.12em] text-bad
+                                                   text-[11px] uppercase tracking-[0.12em] text-bad
                                                    transition-colors duration-[var(--duration-micro)]
                                                    hover:border-bad/50 hover:bg-bad/10">
                                         <?= e('ch.delete') ?>
@@ -673,11 +673,11 @@ $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-c
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
           . ' transition-colors duration-[var(--duration-micro)] hover:border-edge-strong'
           . ' focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25';
-$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
-$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+$labelCls = 'font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[11px] font-semibold'
           . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
           . ' duration-[var(--duration-micro)] hover:text-ink';
-$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold uppercase'
           . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
@@ -697,7 +697,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                     <input id="display_name" name="display_name" type="text" required
                            autocomplete="off" data-slug-source
                            placeholder="<?= e('ch.new_placeholder') ?>" class="<?= $fieldCls ?>">
-                    <p class="mt-2 font-mono text-[10px] text-ink-subtle">
+                    <p class="mt-2 font-mono text-[11px] text-ink-subtle">
                         <?= e('ch.slug_hint') ?> <span data-slug-preview class="text-brand">—</span>
                     </p>
                 </div>
@@ -717,7 +717,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <?= am2_csrf_field() ?>
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-edit-label" class="text-base font-semibold text-ink"><?= e('ch.edit_title') ?></h2>
-                <p data-edit-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+                <p data-edit-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
             </header>
             <div class="space-y-4 p-5">
                 <input type="hidden" name="edit_id" id="am2-edit-id" value="">
@@ -745,7 +745,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                                 flex-col overflow-hidden rounded-card">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-access-label" class="text-base font-semibold text-ink"><?= e('ch.manage_access') ?></h2>
-            <p data-access-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-access-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
             <p data-access-mode class="mt-1 text-xs text-ink-muted"></p>
         </header>
 
@@ -755,7 +755,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                        class="h-4 w-4 rounded border-edge-strong text-brand focus:ring-brand/40">
                 <?= e('ch.select_all') ?>
             </label>
-            <span class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <span class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span data-access-count class="tabular-nums text-ink-muted">0</span> / <?= $managed_total ?>
             </span>
         </div>
@@ -788,12 +788,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <div class="space-y-4 p-5">
             <p data-delete-prompt class="text-sm text-ink-muted"></p>
             <input id="am2-delete-count" type="text" inputmode="numeric" autocomplete="off"
+                   aria-label="<?= e('tbl.delete_count_label') ?>"
                    class="<?= $fieldCls ?> font-mono">
         </div>
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
             <button type="button" data-hs-overlay="#am2-bulk-delete" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
             <button type="button" data-delete-apply disabled
-                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[11px] font-semibold uppercase
                            tracking-[0.15em] text-white transition-colors
                            duration-[var(--duration-micro)] hover:opacity-90
                            disabled:cursor-not-allowed disabled:opacity-40">
@@ -832,17 +833,21 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
         <div class="divide-y divide-edge">
             <?php foreach ([['access', 'ch.access'], ['owner', 'ch.owner']] as [$slot, $label]): ?>
-                <div class="flex items-baseline gap-4 px-5 py-3.5">
-                    <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                <div class="flex items-center gap-3 px-5 py-2">
+                    <span class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
-                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5"></span>
+                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>
                 </div>
             <?php endforeach; ?>
         </div>
 
         <footer data-slot="actions"
-                class="flex flex-wrap items-center justify-end gap-2 border-t border-edge
-                       bg-card-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"></footer>
+                class="flex items-stretch gap-2 border-t border-edge bg-card-muted px-5 py-3
+                       pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                       [&>span]:flex [&>span]:w-full [&>span]:gap-2
+                       [&_form]:contents [&_button]:min-h-11 [&_button]:flex-1
+                       [&_button]:basis-0 [&_button]:justify-center [&_button]:px-1
+                       [&_[data-row-result]]:hidden"></footer>
     </div>
 </div>
 
@@ -912,7 +917,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                 name.textContent = u.name ?? '';
 
                 const id = document.createElement('span');
-                id.className = 'font-mono text-[10px] text-ink-subtle';
+                id.className = 'font-mono text-[11px] text-ink-subtle';
                 id.textContent = String(u.id);
 
                 label.append(box, name, id);
@@ -1129,6 +1134,21 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
     // Preline owns the closing; this only puts the furniture back.
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
+
+    /*
+     * The sheet only exists below lg, and a window can cross that line while it
+     * is open. `lg:hidden` takes the panel away, but Preline's backdrop is a
+     * child of body and knows nothing about the breakpoint -- it stayed at full
+     * opacity with the body still scroll-locked, so the page sat under a grey
+     * scrim belonging to nothing visible. Closing through Preline is what
+     * removes the backdrop, restores the scroll and returns the borrowed cells.
+     */
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    desktop.addEventListener('change', () => {
+        if (desktop.matches && sheet?.classList.contains('opened')) {
+            window.HSOverlay?.close(sheet);
+        }
+    });
 })();
 </script>
 </body>

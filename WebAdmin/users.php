@@ -32,10 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         am2_log($pdo, $current_admin_id, 'CREATE_USER', 'user.create',
                 ['name' => $name, 'id' => $id], 'users', $id);
         
+        am2_audit_complete();
         $pdo->commit();
         $success_msg = "User $name (User: $id) berhasil didaftarkan.";
     } catch (PDOException $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = ($e->getCode() == '23505') ? "ID $id sudah terdaftar." : "Database Error: " . am2_safe_error($e, 'users');
     }
 }
@@ -63,17 +64,50 @@ if (isset($_POST['save_user_channels'])) {
             exit;
         }
         $pdo->beginTransaction();
+
+        $stmtName = $pdo->prepare('SELECT name FROM public.users WHERE id = ?');
+        $stmtName->execute([$u_id]);
+        $targetName = (string) ($stmtName->fetchColumn() ?: $u_id);
+
         // This page sends a membership list and nothing else, so the
         // permission on each surviving channel and the unit's default both
         // stand. It used to recreate every row as FULL DUPLEX, which handed
         // transmit rights to receive-only units, and moved the default to
         // whichever channel happened to come first in the JSON.
-        am2_set_user_channels($pdo, (string) $u_id, $channels);
+        $result = am2_set_user_channels($pdo, (string) $u_id, $channels);
+
+        /*
+         * Who a unit can talk to is exactly the kind of change the activity log
+         * exists for, and this path wrote none: the same edit made from the
+         * channel-access page was recorded, and made from the row dialogue here
+         * it was not. Same event codes, so both read as one thing in the log.
+         */
+        if ($channels) {
+            $stmtCh = $pdo->prepare('SELECT display_name FROM public.channels WHERE id = ?');
+            $logChannels = [];
+            foreach ($channels as $chId) {
+                $stmtCh->execute([$chId]);
+                $logChannels[] = [
+                    'name'    => (string) $stmtCh->fetchColumn(),
+                    'default' => ((string) $chId === (string) $result['default']),
+                    'perm'    => $result['permissions'][(string) $chId] ?? 'FULL DUPLEX',
+                ];
+            }
+            $logCode   = 'access.update';
+            $logParams = ['name' => $targetName, 'channels' => $logChannels];
+        } else {
+            $logCode   = 'access.revoke';
+            $logParams = ['name' => $targetName];
+        }
+        am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
+                'users', (string) $u_id);
+
+        am2_audit_complete();
         $pdo->commit();
         syncUserChannels($u_id);
         echo json_encode(['success' => true]);
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
     exit;
@@ -103,14 +137,15 @@ if (isset($_POST['update_feature'])) {
         [$logCode, $logParams] = am2_feature_log($feature, (string) $val, (string) $u_id, (string) $target_name);
         am2_log($pdo, $current_admin_id, 'UPDATE_FEATURE', $logCode, $logParams, 'users', $u_id);
 
+        am2_audit_complete();
         $pdo->commit();
         notifyPermissionUpdate($u_id, $row['enable_maps'], $row['enable_p2p'], $row['enable_ptt_video'], $row['duplex_mode']);
         echo json_encode(['success' => true]);
     } catch (InvalidArgumentException | RuntimeException $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_feature_reason($e)]);
     } catch (Exception $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
     }
     exit;
@@ -134,10 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         am2_log($pdo, $current_admin_id, 'UPDATE_USER', $logCode,
                 ['id' => $edit_id, 'name' => $edit_name], 'users', $edit_id);
 
+        am2_audit_complete();
         $pdo->commit();
         $success_msg = "Data $edit_id diperbarui.";
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = am2_safe_error($e, 'users');
     }
 }
@@ -157,6 +193,7 @@ if (isset($_POST['delete_user'])) {
         am2_log($pdo, $current_admin_id, 'DELETE_USER', 'user.delete',
                 ['name' => $old_name, 'id' => $del_id], 'users', $del_id);
 
+        am2_audit_complete();
         $pdo->commit();
         // The bulk path asks over fetch and cannot follow a redirect into a
         // page it then throws away. Same guard, same query, different reply.
@@ -167,7 +204,7 @@ if (isset($_POST['delete_user'])) {
         }
         header("Location: users.php?success=deleted"); exit;
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = "Gagal menghapus user.";
     }
 }
@@ -347,7 +384,7 @@ $pageSize = AM2_USER_PAGE;
  * search box on every page whether or not the page could create anything.
  */
 $tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
-    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold'
+    . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('usr.add') . '</button>';
@@ -395,14 +432,14 @@ include 'partials/shell.php';
                             <?php if ($filtered): ?>
                                 <a href="users.php"
                                    class="mt-3 inline-flex h-10 items-center rounded-control border border-edge
-                                          px-4 font-mono text-[10px] uppercase tracking-[0.15em]
+                                          px-4 font-mono text-[11px] uppercase tracking-[0.15em]
                                           text-ink-muted! no-underline! transition-colors
                                           duration-[var(--duration-micro)] hover:border-brand hover:text-brand!">
                                     <?= e('usr.clear_filter') ?>
                                 </a>
                             <?php else: ?>
                                 <button type="button" data-hs-overlay="#am2-add-unit"
-                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[10px]
+                                        class="mt-3 h-10 rounded-control bg-brand px-4 font-mono text-[11px]
                                                font-semibold uppercase tracking-[0.15em] text-slate-950
                                                transition-colors duration-[var(--duration-micro)]
                                                hover:bg-brand-hover">
@@ -441,12 +478,12 @@ include 'partials/shell.php';
                                         <span class="truncate font-mono text-sm text-ink"><?= htmlspecialchars($uid) ?></span>
                                         <span data-tx hidden
                                               class="shrink-0 rounded-control bg-bad/10 px-1.5 font-mono
-                                                     text-[9px] uppercase tracking-[0.1em] text-bad">TX</span>
+                                                     text-[11px] uppercase tracking-[0.1em] text-bad">TX</span>
                                     </span>
                                     <span class="block truncate text-sm text-ink-muted"><?= htmlspecialchars((string) $u['name']) ?></span>
                                     <!-- Desktop: the freshness, because channel
                                          has a column of its own. -->
-                                    <span data-seen class="hidden font-mono text-[10px] text-ink-subtle lg:block">
+                                    <span data-seen class="hidden font-mono text-[11px] text-ink-subtle lg:block">
                                         <?= $online
                                             ? e('usr.online_now')
                                             : ($seen ? e('usr.last_seen', ['when' => date('d M H:i', $seen)]) : '') ?>
@@ -473,9 +510,21 @@ include 'partials/shell.php';
                                     </span>
                                 </span>
 
-                                <!-- Everything else about this unit is one tap
-                                     away, and the chevron is what says so. -->
-                                <button type="button" data-open-sheet
+                                <!--
+                                    Everything else about this unit is one tap
+                                    away, and the chevron is what says so.
+
+                                    The button is 28px wide inside a row of
+                                    around 356, and it used to be the only way
+                                    in: a thumb had to find the chevron exactly.
+                                    It stretches across the whole cell now
+                                    (data-sheet-row), so anywhere on the row
+                                    opens the sheet -- the chevron stays as the
+                                    thing that says the row is tappable, and the
+                                    text above it keeps its own selection
+                                    because the stretched layer sits behind it.
+                                -->
+                                <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-unit-sheet"
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
@@ -495,16 +544,35 @@ include 'partials/shell.php';
 
                         <td data-cell="channel" data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($primary): ?>
-                                <span class="block truncate text-sm text-ink"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                <!--
+                                    The same chip as FITUR and DUPLEX, in brand:
+                                    a default channel is a live setting, and the
+                                    row now reads as one family of controls
+                                    rather than one column of prose beside three
+                                    of chips. max-w keeps a long channel name
+                                    from widening the column past its share.
+                                -->
+                                <span class="am2-chip inline-flex max-w-full items-center border-brand
+                                             bg-brand/10 text-brand">
+                                    <span class="truncate"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
+                                </span>
                                 <?php if (count($chans) > 1): ?>
-                                    <span class="block font-mono text-[10px] text-ink-subtle">
+                                    <span class="mt-1 block font-mono text-[11px] text-ink-subtle">
                                         <?= e('usr.more_channels', ['n' => count($chans) - 1]) ?>
                                     </span>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <span class="inline-flex items-center gap-1.5 rounded-control border border-warn/40
-                                             bg-warn/5 px-2 py-1 font-mono text-[9px] uppercase
-                                             tracking-[0.1em] text-warn">
+                                <!--
+                                    The shared chip, not a copy of it. This
+                                    column reproduced the chip's padding and
+                                    type scale by hand and had already drifted
+                                    from the other three. Warning rather than
+                                    brand: a unit with no default channel cannot
+                                    talk to anyone, which is a fault, not a
+                                    setting that happens to be off.
+                                -->
+                                <span class="am2-chip inline-flex items-center gap-1.5 border-warn/40
+                                             bg-warn/5 text-warn">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('usr.no_channel') ?>
                                 </span>
                             <?php endif; ?>
@@ -563,27 +631,31 @@ include 'partials/shell.php';
                             </button>
                         </td>
 
+                        <!--
+                            Same chip as the three status columns, so the row
+                            reads as one family of controls rather than four
+                            inventions. The colours stay different on purpose:
+                            these are verbs, not states, so they are neutral
+                            until hovered, and delete is the one thing here that
+                            must never be mistaken for a status that happens to
+                            be on.
+                        -->
                         <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
-                            <span class="inline-flex items-center gap-2">
+                            <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
+                                <?php $actCls = 'am2-chip inline-flex items-center border-edge text-ink-muted'; ?>
                                 <button type="button" data-row-channels
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
-                                               transition-colors duration-[var(--duration-micro)]
-                                               hover:border-brand hover:text-brand">
+                                        class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.channels') ?>
                                 </button>
 
                                 <button type="button" data-row-edit
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                               text-[9px] uppercase tracking-[0.12em] text-ink-muted
-                                               transition-colors duration-[var(--duration-micro)]
-                                               hover:border-brand hover:text-brand">
+                                        class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.edit') ?>
                                 </button>
 
@@ -592,10 +664,8 @@ include 'partials/shell.php';
                                     <?= am2_csrf_field() ?>
                                     <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
                                     <button type="submit"
-                                            class="h-8 rounded-control border border-edge px-2.5 font-mono
-                                                   text-[9px] uppercase tracking-[0.12em] text-bad
-                                                   transition-colors duration-[var(--duration-micro)]
-                                                   hover:border-bad/50 hover:bg-bad/10">
+                                            class="am2-chip inline-flex items-center border-edge text-bad
+                                                   hover:border-bad/50! hover:bg-bad/10">
                                         <?= e('usr.delete') ?>
                                     </button>
                                 </form>
@@ -619,11 +689,11 @@ $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-c
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
           . ' transition-colors duration-[var(--duration-micro)] hover:border-edge-strong'
           . ' focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25';
-$labelCls = 'font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle';
-$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[10px] font-semibold'
+$labelCls = 'font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle';
+$btnGhost = 'h-11 rounded-control border border-edge px-4 font-mono text-[11px] font-semibold'
           . ' uppercase tracking-[0.15em] text-ink-muted transition-colors'
           . ' duration-[var(--duration-micro)] hover:text-ink';
-$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semibold uppercase'
+$btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold uppercase'
           . ' tracking-[0.15em] text-slate-950 transition-colors duration-[var(--duration-micro)]'
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
@@ -692,7 +762,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             <?= am2_csrf_field() ?>
             <header class="border-b border-edge px-5 py-4">
                 <h2 id="am2-edit-label" class="text-base font-semibold text-ink"><?= e('usr.edit_title') ?></h2>
-                <p data-edit-unit class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+                <p data-edit-unit class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
             </header>
             <div class="space-y-4 p-5">
                 <input type="hidden" name="edit_id" id="edit_id" value="">
@@ -720,7 +790,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-channels-label" class="text-base font-semibold text-ink"><?= e('usr.channels_title') ?></h2>
-            <p data-channels-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-channels-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="max-h-[50vh] overflow-y-auto p-5">
             <?php if (!$all_channels): ?>
@@ -754,7 +824,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-duplex-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_duplex_title') ?></h2>
-            <p data-duplex-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-duplex-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="flex gap-2 p-5">
             <button type="button" data-apply-duplex="HALF DUPLEX"
@@ -774,7 +844,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
             <h2 id="am2-feature-label" class="text-base font-semibold text-ink"><?= e('usr.bulk_feature_title') ?></h2>
-            <p data-feature-scope class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand"></p>
+            <p data-feature-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
         </header>
         <div class="divide-y divide-edge">
             <?php foreach ($features as [$key, $labelKey, $allowed]): ?>
@@ -783,13 +853,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
                     <span class="flex gap-1.5">
                         <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="false"
                                 <?= $allowed ? '' : 'disabled' ?>
-                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[11px]
                                        uppercase tracking-[0.15em] text-ink-muted transition-colors
                                        duration-[var(--duration-micro)] hover:border-bad hover:text-bad
                                        disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.off') ?></button>
                         <button type="button" data-apply-feature="<?= $key ?>" data-apply-value="true"
                                 <?= $allowed ? '' : 'disabled' ?>
-                                class="h-9 rounded-control border border-edge px-3 font-mono text-[10px]
+                                class="h-9 rounded-control border border-edge px-3 font-mono text-[11px]
                                        uppercase tracking-[0.15em] text-ink-muted transition-colors
                                        duration-[var(--duration-micro)] hover:border-brand hover:text-brand
                                        disabled:cursor-not-allowed disabled:opacity-40"><?= e('usr.on') ?></button>
@@ -819,7 +889,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
         <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
             <button type="button" data-hs-overlay="#am2-bulk-delete" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
             <button type="button" data-delete-apply disabled
-                    class="h-11 rounded-control bg-bad px-4 font-mono text-[10px] font-semibold uppercase
+                    class="h-11 rounded-control bg-bad px-4 font-mono text-[11px] font-semibold uppercase
                            tracking-[0.15em] text-white transition-colors duration-[var(--duration-micro)]
                            hover:bg-bad/90 disabled:cursor-not-allowed disabled:opacity-40">
                 <?= e('usr.bulk_delete') ?>
@@ -857,20 +927,38 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
             </button>
         </header>
 
+        <!--
+            Label beside the value, on a narrower gutter.
+
+            Stacking the label above cost a whole line per row for four
+            characters of text, and with 44px chips that made the sheet 61% of a
+            390px screen. The label sits back alongside instead, on 4rem rather
+            than 5, and the row is only as tall as the chips it holds.
+        -->
         <div class="divide-y divide-edge">
             <?php foreach ([['channel', 'usr.channel'], ['duplex', 'usr.duplex'],
                             ['features', 'usr.features']] as [$slot, $label]): ?>
-                <div class="flex items-baseline gap-4 px-5 py-3.5">
-                    <span class="w-20 shrink-0 font-mono text-[10px] uppercase tracking-[0.15em]
+                <div class="flex items-center gap-3 px-5 py-2">
+                    <span class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em]
                                  text-ink-subtle"><?= e($label) ?></span>
-                    <span data-slot="<?= $slot ?>" class="flex min-w-0 flex-1 flex-wrap gap-1.5"></span>
+                    <span data-slot="<?= $slot ?>"
+                          class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"></span>
                 </div>
             <?php endforeach; ?>
         </div>
 
+        <!--
+            The verbs on one row. Three of them wrapped to two lines in a
+            two-column grid, which added ninety pixels to a sheet reached with
+            one thumb; sharing a single row keeps them all within reach of it.
+        -->
         <footer data-slot="actions"
-                class="flex flex-wrap items-center justify-end gap-2 border-t border-edge
-                       bg-card-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"></footer>
+                class="flex items-stretch gap-2 border-t border-edge bg-card-muted px-5 py-3
+                       pb-[max(0.75rem,env(safe-area-inset-bottom))]
+                       [&>span]:flex [&>span]:w-full [&>span]:gap-2
+                       [&_form]:contents [&_button]:min-h-11 [&_button]:flex-1
+                       [&_button]:basis-0 [&_button]:justify-center [&_button]:px-1
+                       [&_[data-row-result]]:hidden"></footer>
     </div>
 </div>
 
@@ -1067,6 +1155,24 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[10px] font-semib
 
     // Preline owns the closing; this only puts the furniture back.
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
+
+    /*
+     * The sheet only exists below lg, and a window can cross that line while it
+     * is open.
+     *
+     * `lg:hidden` takes the panel away, but Preline's backdrop is a child of
+     * body and knows nothing about the breakpoint: it stayed at full opacity
+     * with the body still scroll-locked, so the page was covered by a grey
+     * sheet belonging to nothing visible. Closing through Preline is what
+     * removes the backdrop, restores the scroll and returns the borrowed cells
+     * to their row -- doing any of that by hand would leave the other two.
+     */
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeSheetAboveLg = () => {
+        if (!desktop.matches || !sheet?.classList.contains('opened')) return;
+        window.HSOverlay?.close(sheet);
+    };
+    desktop.addEventListener('change', closeSheetAboveLg);
 
     /**
      * The roster is live. The same endpoint the shell polls and the map reads,

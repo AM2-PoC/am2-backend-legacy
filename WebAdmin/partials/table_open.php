@@ -81,11 +81,11 @@ $curChip = (string) ($_GET['chip'] ?? '');
                 <?php foreach ($chips as $chip):
                     $on = $curChip === $chip['value']; ?>
                     <a href="<?= htmlspecialchars(am2_table_qs(['chip' => $chip['value'] ?: null])) ?>"
-                       class="inline-flex h-9 items-center gap-1.5 rounded-control border px-3 font-mono
-                              text-[10px] uppercase tracking-[0.15em] no-underline! transition-colors
+                       class="inline-flex h-11 items-center gap-1.5 rounded-control border px-3 font-mono
+                              text-[11px] uppercase tracking-[0.15em] no-underline! transition-colors
                               duration-[var(--duration-micro)]
                               <?= $on ? 'border-brand bg-brand/10 text-brand!'
-                                      : 'border-edge text-ink-muted! hover:border-edge-strong hover:text-ink!' ?>">
+                                      : 'border-edge text-ink-muted! hover:border-brand hover:text-brand!' ?>">
                         <?php if (!empty($chip['dot'])): ?>
                             <span class="h-1.5 w-1.5 rounded-full <?= $chip['dot'] ?>" aria-hidden="true"></span>
                         <?php endif; ?>
@@ -103,7 +103,7 @@ $curChip = (string) ($_GET['chip'] ?? '');
                 <?= $tableAction ?>
             <?php endif; ?>
 
-            <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <span class="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e($countKey ?? 'tbl.rows', ['n' => number_format($total)]) ?>
             </span>
         </div>
@@ -115,8 +115,16 @@ $curChip = (string) ($_GET['chip'] ?? '');
         it was wrong on the log page once.
     -->
     <div class="max-h-[calc(100dvh-20rem)] overflow-auto">
-        <table class="data-table am2-roster w-full text-sm">
-            <thead class="sticky top-0 z-10 bg-card-muted text-left font-mono text-[10px]
+        <!--
+            The wrapper scrolls, but a table that is only w-full has nothing to
+            scroll: the browser shrinks the columns to fit instead, which is how
+            the action buttons ended up overlapping at 1032px. A minimum width
+            makes the overflow real. Desktop only -- below lg the table is a
+            card list, and a minimum width there would reintroduce the very
+            horizontal scroll the cards exist to avoid.
+        -->
+        <table class="data-table am2-roster w-full text-sm lg:min-w-[56rem]">
+            <thead class="sticky top-0 z-10 bg-card-muted text-left font-mono text-[11px]
                           uppercase tracking-[0.15em] text-ink-subtle">
                 <tr>
                     <?php if ($selectable): ?>

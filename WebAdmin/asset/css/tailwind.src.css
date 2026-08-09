@@ -154,6 +154,49 @@
 }
 
 /*
+ * The theme arriving as a ripple from the toggle.
+ *
+ * The suppression above is still what stops a few hundred controls easing to
+ * new colours on their own schedules. The change is animated one level up
+ * instead: startViewTransition photographs the page, the attribute flips, and
+ * the browser cross-fades between two still images -- so this is one shape
+ * growing, not a page full of elements moving.
+ *
+ * The whole document is the named element, because a theme is not a region of
+ * the page. The origin is written on :root by the click handler, so the circle
+ * starts under the button that caused it.
+ *
+ * Named only while the swap is happening, and for the same reason the page
+ * transition is: view-transition-name makes a stacking context, and a permanent
+ * one on the root would put every dialogue underneath Preline's backdrop again.
+ * It would also claim the root snapshot away from the page transition, which
+ * uses it on every navigation.
+ */
+.am2-theme-switching { view-transition-name: am2-theme; }
+
+::view-transition-old(am2-theme) {
+    /* Pinned. Animating both snapshots slides them against each other; the old
+       theme simply waits underneath while the new one is drawn over it. */
+    animation: none;
+    mix-blend-mode: normal;
+}
+::view-transition-new(am2-theme) {
+    animation: am2-theme-ripple var(--duration-theme) var(--ease-standard) both;
+    mix-blend-mode: normal;
+}
+
+/*
+ * Radius: the far corner of the viewport, so the circle always finishes by
+ * covering the screen wherever the toggle happens to be. --am2-theme-r is set
+ * with the origin.
+ */
+@keyframes am2-theme-ripple {
+    from { clip-path: circle(0 at var(--am2-theme-x, 50%) var(--am2-theme-y, 0)); }
+    to   { clip-path: circle(var(--am2-theme-r, 150vmax)
+                             at var(--am2-theme-x, 50%) var(--am2-theme-y, 0)); }
+}
+
+/*
  * Motion.
  *
  * The rule this codebase follows: motion says something about state, hierarchy
@@ -173,13 +216,21 @@
 
     --duration-micro: 140ms;   /* hover, focus, checked        */
     --duration-pop: 160ms;     /* dropdown, popover, tooltip   */
-    /* No --duration-modal: Motion owns the dialogue timing now (T.modal
-       in am2-ui.js). It was read only by the x-transition attributes on
-       the pages that have since been rebuilt, and Tailwind drops a theme
-       variable nothing references -- so the declaration survived as a
-       second copy of a number that no longer had a reader. */
-    --duration-drawer: 220ms;  /* sidebar rail, mobile drawer  */
+    /* Dialogues are CSS again, so this has a reader again. It was dropped
+       when Motion owned the timing; the animations below reference it, and
+       an undefined custom property makes an animation last zero seconds --
+       which is indistinguishable from the instant appearance being fixed. */
+    --duration-modal: 180ms;   /* dialogue, sheet, scrim       */
+    --duration-drawer: 220ms;  /* sidebar rail, width only     */
+    /*
+     * The mobile drawer crosses further than the rail collapses -- 272px from
+     * off-screen against the rail's 200px in place -- so the same duration puts
+     * more speed on screen and reads as a snap. Graded by distance, like every
+     * other duration here.
+     */
+    --duration-drawer-panel: 320ms;
     --duration-page: 150ms;    /* full-page view transition    */
+    --duration-theme: 420ms;   /* theme ripple, corner to corner */
     --duration-exit: 120ms;
 }
 
@@ -254,14 +305,75 @@
  */
 @view-transition { navigation: auto; }
 
-::view-transition-old(root) {
-    animation-duration: var(--duration-exit);
-    animation-timing-function: var(--ease-exit);
+/*
+ * The chrome holds still.
+ *
+ * Cross-fading the root meant cross-fading the sidebar and the header against
+ * pixel-identical copies of themselves on every navigation. Nothing moved, but
+ * everything dimmed and came back, and that flicker across the whole viewport
+ * is what read as a blink. Naming them takes each out of the root snapshot and
+ * gives it its own group, which the rules below then tell not to animate at
+ * all. What is left moving is the one thing that actually changed.
+ *
+ * A name must belong to exactly one element per document, or the browser
+ * discards the transition entirely. The top bar is therefore addressed as the
+ * shell's own child: a bare `header` would also claim every card header on
+ * users.php and admin_panel.php, which have several each.
+ *
+ * Named only while a navigation is actually in flight.
+ *
+ * view-transition-name creates a stacking context on whatever carries it. Left
+ * on permanently, `main` became one -- and every dialogue in this panel is
+ * markup inside main, while Preline builds its backdrop as a child of body. So
+ * the overlay's z-80 stopped being comparable to the backdrop's z-79, the
+ * backdrop covered the dialogue, and every click on it was swallowed. The
+ * dialogue still rendered, which is what made it look like a session fault
+ * rather than a paint order.
+ *
+ * The class is added just before the page leaves and removed as soon as the
+ * next one has revealed, so the names exist for the frames that need them and
+ * at no other time.
+ */
+.am2-navigating #am2-sidebar          { view-transition-name: am2-rail; }
+.am2-navigating #am2-content > header { view-transition-name: am2-topbar; }
+.am2-navigating main                  { view-transition-name: am2-page; }
+
+::view-transition-group(am2-rail),
+::view-transition-group(am2-topbar) {
+    animation: none;
 }
-::view-transition-new(root) {
-    animation-duration: var(--duration-page);
-    animation-timing-function: var(--ease-enter);
+
+/* The old page leaves quickly; waiting for something to go is waiting. */
+::view-transition-old(am2-page) {
+    animation: am2-page-leave var(--duration-exit) var(--ease-exit) both;
 }
+::view-transition-new(am2-page) {
+    animation: am2-page-enter var(--duration-page) var(--ease-enter) both;
+}
+
+/*
+ * Eight pixels and a fade. Far enough that the eye reads arrival, short enough
+ * that it never becomes a slide -- and it is one element travelling, not the
+ * whole viewport changing brightness.
+ */
+@keyframes am2-page-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes am2-page-leave {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/*
+ * The initial state of a revealed section, in CSS so it is true at first paint.
+ *
+ * It used to be set from the deferred bundle: the section painted, then dropped
+ * to invisible, then faded back. Gated on .am2-js because a browser that never
+ * runs the bundle must get a readable page rather than a permanently blank one
+ * -- without script the class is absent and the section is simply visible.
+ */
+.am2-js [data-reveal] { opacity: 0; }
 
 /*
  * Reduced motion. Transform, stagger and looping animation go; colour changes
@@ -281,8 +393,54 @@
         animation: none;
         opacity: 1;
     }
-    ::view-transition-old(root),
-    ::view-transition-new(root) {
+    /* Every group, not just root: the named ones carry the page movement now,
+       and silencing root alone left them animating. */
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none;
+    }
+    /*
+     * A section that is hidden waiting for an entrance that will not play is a
+     * section nobody can read. Under reduced motion it is simply there.
+     */
+    .am2-js [data-reveal] {
+        opacity: 1;
+    }
+    /*
+     * A dialogue is simply there. Written as opacity 1 rather than as
+     * `transition: none` on the closed state, because the closed state is what
+     * holds opacity 0 -- suppressing only the transition would leave the panel
+     * invisible instead of instant.
+     */
+    /* A theme change is a change of colour, not a thing that travels. Under
+       reduced motion it simply happens -- and `animation: none` matters here
+       rather than merely tidying, because the ripple's first frame is a
+       zero-radius clip: left running at 0.01ms it would still flash the page
+       away for a frame. */
+    ::view-transition-new(am2-theme),
+    ::view-transition-old(am2-theme) {
+        animation: none;
+        clip-path: none;
+    }
+    .hs-overlay.opened [data-am2-panel],
+    #am2-unit-sheet.opened [data-am2-panel],
+    #am2-sidebar.opened,
+    [data-bulk-bar]:not([hidden]) {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+    /* The pre-open state hides the scrim to close Preline's two-step reveal.
+       With no animation to bring it back, nothing may start hidden at all. */
+    .hs-overlay:not(.hidden),
+    .hs-overlay:not(.hidden) [data-am2-panel] {
+        opacity: 1 !important;
+    }
+    /* And nothing is held open to leave, because there is no exit to wait for. */
+    .hs-overlay.am2-closing,
+    [data-bulk-bar][data-bulk-bar].am2-closing,
+    #am2-sidebar.am2-closing {
         animation: none;
     }
 }
@@ -317,6 +475,91 @@
  */
 #am2-sidebar { transition-property: none; }
 
+/*
+ * The drawer slides, without transitioning.
+ *
+ * The rule above has to stay -- Preline waits on transitionend before it
+ * destroys the backdrop, and a drawer that transitions a property which does
+ * not change leaves that wait unfinished. But with no motion at all the drawer
+ * vanished in a single frame while its backdrop lingered: measured 3ms to
+ * hidden, 149ms until the scrim went, so the page sat dimmed with nothing on it
+ * for a sixth of a second.
+ *
+ * An animation is not a transition, so Preline's wait is unaffected while the
+ * panel still travels. Opening only: closing is driven by Preline removing the
+ * class, and there is no frame left to animate in once `hidden` is back.
+ */
+@media (max-width: 1023px) {
+    /*
+     * The rail's own curve, over a longer time.
+     *
+     * An earlier attempt swapped the curve for --ease-standard, reading the
+     * complaint as a lurch. It was the speed: the desktop rail collapse is the
+     * motion this is meant to match, and it uses --ease-enter over 220ms to
+     * travel 200px in place. The drawer covers 272px from off-screen, so the
+     * same duration puts noticeably more speed on screen. Same curve, more
+     * time -- graded by distance, like every other duration here.
+     */
+    #am2-sidebar.opened {
+        animation: am2-drawer-in var(--duration-drawer-panel) var(--ease-enter) both;
+    }
+    @keyframes am2-drawer-in {
+        from { transform: translateX(-100%); }
+        to   { transform: translateX(0); }
+    }
+
+    /*
+     * And it leaves the way it came.
+     *
+     * Closing sets `hidden` in one frame -- display:none, so the drawer simply
+     * stopped existing while Preline spent another 150ms fading its backdrop:
+     * measured 3ms to gone, 149ms until the scrim cleared. A sixth of a second
+     * of dimmed page with nothing on it, which is what reads as the drawer
+     * having hung and then vanished.
+     *
+     * am2-ui.js holds it open with .am2-closing for the length of this
+     * animation, so the panel slides back out under the scrim rather than being
+     * cut. The scrim's own fade is shortened to land at the same time.
+     */
+    #am2-sidebar.am2-closing {
+        display: flex !important;
+        animation: am2-drawer-out var(--duration-drawer-panel) var(--ease-exit) both;
+    }
+    @keyframes am2-drawer-out {
+        from { transform: translateX(0); }
+        to   { transform: translateX(-100%); }
+    }
+    /*
+     * The scrim arrives with the drawer rather than ahead of it.
+     *
+     * Preline paints its backdrop at full opacity in one step, so the page went
+     * dark while the drawer was still entirely off-screen and the panel then
+     * slid into an already-black room. Fading it over the same duration means
+     * the room darkens as the drawer crosses it, which is the part that was
+     * missing from "smooth" -- the travel itself was already at 60fps.
+     */
+    .hs-overlay-backdrop {
+        /*
+         * Delayed by a frame's worth, because Preline builds the backdrop
+         * before it adds `opened` to the drawer -- measured 50ms apart, so the
+         * scrim was already a third of the way dark before the panel had moved
+         * at all. The delay lines the two up; the duration matches so they
+         * finish together.
+         *
+         * `backwards`, never `both`. `both` holds the animation's final frame
+         * on the element forever, which outranks the `opacity-0` class Preline
+         * adds to fade the scrim out -- so the backdrop stayed at full opacity,
+         * the transition it waits on never fired, and the element was never
+         * removed. A grey sheet over the page with nothing behind it, which is
+         * the stuck backdrop this reintroduced. `backwards` applies the opening
+         * frame before the animation starts and lets go at the end, leaving the
+         * class free to do its job.
+         */
+        animation: am2-scrim-in var(--duration-drawer-panel) var(--ease-enter) 50ms backwards;
+        transition-duration: var(--duration-drawer-panel) !important;
+    }
+}
+
 @media (min-width: 1024px) {
     #am2-sidebar {
         transition-property: width;
@@ -345,10 +588,19 @@
  * card sits on #f8fafc behind a #e2e8f0 border, which is three shades of the
  * same thing; the stronger border and the real shadow are what separate them.
  */
+/*
+ * Two shadows, not one.
+ *
+ * A single wide blur reads as a sticker laid on the page. A tight contact
+ * shadow directly under the edge plus a wider ambient one is how a real surface
+ * sits above another: the first says it is touching, the second says there is
+ * air between them.
+ */
 .am2-surface {
     background: var(--color-surface);
     border: 1px solid var(--color-border-strong);
-    box-shadow: var(--am2-card-shadow);
+    box-shadow: 0 1px 2px rgba(var(--shadow-color), 0.06),
+                var(--am2-card-shadow);
 }
 [data-theme="dark"] .am2-surface {
     border-color: var(--color-border);
@@ -356,6 +608,27 @@
 
 /* The console's own detail: a hairline of brand across the top of the card it
  * is asking you to fill in. */
+/*
+ * The command palette's search row.
+ *
+ * It is the top edge of the card, full width inside a 20px radius with overflow
+ * hidden, so the baseline focus ring (2px, offset 2px) was clipped at both ends
+ * by the corners and pressed against the card edge -- an amber rectangle with
+ * its ends cut off. The row shows focus on the rule it already has instead: the
+ * hairline beneath it thickens and takes the brand colour, which is a shape
+ * that fits inside what it is drawn in.
+ *
+ * :focus-within, because the input is what receives focus and the row is what
+ * draws it.
+ */
+.am2-palette-field {
+    box-shadow: inset 0 -1px 0 var(--color-border);
+    transition: box-shadow var(--duration-micro) var(--ease-standard);
+}
+.am2-palette-field:focus-within {
+    box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
 .am2-surface-accent { position: relative; overflow: hidden; }
 .am2-surface-accent::before {
     content: "";
@@ -364,6 +637,26 @@
     top: 0;
     height: 2px;
     background: var(--color-primary);
+    transition: height var(--duration-micro) var(--ease-standard),
+                opacity var(--duration-micro) var(--ease-standard);
+}
+
+/*
+ * A card that can be clicked answers on the hairline it is already marked by.
+ *
+ * The lift and the border change are the shared .am2-clickable behaviour; this
+ * adds the one thing specific to an accented card -- the accent thickens.
+ * Cheaper than it looks: height on a 2px absolutely-positioned pseudo-element
+ * lays out nothing else on the card.
+ */
+.am2-surface-accent.am2-clickable:hover::before,
+a.am2-surface-accent:hover::before {
+    height: 3px;
+}
+.am2-surface-accent.am2-clickable:hover,
+a.am2-surface-accent:hover {
+    box-shadow: 0 1px 2px rgba(var(--shadow-color), 0.08),
+                var(--am2-shadow);
 }
 
 /* A marker with no label is only its dot, so it must not reserve label space. */
@@ -392,14 +685,281 @@ tr[data-row-id]:focus-visible {
     border-width: 1px;
     padding: 0.25rem 0.5rem;
     font-family: var(--font-mono);
-    font-size: 9px;
+    /* 10px, not 9. Uppercase mono with 0.1em of tracking has no x-height left
+       to resolve at nine, and these chips carry state an operator reads across
+       a whole roster -- 190 of them on one page, measured. */
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     transition: color var(--duration-micro), background-color var(--duration-micro),
                 border-color var(--duration-micro);
 }
 .am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
+
+/*
+ * Hover is the brand colour, except where the chip is already wearing it.
+ *
+ * --color-primary is #f59e0b, an amber, and so is every chip that shows a live
+ * or warning state. So the original rule was right for most of the roster and
+ * invisible on exactly the chips that are the same colour as the hover -- the
+ * brand border landed on a brand-coloured chip and nothing appeared to happen.
+ *
+ * Two attempts at a general answer made it worse: currentColor is the same
+ * colour by definition, and mixing every chip towards its own text took the
+ * amber hover away from the chips it was working on. The narrow fix is the
+ * correct one -- keep the brand hover, and give the amber chips the one thing
+ * that does show against amber.
+ */
 .am2-chip:enabled:hover { border-color: var(--color-primary); }
+
+/*
+ * The amber chips: a darker edge and a little more fill.
+ *
+ * text-warn and text-brand are the two that already sit in the hover's own
+ * hue. --color-border-strong is a neutral, so the edge reads as a change
+ * without the chip pretending to have become a different state, and the extra
+ * background tint is what carries it at this size, where a one-pixel border
+ * barely registers.
+ */
+.am2-chip.text-warn:enabled:hover,
+.am2-chip.text-brand:enabled:hover {
+    border-color: var(--color-border-strong);
+    background-color: color-mix(in oklab, currentColor 18%, transparent);
+}
+
+/*
+ * A chip that is a control has to be hittable.
+ *
+ * The type stays small -- these are dense status columns and a bigger label
+ * would cost a column -- so the target is made out of the box rather than the
+ * text.
+ * 32px was the shipped height; WCAG 2.5.5 asks for 44, and this console is used
+ * one-handed in a moving vehicle, which is the case that argues for the larger
+ * number rather than the 24px floor. Scoped to the interactive cases because
+ * the same class is also a static badge, and a 44px badge is just a gap.
+ */
+.am2-chip:where(button, a, [role="button"]) {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/*
+ * Where the keyboard is, on everything.
+ *
+ * Focus was styled on a handful of components and left to the browser default
+ * everywhere else, and that default is close to invisible against these
+ * surfaces. One rule for anything focusable is the only version that stays true
+ * as pages are added. :focus-visible rather than :focus, so a mouse click does
+ * not leave a ring behind.
+ */
+:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    /*
+     * No border-radius here. It is not part of the outline -- it changes the
+     * element's own geometry and how its background is clipped -- so every
+     * square focusable thing (a table row with tabindex, a checkbox, a
+     * summary) rounded its corners the moment it took keyboard focus and
+     * squared them again on blur. Browsers already follow an element's own
+     * radius when drawing the outline, so it bought nothing either.
+     */
+}
+
+/*
+ * Opting out has to actually work.
+ *
+ * Tailwind's focus-visible:outline-none only sets outline-style, so against the
+ * shorthand above the width and colour survived and the ring still drew -- which
+ * is how the palette's search field kept its clipped rectangle after being told
+ * not to have one. A control that marks its own focus says so here.
+ */
+.am2-palette-field :focus-visible {
+    outline: none;
+}
+
+/*
+ * A pointer on anything that acts when clicked.
+ *
+ * Browsers give <button> cursor:default and <a href> a pointer, so the
+ * navigation read as clickable and none of the controls did -- measured
+ * cursor:default on every row action, every chip and the sheet trigger.
+ * :disabled keeps its own cursor from the component rules above.
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary {
+    cursor: pointer;
+}
+
+/*
+ * Dialogues.
+ *
+ * Both kinds appeared instantly -- transition-duration measured 0s, transform
+ * none -- so neither said where it came from. Preline adds `opened` to the
+ * overlay once it is visible, which is the hook these hang on: the closed state
+ * is the resting rule and `opened` is the arrival.
+ *
+ * The centred modal comes forward a little; the sheet is docked to the bottom
+ * of the screen, so it rises from there. Anything else contradicts where each
+ * one sits.
+ */
+/*
+ * Written as a keyframe rather than as a transition between two classes.
+ *
+ * Preline removes `hidden` and adds `opened` within the same frame, so a
+ * transition has no earlier state to start from -- measured: opacity went 0.00
+ * to 1.00 between one frame and the next, which is the instant appearance this
+ * is meant to replace. An animation runs from its own `from`, so it does not
+ * depend on the two class changes being separated in time.
+ */
+/*
+ * The scrim is what flashed, not the panel.
+ *
+ * Two attempts animated the panel and neither touched the complaint, because
+ * the overlay element carries the dark backdrop itself (bg-slate-950/50) and
+ * Preline reveals it a full frame before it adds `opened` -- measured: at 2ms
+ * the scrim was already at opacity 1 over the whole viewport while the panel
+ * was still at 0, and it stayed that way for ~80ms. A dark screen with nothing
+ * on it, then a dialogue. That is the pulse.
+ *
+ * So the overlay fades too, and it is the thing that has to start hidden.
+ *
+ * Not the sidebar. It is an .hs-overlay too, but it is a solid panel rather
+ * than a scrim over one -- it has no backdrop of its own to flash, and its
+ * entrance animates transform alone. Held at opacity 0 by this rule it opened
+ * fully laid out and completely invisible, which is the drawer "disappearing".
+ */
+.hs-overlay:not(.hidden):not(#am2-sidebar) {
+    opacity: 0;
+}
+.hs-overlay.opened:not(#am2-sidebar) {
+    animation: am2-scrim-in var(--duration-modal) var(--ease-enter) both;
+}
+@keyframes am2-scrim-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.hs-overlay.opened [data-am2-panel] {
+    animation: am2-dialog-in var(--duration-modal) var(--ease-enter) both;
+}
+@keyframes am2-dialog-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/*
+ * The sheet is docked to the bottom of the screen, so it rises from there.
+ * Percent rather than pixels: it travels its own height whatever that is, which
+ * is what makes a short sheet and a tall one read the same.
+ */
+#am2-unit-sheet.opened [data-am2-panel],
+#am2-channel-sheet.opened [data-am2-panel],
+#am2-access-sheet.opened [data-am2-panel],
+#am2-admin-sheet.opened [data-am2-panel] {
+    animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
+}
+@keyframes am2-sheet-in {
+    from { opacity: 0; transform: translateY(12%); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/*
+ * Leaving.
+ *
+ * Preline sets `hidden` -- display:none -- in a single frame, so nothing can be
+ * animated out of an overlay by CSS alone. am2-ui.js holds the panel open for
+ * the length of this animation by adding .am2-closing, and removes it when the
+ * animation ends. The dialogue sinks back the way it came; the sheet returns to
+ * the edge it rose from.
+ */
+.hs-overlay.am2-closing {
+    display: block !important;
+    animation: am2-scrim-out var(--duration-exit) var(--ease-exit) both;
+}
+.hs-overlay.am2-closing [data-am2-panel] {
+    animation: am2-dialog-out var(--duration-exit) var(--ease-exit) both;
+}
+#am2-unit-sheet.am2-closing [data-am2-panel],
+#am2-channel-sheet.am2-closing [data-am2-panel],
+#am2-access-sheet.am2-closing [data-am2-panel],
+#am2-admin-sheet.am2-closing [data-am2-panel] {
+    animation: am2-sheet-out var(--duration-drawer) var(--ease-exit) both;
+}
+@keyframes am2-scrim-out  { from { opacity: 1; } to { opacity: 0; } }
+@keyframes am2-dialog-out {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(8px) scale(0.99); }
+}
+@keyframes am2-sheet-out {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(12%); }
+}
+
+/*
+ * The bulk bar leaves downward too, held open by the same helper.
+ *
+ * The entrance rule matches this element as well, and the two are the same
+ * weight -- so whichever is written last wins, and the bar kept replaying its
+ * arrival while it was supposed to be leaving. The attribute selector on the
+ * same element settles it without an !important on the animation itself.
+ */
+[data-bulk-bar][data-bulk-bar].am2-closing {
+    display: flex !important;
+    animation: am2-sheet-out var(--duration-exit) var(--ease-exit) both;
+}
+
+/*
+ * The bulk bar arrives the same way the sheet does.
+ *
+ * It is docked to the bottom of the viewport and was toggled with `hidden`
+ * alone, so it blinked into place the moment a row was ticked -- a different
+ * grammar from every other panel on the page for no reason other than that it
+ * is not a Preline overlay. Same travel, same curve.
+ */
+[data-bulk-bar]:not([hidden]) {
+    animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
+}
+
+/*
+ * The row is the tap target, not the chevron.
+ *
+ * The trigger measured 28x36 in a 356px row, so opening a unit meant hitting a
+ * thumb-width sliver at the end of the line. ::before stretches the button's
+ * hit area over the whole cell without moving the chevron or nesting anything
+ * inside the row -- a button inside a button is invalid, and wrapping the row
+ * in an anchor would have taken the checkbox and the chips with it.
+ *
+ * Behind the content (z-index 0 against the raised text), so selecting a call
+ * sign still works and the chips stay clickable in their own right.
+ */
+@media (max-width: 1023px) {
+    /*
+     * The row is the containing block, not the cell.
+     *
+     * An earlier attempt anchored this to td[data-cell="unit"], but the roster
+     * turns rows into grids and most cells into display:none, so that td never
+     * became a containing block and the stretched area escaped into the row
+     * below -- one row's hit layer sat on top of the next row's chevron and
+     * made it unclickable. The tr is laid out, so it is the honest anchor.
+     */
+    .data-table.am2-roster tbody tr { position: relative; }
+    .data-table.am2-roster tbody tr:has([data-sheet-row]) [data-sheet-row]::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+    }
+    /* The checkbox keeps its own hit area: selecting a unit and opening it are
+       different intentions, and the sheet must not swallow the first. */
+    .data-table.am2-roster td[data-cell="select"] {
+        position: relative;
+        z-index: 1;
+    }
+}
 
 /*
  * The roster on a narrow screen.
@@ -420,11 +980,21 @@ tr[data-row-id]:focus-visible {
      * out there and what is wrong. Everything else is one tap away in the sheet,
      * which is where the controls finally have room to be tapped.
      */
-    .am2-roster { display: block; width: 100%; }
-    .am2-roster thead { display: none; }
-    .am2-roster tbody { display: block; }
+    /*
+     * Every selector here is written .data-table.am2-roster rather than
+     * .am2-roster alone. Both classes sit on the same table, and the legacy
+     * card transform in am2-ui.css claims the same elements at .data-table
+     * tbody tr (0-1-2) -- one class and two types. .am2-roster tr is 0-1-1 and
+     * loses, !important on both sides included, which is what produced the tall
+     * near-empty cards on every roster page below lg. Two classes and one type
+     * is 0-2-1: it wins on the class column without widening the legacy system
+     * or touching a table that is not a roster.
+     */
+    .data-table.am2-roster { display: block; width: 100%; }
+    .data-table.am2-roster thead { display: none; }
+    .data-table.am2-roster tbody { display: block; }
 
-    .am2-roster tr {
+    .data-table.am2-roster tr {
         display: grid;
         grid-template-columns: 1.75rem minmax(0, 1fr);
         align-items: center;
@@ -434,18 +1004,28 @@ tr[data-row-id]:focus-visible {
         border-radius: 0;
         background: transparent;
         padding: 0.75rem 0.875rem;
+        box-shadow: none;
+        margin-bottom: 0;
     }
-    .am2-roster tr:last-child { border-bottom: 0; }
+    .data-table.am2-roster tr:last-child { border-bottom: 0; }
 
     /* The row carries who and what is wrong. The rest stays in the DOM,
        out of sight, because the sheet borrows these very cells. */
-    .am2-roster td { display: none !important; padding: 0 !important; border: 0 !important; }
-    .am2-roster td::before { content: none !important; }
-    .am2-roster td[data-cell="select"] { display: block !important; }
-    .am2-roster td[data-cell="unit"]   { display: block !important; }
-    .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
+    .data-table.am2-roster td { display: none !important; padding: 0 !important; border: 0 !important; }
+    .data-table.am2-roster td::before { content: none !important; }
+    .data-table.am2-roster td[data-cell="select"] { display: block !important; }
+    .data-table.am2-roster td[data-cell="unit"]   { display: block !important; }
+    .data-table.am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
 
     /* An empty state is one message, not a row. */
-    .am2-roster tr:has(td[colspan]) { display: block; padding: 0; border-bottom: 0; }
-    .am2-roster tr:has(td[colspan]) td { display: block !important; }
+    .data-table.am2-roster tr:has(td[colspan]) { display: block; padding: 0; border-bottom: 0; }
+    .data-table.am2-roster tr:has(td[colspan]) td { display: block !important; }
+
+    /*
+     * The activity log is a roster with no checkbox: nothing about a past event
+     * can be selected or acted on. Without this the grid keeps its 1.75rem
+     * select column and every card is indented past a gutter that holds
+     * nothing.
+     */
+    .data-table.am2-roster-log tr { grid-template-columns: minmax(0, 1fr); }
 }

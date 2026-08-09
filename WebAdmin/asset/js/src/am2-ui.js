@@ -30,6 +30,7 @@ import 'preline/plugins/toggle-password';  /* login, and the password card  */
 import { animate, stagger, inView } from 'motion';
 import qrcode from 'qrcode-generator';
 import { initTables } from './am2-table.js';
+import { playExit, watchOverlays } from './am2-exit.js';
 
 /* Durations, in seconds because that is what Motion takes. Graded by how far
  * a thing travels: a colour change is over before it is noticed, a drawer
@@ -102,45 +103,21 @@ function styleable(obj) {
  * that small movement is what says it came from somewhere.
  * ------------------------------------------------------------------ */
 
-function panelOf(overlay) {
-    return overlay.querySelector('[data-am2-panel]') || overlay.firstElementChild;
-}
-
-function isDrawer(overlay) {
-    return overlay.hasAttribute('data-am2-drawer');
-}
-
-document.addEventListener('open.hs.overlay', (e) => {
-    const overlay = e.detail?.el || e.target;
-    if (!(overlay instanceof HTMLElement)) return;
-
-    move(overlay, { opacity: [0, 1] }, { duration: T.modal, ease: EASE.enter });
-
-    const panel = panelOf(overlay);
-    if (!panel) return;
-
-    if (isDrawer(overlay)) {
-        move(panel, { x: ['-100%', '0%'] }, { duration: T.drawer, ease: EASE.enter });
-    } else {
-        move(panel, { opacity: [0, 1], y: [8, 0], scale: [0.99, 1] },
-            { duration: T.modal, ease: EASE.enter });
-    }
-});
-
-document.addEventListener('close.hs.overlay', (e) => {
-    const overlay = e.detail?.el || e.target;
-    if (!(overlay instanceof HTMLElement)) return;
-    const panel = panelOf(overlay);
-    if (!panel) return;
-
-    // Preline owns the hide, so this is a shorter exit that reads as leaving
-    // rather than a promise to finish before the element goes.
-    if (isDrawer(overlay)) {
-        move(panel, { x: ['0%', '-100%'] }, { duration: T.exit, ease: EASE.exit });
-    } else {
-        move(panel, { opacity: [1, 0], y: [0, 8] }, { duration: T.exit, ease: EASE.exit });
-    }
-});
+/*
+ * Both directions are CSS now -- see the .hs-overlay rules in tailwind.src.css.
+ *
+ * These used to be Motion calls on `open.hs.overlay` and `close.hs.overlay`,
+ * and neither worked. The entrance ran against a scrim Preline had already
+ * painted at full opacity a frame earlier, so the screen went dark and the
+ * dialogue arrived into it ~80ms later, which is the pulse this kept being
+ * reported as. The exit never ran at all: Preline sets `hidden` in the same
+ * frame it fires the event, and display:none cancels a running animation.
+ *
+ * The CSS rules key off `opened`, and am2-exit.js holds the element with
+ * `.am2-closing` for the length of its exit. Motion is left to the things it
+ * owns outright -- toasts, counters, the login emit -- rather than racing
+ * Preline for the same element.
+ */
 
 /* Dropdowns and the search popover: opacity and a little travel, no bounce. */
 document.addEventListener('open.hs.dropdown', (e) => {
@@ -242,14 +219,29 @@ function qr(text, size = 120) {
     return svg;
 }
 
-/** Reveal below the fold, once, for the long lower half of the dashboard. */
+/**
+ * Reveal below the fold, once, for the long lower half of the dashboard.
+ *
+ * The hidden starting state belongs to CSS -- `.am2-js [data-reveal]` -- and
+ * not to this function. Setting it here ran after first paint, because the
+ * bundle is deferred: the section painted, went invisible, and faded back in.
+ * That one-frame drop, on every load, is what the page change looked like.
+ * All this does now is bring an already-hidden element back.
+ */
 function revealOnScroll(selector) {
+    /*
+     * The bundle is here, so the head's expiry timer is no longer needed. It
+     * exists because `am2-js` says JavaScript runs, not that this file arrived:
+     * without the timer, a bundle that 404s or throws leaves every section it
+     * was meant to reveal hidden permanently.
+     */
+    clearTimeout(window.__am2RevealFallback);
+
     if (reduced) {
         document.querySelectorAll(selector).forEach((el) => { el.style.opacity = '1'; });
         return;
     }
     document.querySelectorAll(selector).forEach((el) => {
-        el.style.opacity = '0';
         inView(el, () => {
             animate(el, { opacity: [0, 1], y: [12, 0] },
                 { duration: T.entrance, ease: EASE.enter });
@@ -364,7 +356,46 @@ if (document.readyState === 'loading') {
     initTables();
 }
 
+/*
+ * The page transition, named only while one is happening.
+ *
+ * view-transition-name creates a stacking context wherever it sits. Carried
+ * permanently, <main> became one -- and every dialogue in this panel is markup
+ * inside <main> while Preline builds its backdrop under <body>, so the
+ * overlay's z-80 stopped being comparable to the backdrop's z-79. The backdrop
+ * covered the dialogue and ate every click on it. The dialogue still rendered,
+ * which is why it read as a stale session rather than as a paint order.
+ *
+ * pageswap fires while the outgoing snapshot is being taken, and pagereveal on
+ * the incoming page before it is shown; between those two moments the names
+ * are needed, and outside them they are a bug. Browsers without view
+ * transitions never fire either event, so they simply navigate -- which is what
+ * they did before any of this existed.
+ */
+// Every overlay plays its exit animation before Preline hides it.
+watchOverlays();
+
+const NAVIGATING = 'am2-navigating';
+window.addEventListener('pageswap', () => {
+    document.documentElement.classList.add(NAVIGATING);
+});
+window.addEventListener('pagereveal', (e) => {
+    document.documentElement.classList.add(NAVIGATING);
+    // Held until the animation has finished, then dropped, so a dialogue opened
+    // on the new page is never trapped under the backdrop. `finished` rejects
+    // if the transition is skipped, which is a reason to clear it, not to log.
+    const done = e.viewTransition?.finished ?? Promise.resolve();
+    done.catch(() => {}).finally(() => {
+        document.documentElement.classList.remove(NAVIGATING);
+    });
+});
+// A page restored from the back/forward cache never fires pagereveal, so the
+// class would survive into a page nobody is navigating.
+window.addEventListener('pageshow', () => {
+    document.documentElement.classList.remove(NAVIGATING);
+});
+
 window.AM2 = {
     enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr, initTables,
-    prefersReducedMotion, move, T, EASE, STAGGER,
+    prefersReducedMotion, move, playExit, T, EASE, STAGGER,
 };

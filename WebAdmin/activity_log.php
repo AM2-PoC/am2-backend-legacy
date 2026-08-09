@@ -19,6 +19,69 @@
  */
 
 /**
+ * The mutations in this transaction that still owe an audit event.
+ *
+ * Every helper that changes a unit declares itself here, and every am2_log()
+ * clears one. am2_audit_complete() is called before the commit and refuses if
+ * the two do not balance.
+ *
+ * Why this exists rather than am2_log() living inside the helpers: the log row
+ * and the change it records must land in one transaction, and the caller is
+ * what owns the transaction. Moving the write into the helper would also give
+ * every current caller a second event, because all six already log. So the
+ * invariant is not "the helper logs" but "exactly one event per mutation" --
+ * not zero, which is a change nobody can attribute afterwards, and not two,
+ * which is a trail claiming something happened twice.
+ *
+ * @var list<string>
+ */
+$GLOBALS['am2_audit_owed'] = [];
+
+/**
+ * Declare that this mutation owes an audit event.
+ *
+ * Called by the helper doing the changing, so a caller added later inherits the
+ * obligation instead of having to know about it.
+ */
+function am2_audit_expect(string $mutation): void
+{
+    $GLOBALS['am2_audit_owed'][] = $mutation;
+}
+
+/**
+ * Settle the balance, or refuse.
+ *
+ * Called immediately before a commit. Throwing here rolls the whole thing back,
+ * which is the point: a change that reaches the database with no record of who
+ * made it is not something to discover months later from an empty log.
+ */
+function am2_audit_complete(): void
+{
+    $owed = $GLOBALS['am2_audit_owed'];
+    // Cleared before throwing, so one failed request cannot make the next one
+    // fail for a debt it never incurred.
+    $GLOBALS['am2_audit_owed'] = [];
+
+    if ($owed !== []) {
+        throw new LogicException(
+            'mutation without an audit event: ' . implode(', ', $owed)
+        );
+    }
+}
+
+/**
+ * Discard the balance without checking it.
+ *
+ * For the rollback path, where the mutation is being undone and therefore owes
+ * nothing. Separate from am2_audit_complete() so that "this failed" and "this
+ * is settled" cannot be spelled the same way by accident.
+ */
+function am2_audit_abandon(): void
+{
+    $GLOBALS['am2_audit_owed'] = [];
+}
+
+/**
  * Record an event.
  *
  * $aksi stays what it always was -- CREATE_USER, UPDATE_ACCESS, FORCE_LOGOUT --
@@ -38,6 +101,24 @@ function am2_log(
     ?string $table = null,
     ?string $dataId = null
 ): void {
+    /*
+     * Settle one debt, and refuse an event nothing asked for.
+     *
+     * Popped before the write rather than after it: am2_log() swallows its own
+     * database failures on purpose, and a caller that did its part must not be
+     * rolled back because the log table was unreachable. The debt is about
+     * whether the call was made, not whether the row landed.
+     *
+     * The empty case is the duplicate: a second event for a mutation that was
+     * already recorded says the action happened twice.
+     */
+    if ($GLOBALS['am2_audit_owed'] === []) {
+        throw new LogicException("unexpected audit event '{$code}': no mutation is waiting for one");
+    }
+    // Oldest first, so what a failure names is the mutation still owing a
+    // record rather than whichever happened to be declared last.
+    array_shift($GLOBALS['am2_audit_owed']);
+
     // A log write must never be the reason an action fails. The action has
     // already happened by the time we are called; losing the record of it is
     // bad, and rolling back a completed change because the record could not be
