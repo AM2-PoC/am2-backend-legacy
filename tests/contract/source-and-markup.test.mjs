@@ -425,6 +425,67 @@ describe('alpine expressions in attributes', () => {
     });
 });
 
+describe('login background artwork', () => {
+    test('geometric artwork decorates the form-side background, not the card', () => {
+        const login = readSrc('login.php');
+        const mainStart = login.indexOf('<main class="am2-login-stage');
+        const cardStart = login.indexOf('<div id="am2-login-card"');
+        assert.ok(mainStart >= 0 && cardStart > mainStart, 'login form-side stage or card is missing');
+
+        const beforeCard = login.slice(mainStart, cardStart);
+        assert.match(beforeCard, /class="am2-login-geometry" aria-hidden="true"/,
+            'geometric artwork is missing from the form-side background or exposed to assistive technology');
+        assert.ok(!login.slice(cardStart).includes('am2-login-geometry'),
+            'geometric artwork leaked inside the login card');
+    });
+
+    test('geometric artwork is non-interactive and theme-aware', () => {
+        const css = fs.readFileSync(`${SRC}/asset/css/tailwind.src.css`, 'utf8');
+        assert.match(css, /\.am2-login-geometry\s*\{[^}]*pointer-events:\s*none/s);
+        assert.match(css, /\[data-theme="dark"\]\s+\.am2-login-geometry/);
+        const reducedMotionBlocks = [...css.matchAll(
+            /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g
+        )].map((match) => match[1]);
+        assert.ok(reducedMotionBlocks.some((block) => /\.am2-login-geometry/.test(block)),
+            'login geometry is not disabled by its reduced-motion media block');
+        assert.doesNotMatch(css, /var\(--color-background\)/,
+            'login geometry uses an undefined background token; use --color-bg');
+    });
+
+    test('decorations stay outside the unchanged login form contract', () => {
+        const login = readSrc('login.php');
+        const forms = [...login.matchAll(/<form\b[\s\S]*?<\/form>/g)];
+        assert.equal(forms.length, 1, 'login must keep exactly one form');
+        const form = forms[0][0];
+        assert.match(form, /method="POST"/);
+        assert.match(form, /id="username"\s+name="username"[^>]*required/);
+        assert.match(form, /id="password"\s+name="password"[^>]*required/);
+        assert.doesNotMatch(form, /am2-(?:login|brand)-geometry/,
+            'decorative geometry must stay outside the login form');
+    });
+
+    test('brand panel has a separate radial signal system behind its content', () => {
+        const login = readSrc('login.php');
+        const panelStart = login.indexOf('<aside class="am2-brand-panel');
+        const panelEnd = login.indexOf('</aside>');
+        assert.ok(panelStart >= 0 && panelEnd > panelStart, 'brand panel is missing');
+
+        const panel = login.slice(panelStart, panelEnd);
+        assert.match(panel, /class="am2-brand-geometry" aria-hidden="true"/,
+            'brand-side signal geometry is missing or exposed to assistive technology');
+        assert.match(panel, /class="[^"]*\bam2-signal-core\b[^"]*"/,
+            'logo has no technical signal frame');
+        assert.match(panel, /class="am2-brand-facts/,
+            'operator facts are not visually grouped');
+    });
+
+    test('brand-side signal system cannot intercept login interaction', () => {
+        const css = fs.readFileSync(`${SRC}/asset/css/tailwind.src.css`, 'utf8');
+        assert.match(css, /\.am2-brand-geometry\s*\{[^}]*pointer-events:\s*none/s);
+        assert.match(css, /\[data-theme="dark"\]\s+\.am2-brand-geometry/);
+    });
+});
+
 describe('js() and json_encode belong in different places', () => {
     // The pair fails in both directions and each failure looks different.
     // json_encode in an attribute terminates it at the first quote, and the
