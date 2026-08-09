@@ -4,7 +4,10 @@
  * Real secrets live outside the web root in /etc/am2/webadmin.env.production.
  */
 
-$envFile = '/etc/am2/webadmin.env.production';
+// Which env file to load. Staging overrides this via Apache SetEnv so it can
+// point at its own database and its own node instance.
+$envFile = getenv('AM2_ENV_FILE')
+    ?: ($_SERVER['AM2_ENV_FILE'] ?? '/etc/am2/webadmin.env.production');
 
 if (is_readable($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -37,6 +40,10 @@ if ($password === '') {
     http_response_code(500);
     die('Konfigurasi database belum lengkap.');
 }
+
+// Base URL of the node relay. A constant, so the notify helpers defined inside
+// the panel pages can reach it without importing a global.
+define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 
 $dsn = "pgsql:host={$host};port={$port};dbname={$dbname}";
 

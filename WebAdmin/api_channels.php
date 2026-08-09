@@ -3,7 +3,7 @@ header('Content-Type: application/json');
 require_once 'config.php';
 
 function syncUserChannels($userId) {
-    $url = "http://localhost:5000/api/admin/sync-channels?userId=" . urlencode($userId);
+    $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
     @file_get_contents($url, false, stream_context_create(['http' => ['timeout' => 2]]));
 }
 

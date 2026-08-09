@@ -11,7 +11,7 @@ $success_msg = "";
 $error_msg = "";
 
 function notifyNodeServerToRefresh($adminId) {
-    $url = "http://localhost:5000/api/admin/refresh-branch-permissions";
+    $url = AM2_NODE_BASE . "/api/admin/refresh-branch-permissions";
     $data = array('adminId' => $adminId);
     $options = array(
         'http' => array(
