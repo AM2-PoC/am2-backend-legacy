@@ -142,6 +142,36 @@ test('the bulk bar arrives like the sheet it sits beside', () => {
     assert.match(rule.body, /animation/, 'the bulk bar still appears instantly');
 });
 
+test('the bulk bar is an adaptive labelled command bar, not a row of tiny glyphs', () => {
+    const close = read('partials/table_close.php');
+
+    assert.match(close, /role="toolbar"/,
+        'the selection actions are not announced as one toolbar');
+    assert.match(close, /data-bulk-count[^>]*aria-live="polite"/,
+        'a changed selection count is not announced to assistive technology');
+    assert.match(close, /data-bulk-label/,
+        'bulk actions still have no visible label hook');
+    assert.match(close, /data-bulk-more/,
+        'narrow viewports still render every action instead of offering a More menu');
+    assert.match(close, /data-bulk-danger/,
+        'the destructive action is not separated from routine commands');
+    assert.match(close, /min-h-11/,
+        'touch actions are smaller than the 44px target');
+    assert.doesNotMatch(close, /sm:h-8|sm:w-8/,
+        'bulk actions shrink below their touch target on tablet/desktop');
+});
+
+test('the bulk bar reserves space on a phone and reduces its command set', () => {
+    assert.match(css, /@media\s*\(max-width:\s*639px\)[\s\S]*?\[data-bulk-bar\]/,
+        'the bulk bar has no phone-specific layout');
+    assert.match(css, /data-bulk-optional[\s\S]*display:\s*none/,
+        'secondary commands remain crowded into the phone toolbar');
+    assert.match(css, /data-bulk-danger[\s\S]*display:\s*none/,
+        'the destructive action remains next to routine mobile commands');
+    assert.match(css, /body:has\(\[data-bulk-bar\]:not\(\[hidden\]\)\)\s+main/,
+        'the page reserves no main-content bottom space while the floating bar is visible');
+});
+
 test('the mobile drawer slides, and its scrim leaves with it', () => {
     // The drawer cannot transition: Preline waits on transitionend before
     // destroying the backdrop, and a transition that never fires strands the

@@ -251,9 +251,31 @@ function setupTable(table) {
         }
     }
 
+    function closeBulkMore({ restoreFocus = false } = {}) {
+        const more = bar?.querySelector('[data-bulk-more]');
+        const menu = bar?.querySelector('[data-bulk-more-menu]');
+        if (!more || !menu || menu.hidden) return;
+        menu.hidden = true;
+        more.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) more.focus();
+    }
+
     bar?.addEventListener('click', (e) => {
-        if (e.target.closest('[data-select-all-matching]')) { state.all = true; paint(); }
-        if (e.target.closest('[data-clear-selection]')) clearSelection();
+        if (e.target.closest('[data-select-all-matching]')) { state.all = true; paint(); return; }
+        if (e.target.closest('[data-clear-selection]')) { clearSelection(); return; }
+
+        const more = e.target.closest('[data-bulk-more]');
+        if (!more) return;
+        const menu = bar.querySelector('[data-bulk-more-menu]');
+        if (!menu) return;
+        const opens = menu.hidden;
+        menu.hidden = !opens;
+        more.setAttribute('aria-expanded', String(opens));
+        if (opens) menu.querySelector('[data-bulk]')?.focus();
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+        if (bar && !bar.contains(e.target)) closeBulkMore();
     });
 
     document.querySelectorAll('[data-bulk]').forEach((btn) => {
@@ -284,7 +306,13 @@ function setupTable(table) {
             return;
         }
         if (e.key === 'Escape') {
-            if (selected() > 0) { e.preventDefault(); clearSelection(); }
+            if (!bar?.querySelector('[data-bulk-more-menu]')?.hidden) {
+                e.preventDefault();
+                closeBulkMore({ restoreFocus: true });
+            } else if (selected() > 0) {
+                e.preventDefault();
+                clearSelection();
+            }
             return;
         }
         if (typing || e.metaKey || e.ctrlKey || e.altKey) return;

@@ -1209,6 +1209,35 @@ summary {
     animation: am2-sheet-in var(--duration-drawer) var(--ease-enter) both;
 }
 
+/* A selected set has a persistent command surface. Reserve its footprint so
+   pagination and the final row remain reachable rather than sitting beneath it. */
+body:has([data-bulk-bar]:not([hidden])) main {
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
+/* Phone is a two-command tray, not a compressed desktop toolbar. Optional and
+   destructive commands move to the explicit More menu; every remaining target
+   stays at the 44px touch size established elsewhere in the console. */
+@media (max-width: 639px) {
+    [data-bulk-bar] { bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+    [data-bulk-verbs] > [data-bulk-optional],
+    [data-bulk-verbs] > [data-bulk-danger] { display: none; }
+    [data-bulk-bar] [data-bulk-more-menu][hidden] { display: none; }
+}
+
+@media (min-width: 640px) {
+    body:has([data-bulk-bar]:not([hidden])) main { padding-bottom: 5.5rem; }
+    [data-bulk-verbs] { gap: 0.75rem; }
+    [data-bulk-bar] [data-bulk-danger] { margin-inline-start: 0.75rem; }
+    [data-bulk-bar] [data-bulk-danger]::before {
+        content: "";
+        align-self: center;
+        block-size: 1.75rem;
+        border-inline-start: 1px solid var(--color-border);
+        margin-inline-end: 0.75rem;
+    }
+}
+
 /*
  * The row is the tap target, not the chevron.
  *
