@@ -4,6 +4,12 @@
  * Real secrets live outside the web root in /etc/am2/webadmin.env.production.
  */
 
+// The session cookie's flags, before anything can open a session. Loaded first
+// on purpose: several guards below start a session when one is offered, and a
+// session started before this file is read would carry the host php.ini's
+// flags rather than the ones this application decides.
+require_once __DIR__ . '/session_boot.php';
+
 // Which env file to load. Staging overrides this via Apache SetEnv so it can
 // point at its own database and its own node instance.
 $envFile = getenv('AM2_ENV_FILE')
@@ -94,10 +100,8 @@ function am2_api_auth(): void
     // Most api_*.php files never call session_start(), so a browser request
     // carrying a valid panel session would look anonymous here. dashboard.php
     // calls api_dashboard_chart.php that way.
-    if (session_status() === PHP_SESSION_NONE
-        && isset($_COOKIE[session_name()])
-        && !headers_sent()) {
-        session_start();
+    if (isset($_COOKIE[session_name()])) {
+        am2_session_boot();
     }
     if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_logged_in'])) {
         return;
@@ -148,10 +152,8 @@ function am2_api_identity(): array
 {
     // Independent of whether am2_api_auth() ran first, so call order in the
     // endpoints cannot quietly turn a session caller into an anonymous one.
-    if (session_status() === PHP_SESSION_NONE
-        && isset($_COOKIE[session_name()])
-        && !headers_sent()) {
-        session_start();
+    if (isset($_COOKIE[session_name()])) {
+        am2_session_boot();
     }
     if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_logged_in'])) {
         return [
@@ -420,10 +422,8 @@ try {
     // Start the session here, before expiry and before any guard runs.
     // Cookie-guarded so a keyless API caller is not handed a session it
     // never asked for, which would change the headers Admin Native sees.
-    if (session_status() === PHP_SESSION_NONE
-        && isset($_COOKIE[session_name()])
-        && !headers_sent()) {
-        session_start();
+    if (isset($_COOKIE[session_name()])) {
+        am2_session_boot();
     }
     am2_expire_idle_session();
     am2_csrf_require();

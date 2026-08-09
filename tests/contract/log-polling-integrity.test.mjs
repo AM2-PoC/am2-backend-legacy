@@ -90,6 +90,11 @@ function makeWorkspace(fixture) {
     const dir = mkdtempSync(join(tmpdir(), 'am2-logs-'));
     writeFileSync(join(dir, 'config.php'), STUB_CONFIG);
     copyFileSync(join(WEBADMIN, 'fetch_logs.php'), join(dir, 'fetch_logs.php'));
+    // The endpoint opens its session through the shared bootstrap, which is
+    // where the cookie flags are decided. Copied rather than stubbed: it is
+    // real behaviour of the file under test, and stubbing it would hide a
+    // failure to load it.
+    copyFileSync(join(WEBADMIN, 'session_boot.php'), join(dir, 'session_boot.php'));
     writeFileSync(join(dir, 'fixture.json'), JSON.stringify(fixture));
     writeFileSync(join(dir, 'sess_am2contract'), SESSION);
     /*
