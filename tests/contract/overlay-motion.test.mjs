@@ -161,6 +161,37 @@ test('the bulk bar is an adaptive labelled command bar, not a row of tiny glyphs
         'bulk actions shrink below their touch target on tablet/desktop');
 });
 
+test('the bulk bar uses a compact hierarchy instead of nested outlined pills', () => {
+    const close = read('partials/table_close.php');
+
+    assert.match(close, /data-bulk-selection/,
+        'selection state has no dedicated, readable group');
+    assert.match(close, /data-bulk-edit-group/,
+        'editing commands are not grouped as one related action set');
+    assert.match(close, /data-bulk-utility/,
+        'export remains visually mixed with editing commands');
+    assert.match(close, /data-bulk-unit-label/,
+        'the count is still an ambiguous bare “selected” value');
+    assert.match(close, /data-bulk-disclosure/,
+        'commands that open a choice dialog do not communicate disclosure');
+    assert.match(close, /data-bulk-edit-label/,
+        'the noun-only menu labels have no contextual edit heading');
+    assert.match(close, /if \(\$bulkEditCount > 0\)/,
+        'pages without editing commands still render an empty Edit group');
+    assert.match(css, /\[data-bulk-verbs\][^{]*\{[^}]*background:\s*transparent/,
+        'the toolbar still nests every command inside a second heavy surface');
+    assert.match(css, /\[data-bulk-edit-group\][^{]*\{[^}]*display:\s*flex/,
+        'related editing commands are not laid out as one group');
+    assert.match(css, /\[data-bulk-utility\][^{]*\{[^}]*margin-inline-start:/,
+        'the utility command is not separated from editing commands');
+    assert.match(css, /\[data-bulk-bar\][^{]*\{[^}]*--bulk-control-size:\s*2\.5rem/,
+        'desktop controls have not been compacted to a clear 40px rhythm');
+    assert.match(css, /@media\s*\(min-width:\s*640px\)[\s\S]*?\[data-bulk-bar\][^{]*\{[^}]*padding:\s*0\.375rem/,
+        'desktop shell still uses oversized padding');
+    assert.match(css, /\[data-bulk-edit-group\]\s*>\s*button\s*\{[^}]*padding-inline:\s*0\.5rem/,
+        'desktop command buttons retain excess horizontal padding');
+});
+
 test('the bulk bar reserves space on a phone and reduces its command set', () => {
     assert.match(css, /@media\s*\(max-width:\s*639px\)[\s\S]*?\[data-bulk-bar\]/,
         'the bulk bar has no phone-specific layout');
@@ -168,6 +199,16 @@ test('the bulk bar reserves space on a phone and reduces its command set', () =>
         'secondary commands remain crowded into the phone toolbar');
     assert.match(css, /data-bulk-danger[\s\S]*display:\s*none/,
         'the destructive action remains next to routine mobile commands');
+    assert.match(css, /\[data-bulk-primary\]\s+\[data-bulk-label\][^{]*\{[^}]*display:\s*inline/,
+        'the two mobile commands are still ambiguous icon-only controls');
+    assert.match(css, /\[data-bulk-primary\][^{]*\{[^}]*padding-inline:\s*0\.5rem/,
+        'labelled mobile commands have not been tightened enough to fit without overflow');
+    assert.match(read('partials/table_close.php'), /data-bulk-mobile-direct/,
+        'a page with only one or two actions still hides them behind an unnecessary More menu');
+    assert.match(css, /\[data-bulk-bar\]\[data-bulk-mobile-direct\][\s\S]*display:\s*inline-flex/,
+        'small command sets are not shown directly on mobile');
+    assert.match(css, /\[data-bulk-bar\]\[data-bulk-mobile-direct\][\s\S]*data-bulk-more[^{]*\{[^}]*display:\s*none/,
+        'small command sets retain a redundant More button');
     assert.match(css, /body:has\(\[data-bulk-bar\]:not\(\[hidden\]\)\)\s+main/,
         'the page reserves no main-content bottom space while the floating bar is visible');
 });

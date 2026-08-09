@@ -310,7 +310,7 @@ $columns = [
 // Both verbs are owned by this page: one has to ask whether you meant it, and
 // the other answers with a file, which fetch cannot hand to the browser.
 $bulkActions = [
-    ['verb' => 'export', 'key' => 'acc.bulk_export', 'icon' => 'download'],
+    ['verb' => 'export', 'key' => 'acc.bulk_export', 'icon' => 'download', 'utility' => true],
     ['verb' => 'kick',   'key' => 'acc.bulk_kick',   'icon' => 'power', 'danger' => true,
      'data' => ['hs-overlay' => '#am2-bulk-kick']],
 ];

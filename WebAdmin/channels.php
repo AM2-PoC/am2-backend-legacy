@@ -463,7 +463,7 @@ $tableAction = '<button type="button" data-hs-overlay="#am2-add-channel"'
 $bulkActions = [
     ['verb' => 'access', 'key' => 'ch.bulk_access', 'icon' => 'radio',
      'data' => ['hs-overlay' => '#am2-channel-access']],
-    ['verb' => 'export', 'key' => 'ch.bulk_export', 'icon' => 'download'],
+    ['verb' => 'export', 'key' => 'ch.bulk_export', 'icon' => 'download', 'utility' => true],
     ['verb' => 'delete', 'key' => 'ch.bulk_delete', 'icon' => 'trash', 'danger' => true,
      'data' => ['hs-overlay' => '#am2-bulk-delete']],
 ];
