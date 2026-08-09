@@ -402,11 +402,11 @@ $tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
 // first -- which channels, which mode, which feature, are you sure -- so none
 // of them can be declared as a single fixed request on a button.
 $bulkActions = [
-    ['verb' => 'channels', 'key' => 'usr.bulk_channels', 'icon' => 'radio',
+    ['verb' => 'channels', 'key' => 'usr.bulk_channels', 'toolbar_key' => 'usr.bulk_channels_label', 'icon' => 'radio',
      'data' => ['hs-overlay' => '#am2-channels']],
-    ['verb' => 'duplex',   'key' => 'usr.bulk_duplex',   'icon' => 'swap',
+    ['verb' => 'duplex',   'key' => 'usr.bulk_duplex',   'toolbar_key' => 'usr.bulk_duplex_label', 'icon' => 'swap',
      'data' => ['hs-overlay' => '#am2-bulk-duplex']],
-    ['verb' => 'feature',  'key' => 'usr.bulk_feature',  'icon' => 'sliders',
+    ['verb' => 'feature',  'key' => 'usr.bulk_feature',  'toolbar_key' => 'usr.bulk_feature_label', 'icon' => 'sliders',
      'data' => ['hs-overlay' => '#am2-bulk-feature']],
     ['verb' => 'export',   'key' => 'usr.bulk_export',   'icon' => 'download'],
     ['verb' => 'delete',   'key' => 'usr.bulk_delete',   'icon' => 'trash', 'danger' => true,
