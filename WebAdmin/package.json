@@ -7,12 +7,13 @@
     "build:css": "tailwindcss -i asset/css/tailwind.src.css -o asset/css/am2-tailwind.css --minify",
     "build:js": "esbuild asset/js/src/am2-ui.js --bundle --minify --format=iife --target=es2020 --ignore-annotations --outfile=asset/js/am2-ui.min.js",
     "build": "npm run build:css && npm run build:js",
+    "test:unit": "node --test ../tests/unit/*.test.mjs",
     "watch:css": "tailwindcss -i asset/css/tailwind.src.css -o asset/css/am2-tailwind.css --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "@tailwindcss/cli": "^4.2.4",
     "leaflet": "^1.9.4",

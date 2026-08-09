@@ -101,7 +101,9 @@ const updateUserLocation = async (userId, lat, lng, acc, address = "") => {
     try {
         await pool.query(`
             UPDATE public.users
-            SET latitude = $1, longitude = $2, accuracy = $3, address = $4, updated_at = CURRENT_TIMESTAMP, status = 'online'
+            SET latitude = $1, longitude = $2, accuracy = $3, address = $4,
+                location_updated_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP, status = 'online'
             WHERE id = $5
         `, [lat, lng, acc || 0, address, uid]);
     } catch (err) {

@@ -111,6 +111,20 @@ function am2_asset(string $path): string
     return htmlspecialchars($path . '?v=' . $version, ENT_QUOTES, 'UTF-8');
 }
 
+/** Asset URL for JSON/JavaScript contexts; encoding belongs to the caller. */
+function am2_asset_url(string $path): string
+{
+    // Leading ./ is meaningful to a browser module import, but not on disk.
+    // Reject everything except this application's relative asset paths.
+    if (!preg_match('#^\.?/??asset/[A-Za-z0-9._/-]+$#', $path)
+            || str_contains($path, '..')) {
+        throw new InvalidArgumentException('Invalid asset path');
+    }
+    $full = __DIR__ . '/' . ltrim(preg_replace('#^\./#', '', $path), '/');
+    $version = is_file($full) ? filemtime($full) : 0;
+    return $path . '?v=' . $version;
+}
+
 /** Whether the sidebar is collapsed to an icon rail. */
 function am2_sidebar_collapsed(): bool
 {

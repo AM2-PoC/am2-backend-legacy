@@ -124,3 +124,32 @@ test('the migrations are named so their order is their name', () => {
     assert.equal(new Set(numbers).size, numbers.length,
         `two migrations share a number, so which runs first depends on the rest of the name: ${numbers}`);
 });
+
+test('live location identity migration is additive and does not fake old sample times', () => {
+    const body = sql('003_live_location_identity.sql');
+    assert.match(body, /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+entity_type/i);
+    assert.match(body, /DEFAULT\s+'user'/i);
+    assert.match(body, /CHECK[\s\S]*'user'[\s\S]*'tracker'/i);
+    assert.match(body, /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+location_updated_at/i);
+    assert.doesNotMatch(body, /SET\s+location_updated_at\s*=\s*updated_at/i,
+        'mixed account timestamps must not be presented as GPS sample times');
+    assert.doesNotMatch(body, /DROP\s+(?:COLUMN|TABLE)|ALTER\s+COLUMN[\s\S]*TYPE/i,
+        'the first release must remain code-rollback compatible');
+});
+
+test('fresh-install users schema matches live-location migration', () => {
+    const schema = read('infra/docker/seed/01-schema.sql');
+    assert.match(schema, /entity_type\s+(?:character varying|varchar)\(16\)[\s\S]*DEFAULT\s+'user'/i);
+    assert.match(schema, /location_updated_at\s+timestamp\s+with\s+time\s+zone/i);
+    assert.match(schema, /CHECK[\s\S]*entity_type[\s\S]*'tracker'/i);
+});
+
+test('synthetic fixtures exercise both live-track entity identities', () => {
+    const fixtures = read('infra/scripts/contract-test-fixtures.sh');
+    const seed = read('infra/docker/seed/02-seed.sql');
+    assert.match(fixtures, /entity_type/i);
+    assert.match(fixtures, /CT_A3[\s\S]*tracker/i);
+    assert.match(fixtures, /ON\s+CONFLICT[\s\S]*DO\s+UPDATE[\s\S]*entity_type/i);
+    assert.match(seed, /entity_type/i);
+    assert.match(seed, /DEMO_UNIT_3[\s\S]*tracker/i);
+});

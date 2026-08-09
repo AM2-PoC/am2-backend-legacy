@@ -127,7 +127,8 @@ test('the escaping helper is reachable from every caller', () => {
     // updateMarkers() could not see it -- a ReferenceError at runtime, and
     // invisible to any test that only greps for the calls.
     const src = readFileSync(join(WEBADMIN, 'livetrack.php'), 'utf8');
-    const script = src.slice(src.lastIndexOf('<script>') + 8, src.lastIndexOf('</script>'));
+    const scriptTag = src.lastIndexOf('<script');
+    const script = src.slice(src.indexOf('>', scriptTag) + 1, src.lastIndexOf('</script>'));
     const def = script.match(/function esc\s*\(|const esc\s*=/);
     assert.ok(def, 'esc() is not defined in the page script');
     const escAt = def.index;

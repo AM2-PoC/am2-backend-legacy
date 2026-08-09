@@ -22,15 +22,15 @@ if ($admin_role === 'superadmin') {
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
     $id = trim($_POST['id']);
     $name = strtoupper(trim($_POST['name']));
-    $pass = password_hash($_POST['password'], PASSWORD_BCRYPT);
     
     try {
+        $entity_type = am2_entity_type($_POST['entity_type'] ?? 'user');
         $pdo->beginTransaction();
         
-        am2_create_user($pdo, $id, $name, $_POST['password'], $current_admin_id);
+        am2_create_user($pdo, $id, $name, $_POST['password'], $current_admin_id, $entity_type);
 
         am2_log($pdo, $current_admin_id, 'CREATE_USER', 'user.create',
-                ['name' => $name, 'id' => $id], 'users', $id);
+                ['name' => $name, 'id' => $id, 'entity_type' => $entity_type], 'users', $id);
         
         am2_audit_complete();
         $pdo->commit();
@@ -161,13 +161,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
     $edit_id = $_POST['edit_id'];
     $edit_name = strtoupper(trim($_POST['edit_name']));
     try {
+        if (array_key_exists('edit_entity_type', $_POST)) {
+            $edit_entity_type = am2_entity_type($_POST['edit_entity_type']);
+        } else {
+            // Preserve the classification for older callers that do not know
+            // about this field yet; omission must never turn a tracker into a user.
+            $stmtType = $pdo->prepare('SELECT entity_type FROM public.users WHERE id = ?');
+            $stmtType->execute([$edit_id]);
+            $edit_entity_type = am2_entity_type($stmtType->fetchColumn() ?: 'user');
+        }
         $pdo->beginTransaction();
         $newPassword = (string) ($_POST['edit_password'] ?? '');
-        am2_update_user($pdo, (string) $edit_id, $edit_name, $newPassword, $current_admin_id);
+        am2_update_user($pdo, (string) $edit_id, $edit_name, $newPassword, $current_admin_id, $edit_entity_type);
         $logCode = $newPassword === '' ? 'user.rename' : 'user.password';
 
         am2_log($pdo, $current_admin_id, 'UPDATE_USER', $logCode,
-                ['id' => $edit_id, 'name' => $edit_name], 'users', $edit_id);
+                ['id' => $edit_id, 'name' => $edit_name, 'entity_type' => $edit_entity_type], 'users', $edit_id);
 
         am2_audit_complete();
         $pdo->commit();
@@ -655,6 +664,7 @@ include 'partials/shell.php';
                                 <button type="button" data-row-edit
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
                                         data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
+                                        data-entity-type="<?= htmlspecialchars((string) $u['entity_type'], ENT_QUOTES, 'UTF-8') ?>"
                                         class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.edit') ?>
                                 </button>
@@ -716,6 +726,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                     <input id="name" name="name" type="text" required class="<?= $fieldCls ?>">
                 </div>
                 <div>
+                    <label for="entity_type" class="<?= $labelCls ?>"><?= e('usr.entity_type') ?></label>
+                    <select id="entity_type" name="entity_type" required class="<?= $fieldCls ?>">
+                        <option value="user"><?= e('usr.entity_user') ?></option>
+                        <option value="tracker"><?= e('usr.entity_tracker') ?></option>
+                    </select>
+                </div>
+                <div>
                     <label for="pass_add" class="<?= $labelCls ?>"><?= e('usr.password') ?></label>
                     <div class="relative">
                         <input id="pass_add" name="password" type="password" required
@@ -769,6 +786,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                 <div>
                     <label for="edit_name" class="<?= $labelCls ?>"><?= e('usr.name') ?></label>
                     <input id="edit_name" name="edit_name" type="text" required class="<?= $fieldCls ?>">
+                </div>
+                <div>
+                    <label for="edit_entity_type" class="<?= $labelCls ?>"><?= e('usr.entity_type') ?></label>
+                    <select id="edit_entity_type" name="edit_entity_type" required class="<?= $fieldCls ?>">
+                        <option value="user"><?= e('usr.entity_user') ?></option>
+                        <option value="tracker"><?= e('usr.entity_tracker') ?></option>
+                    </select>
                 </div>
                 <div>
                     <label for="pass_edit" class="<?= $labelCls ?>"><?= e('usr.password_optional') ?></label>
@@ -1023,6 +1047,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         btn.addEventListener('click', () => {
             $('edit_id').value = btn.dataset.unit;
             $('edit_name').value = btn.dataset.name;
+            $('edit_entity_type').value = btn.dataset.entityType === 'tracker' ? 'tracker' : 'user';
             $('pass_edit').value = '';
             document.querySelector('[data-edit-unit]').textContent = btn.dataset.unit;
         });

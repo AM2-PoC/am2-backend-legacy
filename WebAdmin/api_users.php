@@ -26,7 +26,7 @@ if ($method == 'GET') {
     }
 
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-    $sql = "SELECT u.id, u.name, u.status, u.admin_id, u.current_channel,
+    $sql = "SELECT u.id, u.name, u.status, u.admin_id, u.current_channel, u.entity_type,
                    COALESCE(p.enable_maps, false) as enable_maps,
                    COALESCE(p.enable_p2p, false) as enable_p2p,
                    COALESCE(p.enable_ptt_video, false) as enable_ptt_video,
@@ -96,25 +96,36 @@ elseif ($method == 'POST') {
         }
 
         try {
+            if (array_key_exists('entity_type', $_POST)) {
+                $entity_type = am2_entity_type($_POST['entity_type']);
+            } elseif ($action === 'add') {
+                $entity_type = 'user';
+            } else {
+                // Older Admin Native clients do not send entity_type. Preserve
+                // the classification instead of silently converting trackers.
+                $stmtType = $pdo->prepare('SELECT entity_type FROM public.users WHERE id = ?');
+                $stmtType->execute([$id]);
+                $entity_type = am2_entity_type($stmtType->fetchColumn() ?: 'user');
+            }
             $pdo->beginTransaction();
             if ($action == 'add') {
                 // The same call the panel makes. This copy never wrote
                 // created_by, so a unit registered from the app was attributed
                 // to nobody at all.
-                am2_create_user($pdo, $id, $name, $password, $admin_id);
+                am2_create_user($pdo, $id, $name, $password, $admin_id, $entity_type);
             } else {
-                am2_update_user($pdo, $id, $name, (string) $password, $admin_id);
+                am2_update_user($pdo, $id, $name, (string) $password, $admin_id, $entity_type);
             }
 
             // The panel has always recorded these. This path did not, so a unit
             // created or renamed from the app left no trace at all.
             if ($action === 'add') {
                 am2_log($pdo, $admin_id, 'CREATE_USER', 'user.create',
-                        ['name' => $name, 'id' => $id, 'via' => 'mobile'], 'users', $id);
+                        ['name' => $name, 'id' => $id, 'entity_type' => $entity_type, 'via' => 'mobile'], 'users', $id);
             } else {
                 am2_log($pdo, $admin_id, 'UPDATE_USER',
                         empty($password) ? 'user.rename' : 'user.password',
-                        ['id' => $id, 'name' => $name, 'via' => 'mobile'], 'users', $id);
+                        ['id' => $id, 'name' => $name, 'entity_type' => $entity_type, 'via' => 'mobile'], 'users', $id);
             }
 
             am2_audit_complete();
