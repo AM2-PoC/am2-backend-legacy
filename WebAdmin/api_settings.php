@@ -1,12 +1,47 @@
 <?php
+session_start();
 header('Content-Type: application/json');
 require_once 'config.php';
+
+/*
+ * Who is allowed in here, decided before anything else runs.
+ *
+ * This file had no authentication of any kind. It took the caller's word for
+ * their role -- `$_GET['role']` -- and on that word streamed a pg_dump of the
+ * entire public schema; its import action shell_exec'd psql against an
+ * uploaded .sql with no role check at all. Both were reachable from the
+ * internet, because the panel's vhost forwards every path.
+ *
+ * Backup and restore are superadmin operations, so the check is the identity
+ * of the session, and only the session. A role that arrives in the request is
+ * a role the requester chose; the query parameters are still read below for
+ * naming the file, but they no longer decide anything.
+ */
+if (empty($_SESSION['admin_logged_in'])) {
+    http_response_code(401);
+    exit(json_encode(['success' => false, 'message' => 'Unauthorized']));
+}
+
+$session_role = strtolower((string) ($_SESSION['admin_role'] ?? ''));
+$is_superadmin = $session_role === 'superadmin';
+
+/** Refuse anything but a signed-in superadmin, in one place. */
+function am2_settings_require_superadmin(bool $ok): void
+{
+    if ($ok) {
+        return;
+    }
+    http_response_code(403);
+    exit(json_encode(['success' => false, 'message' => 'Akses ditolak']));
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 if (isset($_GET['action']) && $_GET['action'] == 'export_db') {
-    $admin_id = (int)($_GET['admin_id'] ?? 0);
-    $role = $_GET['role'] ?? 'admin';
+    am2_settings_require_superadmin($is_superadmin);
+
+    $admin_id = (int) ($_SESSION['admin_id'] ?? 0);
+    $role = $session_role;
 
     $stmt = $pdo->prepare("SELECT username FROM public.admin WHERE id = ?");
     $stmt->execute([$admin_id]);
@@ -18,22 +53,44 @@ if (isset($_GET['action']) && $_GET['action'] == 'export_db') {
     header('Content-Type: application/octet-stream');
     header("Content-disposition: attachment; filename=\"" . $filename . "\"");
 
-    putenv("PGPASSWORD=" . $password);
+    /*
+     * Argument array, not a shell string, and the password in the child's
+     * environment rather than this process's.
+     *
+     * putenv() puts PGPASSWORD in the process table, where `ps` shows it to
+     * every account on the host -- and the command was assembled by pasting
+     * host, port, user and database name into a line the shell then parsed.
+     * Neither is attacker-controlled today (they come from the env file), but
+     * a credential visible to `ps` is a credential leaked, and a shell string
+     * is one config change away from being a command injection.
+     */
+    $args = ['pg_dump', '-h', $host, '-p', (string) $port, '-U', $user, '-d', $dbname];
+    $args = array_merge($args, $role === 'superadmin'
+        ? ['-n', 'public']
+        : ['-t', 'public.users', '-t', 'public.channels', '--column-inserts']);
 
-    if ($role === 'superadmin') {
-        $command = "pg_dump -h " . $host . " -p " . $port . " -U " . $user . " -d " . $dbname . " -n public";
-    } else {
-        $command = "pg_dump -h " . $host . " -p " . $port . " -U " . $user . " -d " . $dbname . " -t public.users -t public.channels --column-inserts";
+    $proc = proc_open($args, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null,
+                      ['PGPASSWORD' => $password] + $_ENV);
+    if (!is_resource($proc)) {
+        http_response_code(500);
+        exit('pg_dump tidak dapat dijalankan');
     }
-
-    passthru($command);
+    fpassthru($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
     exit;
 }
 
 if ($method == 'GET') {
     $action = $_GET['action'] ?? '';
-    $admin_id = (int)($_GET['admin_id'] ?? 0);
-    $role = $_GET['role'] ?? 'admin';
+    /*
+     * Identity from the session, not the query string. Reading another admin's
+     * settings was a matter of changing admin_id, and role=superadmin turned
+     * the counts below into a census of the whole system.
+     */
+    $admin_id = (int) ($_SESSION['admin_id'] ?? 0);
+    $role = $session_role;
 
     if ($action == 'check_update') {
         $json_path = 'update/admin_version.json';
@@ -93,9 +150,14 @@ if ($method == 'GET') {
 }
 elseif ($method == 'POST') {
     $action = $_POST['action'] ?? '';
-    $admin_id = (int)($_POST['admin_id'] ?? 0);
+    $admin_id = (int) ($_SESSION['admin_id'] ?? 0);
 
     if ($action == 'update_password') {
+        /*
+         * Your own, always. This took admin_id from the request, so any signed-in
+         * admin could rewrite the superadmin's password by naming its id -- and
+         * before the gate above, so could anyone at all.
+         */
         $new_pass = $_POST['new_password'] ?? '';
         if (strlen($new_pass) < 8) {
             echo json_encode(['success' => false, 'message' => 'Password minimal 8 karakter']);
@@ -111,15 +173,49 @@ elseif ($method == 'POST') {
         }
     }
     elseif ($action == 'import_db') {
+        // Restoring a database over the live one is the most destructive thing
+        // this panel can do, and it had no role check whatsoever.
+        am2_settings_require_superadmin($is_superadmin);
+
         if (!isset($_FILES['sql_file'])) {
             echo json_encode(['success' => false, 'message' => 'File .sql tidak ditemukan']);
             exit;
         }
+        // A real upload, not a path the request chose: without this check an
+        // is_uploaded_file()-less handler can be pointed at any readable file.
+        if (!is_uploaded_file($_FILES['sql_file']['tmp_name'] ?? '')) {
+            http_response_code(400);
+            exit(json_encode(['success' => false, 'message' => 'Unggahan tidak valid']));
+        }
         $file = $_FILES['sql_file']['tmp_name'];
         try {
-            putenv("PGPASSWORD=" . $password);
-            $command = "psql -h " . $host . " -p " . $port . " -U " . $user . " -d " . $dbname . " < " . $file;
-            shell_exec($command);
+            /*
+             * proc_open with an argument array rather than a shell string.
+             * The old form pasted host, port, user and database name straight
+             * into a command line, and passed the password through putenv --
+             * which puts it in the process table, where `ps` on this host shows
+             * it to anyone. The password now goes to psql's own stdin channel
+             * via the environment of the child alone, and the .sql arrives on
+             * stdin instead of through a shell redirect.
+             */
+            $descriptors = [0 => ['file', $file, 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+            $proc = proc_open(
+                ['psql', '-h', $host, '-p', (string) $port, '-U', $user, '-d', $dbname,
+                 '-v', 'ON_ERROR_STOP=1'],
+                $descriptors,
+                $pipes,
+                null,
+                ['PGPASSWORD' => $password] + $_ENV
+            );
+            if (!is_resource($proc)) {
+                throw new RuntimeException('psql tidak dapat dijalankan');
+            }
+            stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            foreach ($pipes as $p) { if (is_resource($p)) fclose($p); }
+            if (proc_close($proc) !== 0) {
+                throw new RuntimeException($stderr !== '' ? $stderr : 'psql exited non-zero');
+            }
             echo json_encode(['success' => true, 'message' => 'Database berhasil dipulihkan']);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => 'Restore gagal: ' . $e->getMessage()]);
