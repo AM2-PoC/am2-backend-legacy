@@ -20,11 +20,24 @@ try {
     $sql = "SELECT
                 u.id, 
                 u.name, 
+                u.entity_type,
                 u.latitude, 
                 u.longitude, 
                 u.accuracy, 
                 u.status, 
-                u.updated_at, 
+                u.updated_at,
+                u.location_updated_at,
+                CASE
+                    WHEN u.latitude IS NULL OR u.longitude IS NULL
+                      OR u.latitude NOT BETWEEN -90 AND 90
+                      OR u.longitude NOT BETWEEN -180 AND 180
+                      OR (u.latitude = 0 AND u.longitude = 0)
+                    THEN false ELSE true
+                END AS has_location,
+                CASE
+                    WHEN u.location_updated_at IS NULL THEN NULL
+                    ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - u.location_updated_at))))::bigint
+                END AS location_age_seconds,
                 c.display_name as channel_name,
                 COALESCE(last_log.speaking_state, 0) as is_speaking
             FROM public.users u 
@@ -58,17 +71,27 @@ try {
 
     $results = [];
     foreach ($users as $user) {
-        $is_stale = (strtotime('now') - strtotime($user['updated_at']) > 60) ? true : false;
+        $age = $user['location_age_seconds'] === null
+            ? null
+            : (int) $user['location_age_seconds'];
+        $freshness = $age === null
+            ? 'stale'
+            : ($age < 60 ? 'fresh' : ($age <= 300 ? 'delayed' : 'stale'));
 
         $results[] = [
             'id'           => $user['id'],
-            'name'         => htmlspecialchars($user['name']),
-            'lat'          => (float)$user['latitude'],
-            'lng'          => (float)$user['longitude'],
-            'accuracy'     => (float)$user['accuracy'],
+            'name'         => $user['name'],
+            'entity_type'  => $user['entity_type'],
+            'lat'          => $user['latitude'] === null ? null : (float)$user['latitude'],
+            'lng'          => $user['longitude'] === null ? null : (float)$user['longitude'],
+            'accuracy'     => $user['accuracy'] === null ? null : (float)$user['accuracy'],
             'is_online'    => 1,
             'is_speaking'  => (int)$user['is_speaking'],
-            'is_stale'     => $is_stale,
+            'has_location' => (bool)$user['has_location'],
+            'freshness'    => $freshness,
+            'is_stale'     => $freshness === 'stale',
+            'location_age_seconds' => $age,
+            'location_updated_at' => $user['location_updated_at'],
             'channel_name' => $user['channel_name'] ?? 'Standby',
             'updated_at'   => $user['updated_at']
         ];

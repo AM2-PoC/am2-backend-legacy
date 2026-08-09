@@ -27,13 +27,13 @@ SELECT 'demo_dispatch', 'DEMO DISPATCH', 'public', a.id
 FROM public.admin a WHERE a.username = 'demo_branch'
   AND NOT EXISTS (SELECT 1 FROM public.channels WHERE name = 'demo_dispatch');
 
-INSERT INTO public.users (id, name, password, role, status, admin_id, created_by)
-SELECT v.id, v.name, '$2y$10$S1Ag0zstlwpHEZYKW5MpqOCjadTaXsZl/pkBMSGTiIrI5fqqQRLke', 'user', 'offline', a.id, a.id
-FROM (VALUES ('DEMO_UNIT_1', 'DEMO UNIT 1'),
-             ('DEMO_UNIT_2', 'DEMO UNIT 2'),
-             ('DEMO_UNIT_3', 'DEMO UNIT 3')) AS v(id, name)
+INSERT INTO public.users (id, name, password, role, status, admin_id, created_by, entity_type)
+SELECT v.id, v.name, '$2y$10$S1Ag0zstlwpHEZYKW5MpqOCjadTaXsZl/pkBMSGTiIrI5fqqQRLke', 'user', 'offline', a.id, a.id, v.entity_type
+FROM (VALUES ('DEMO_UNIT_1', 'DEMO UNIT 1', 'user'),
+             ('DEMO_UNIT_2', 'DEMO UNIT 2', 'user'),
+             ('DEMO_UNIT_3', 'DEMO UNIT 3', 'tracker')) AS v(id, name, entity_type)
 JOIN public.admin a ON a.username = 'demo_branch'
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET entity_type = EXCLUDED.entity_type;
 
 INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, duplex_mode)
 VALUES ('DEMO_UNIT_1', true, true, true, 'FULL DUPLEX'),

@@ -221,10 +221,18 @@ describe('rendered markup that the CSS and JS depend on', () => {
 
     test('livetrack.php keeps the class names leaflet uses as divIcon markers', async () => {
         const html = await (await get('/livetrack.php', sup)).text();
-        for (const c of ['custom-marker', 'speaking-marker', 'marker-label', 'pulse-dot']) {
+        for (const c of ['custom-marker', 'marker-label', 'pulse-dot']) {
             assert.ok(html.includes(c), `${c} is a divIcon className, not styling — markers break without it`);
         }
-        for (const id of ['map', 'unitList', 'unitSearch', 'tx-indicator', 'count-online']) {
+        const model = fs.readFileSync(`${SRC}/asset/js/src/livetrack-model.js`, 'utf8');
+        assert.match(model, /`entity-\$\{entityType\}`/,
+            'the presentation model no longer emits an identity class');
+        assert.match(model, /`freshness-\$\{freshness\}`/,
+            'the presentation model no longer emits a freshness class');
+        assert.ok(model.includes('speaking-marker'),
+            'the presentation model no longer emits the TX class');
+        for (const id of ['map', 'unitList', 'unitSearch', 'tx-indicator', 'count-online',
+                          'count-fresh', 'feed-status']) {
             assert.match(html, new RegExp(`id=["']${id}["']`), `#${id} missing`);
         }
     });

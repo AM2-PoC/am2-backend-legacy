@@ -23,6 +23,7 @@ try {
                 longitude = :lng, 
                 accuracy = :acc, 
                 status = 'online', 
+                location_updated_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP 
             WHERE id = :id";
 

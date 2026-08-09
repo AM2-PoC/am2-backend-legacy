@@ -77,15 +77,15 @@ UPDATE public.admin SET password_hash='$H_B'     WHERE username='ct_branch_b';
 --   CT_A3  panel-endpoints.test.mjs
 --   CT_A4  activity-log.test.mjs
 --   CT_B1  the other tenant, for isolation assertions
-INSERT INTO public.users (id, name, role, status, admin_id, created_by, password)
-SELECT v.id, v.name, 'user', 'offline', a.id, a.id, '\$2y\$10\$notarealloginhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-FROM (VALUES ('CT_A1','CT USER A1','ct_branch_a'),
-             ('CT_A2','CT USER A2','ct_branch_a'),
-             ('CT_A3','CT USER A3','ct_branch_a'),
-             ('CT_A4','CT USER A4','ct_branch_a'),
-             ('CT_B1','CT USER B1','ct_branch_b')) AS v(id,name,owner)
+INSERT INTO public.users (id, name, role, status, admin_id, created_by, password, entity_type)
+SELECT v.id, v.name, 'user', 'offline', a.id, a.id, '\$2y\$10\$notarealloginhashXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', v.entity_type
+FROM (VALUES ('CT_A1','CT USER A1','ct_branch_a','user'),
+             ('CT_A2','CT USER A2','ct_branch_a','user'),
+             ('CT_A3','CT USER A3','ct_branch_a','tracker'),
+             ('CT_A4','CT USER A4','ct_branch_a','user'),
+             ('CT_B1','CT USER B1','ct_branch_b','user')) AS v(id,name,owner,entity_type)
 JOIN public.admin a ON a.username = v.owner
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET entity_type = EXCLUDED.entity_type;
 
 INSERT INTO public.user_app_permissions (user_id, enable_maps, enable_p2p, enable_ptt_video, duplex_mode)
 VALUES ('CT_A1', false, false, false, 'HALF DUPLEX'),

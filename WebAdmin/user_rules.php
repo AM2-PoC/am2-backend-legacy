@@ -31,16 +31,26 @@
  * defaults to HALF DUPLEX, and naming it in one of two places is how the two
  * copies came to disagree about what a new unit starts as.
  */
-function am2_create_user(PDO $pdo, string $id, string $name, string $password, $adminId): void
+function am2_entity_type($value): string
+{
+    $type = strtolower(trim((string) $value));
+    if (!in_array($type, ['user', 'tracker'], true)) {
+        throw new InvalidArgumentException('Invalid entity type');
+    }
+    return $type;
+}
+
+function am2_create_user(PDO $pdo, string $id, string $name, string $password, $adminId, string $entityType): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
     am2_audit_expect(__FUNCTION__);
 
+    $entityType = am2_entity_type($entityType);
     $pdo->prepare(
         "INSERT INTO public.users
-            (id, name, password, role, status, admin_id, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, 'user', 'offline', ?, ?, NOW(), NOW())"
-    )->execute([$id, $name, password_hash($password, PASSWORD_BCRYPT), $adminId, $adminId]);
+            (id, name, password, role, status, admin_id, created_by, entity_type, created_at, updated_at)
+         VALUES (?, ?, ?, 'user', 'offline', ?, ?, ?, NOW(), NOW())"
+    )->execute([$id, $name, password_hash($password, PASSWORD_BCRYPT), $adminId, $adminId, $entityType]);
 
     $pdo->prepare(
         "INSERT INTO public.user_app_permissions
@@ -55,23 +65,24 @@ function am2_create_user(PDO $pdo, string $id, string $name, string $password, $
  * An empty password means "leave it alone" — the two callers spelled that the
  * same way already, and it is the one part of this they agreed on.
  */
-function am2_update_user(PDO $pdo, string $id, string $name, string $password, $adminId): void
+function am2_update_user(PDO $pdo, string $id, string $name, string $password, $adminId, string $entityType): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
     am2_audit_expect(__FUNCTION__);
 
+    $entityType = am2_entity_type($entityType);
     if ($password !== '') {
         $pdo->prepare(
             "UPDATE public.users
-                SET name = ?, password = ?, created_by = ?, updated_at = NOW()
+                SET name = ?, password = ?, created_by = ?, entity_type = ?, updated_at = NOW()
               WHERE id = ?"
-        )->execute([$name, password_hash($password, PASSWORD_BCRYPT), $adminId, $id]);
+        )->execute([$name, password_hash($password, PASSWORD_BCRYPT), $adminId, $entityType, $id]);
         return;
     }
 
     $pdo->prepare(
-        "UPDATE public.users SET name = ?, created_by = ?, updated_at = NOW() WHERE id = ?"
-    )->execute([$name, $adminId, $id]);
+        "UPDATE public.users SET name = ?, created_by = ?, entity_type = ?, updated_at = NOW() WHERE id = ?"
+    )->execute([$name, $adminId, $entityType, $id]);
 }
 
 /**
