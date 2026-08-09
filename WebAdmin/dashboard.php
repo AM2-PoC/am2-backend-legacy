@@ -1,11 +1,8 @@
 <?php
-session_start();
+require_once 'auth.php';
 require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: login.php");
-    exit;
-}
+
 
 $current_admin_id = $_SESSION['admin_id'];
 $admin_role = $_SESSION['admin_role'];
@@ -66,7 +63,7 @@ if (empty($ptt_activity)) {
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">

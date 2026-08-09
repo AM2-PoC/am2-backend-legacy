@@ -1,18 +1,15 @@
 <?php
-session_start();
+require_once 'auth.php';
 date_default_timezone_set('Asia/Jakarta');
 
 require_once 'config.php';
 
-if (!isset($_SESSION['admin_logged_in'])) {
-    header("Location: login.php");
-    exit;
-}
+
 
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html <?= am2_html_attrs() ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">

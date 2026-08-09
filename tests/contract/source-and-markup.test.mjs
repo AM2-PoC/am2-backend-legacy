@@ -214,3 +214,65 @@ describe('untrusted text is not rendered as markup', () => {
         }
     });
 });
+
+describe('one shared guard, not ten copies', () => {
+    test('no page hand-rolls the session check', () => {
+        for (const f of ['dashboard.php', 'users.php', 'channels.php', 'logs.php',
+                         'settings.php', 'user_access.php', 'livetrack.php', 'admin_panel.php']) {
+            const src = readSrc(f);
+            assert.match(src, /require_once 'auth\.php'/, `${f} does not use the shared guard`);
+            assert.ok(!/header\("Location: login\.php"\)/.test(src),
+                `${f} still redirects to login itself`);
+        }
+    });
+
+    test('auth.php runs before config.php', () => {
+        // config.php expires idle sessions and checks the CSRF token, both of
+        // which need a started session. livetrack.php used to load it first.
+        for (const f of ['dashboard.php', 'users.php', 'livetrack.php', 'admin_panel.php']) {
+            const src = readSrc(f);
+            assert.ok(src.indexOf("auth.php") < src.indexOf("config.php"),
+                `${f} loads config.php before the session exists`);
+        }
+    });
+});
+
+describe('one relay client, not eleven copies', () => {
+    const HELPERS = ['syncUserChannels', 'notifyPermissionUpdate',
+                     'notifyForceLogout', 'notifyNodeServerToRefresh'];
+
+    test('only node_client.php defines the relay helpers', () => {
+        for (const f of ['users.php', 'channels.php', 'user_access.php', 'admin_panel.php',
+                         'api_users.php', 'api_channels.php', 'api_user_access.php']) {
+            const src = readSrc(f);
+            for (const h of HELPERS) {
+                assert.ok(!new RegExp(`function\\s+${h}\\s*\\(`).test(src),
+                    `${f} redefines ${h}; the copies drifted last time`);
+            }
+        }
+        const client = readSrc('node_client.php');
+        for (const h of HELPERS) {
+            assert.match(client, new RegExp(`function\\s+${h}\\s*\\(`));
+        }
+    });
+
+    test('every relay call carries the api key', () => {
+        // Three of the six old syncUserChannels copies omitted it, so channel
+        // sync would have failed silently the moment enforcement was turned on.
+        const client = readSrc('node_client.php');
+        const calls = (client.match(/am2_node_call\(/g) ?? []).length;
+        assert.ok(calls >= 4, 'each helper should route through the one transport');
+        // Count the calls that actually send, not the feature probe:
+        // function_exists('curl_init') mentions the name without using it.
+        assert.equal((client.match(/@curl_exec\(/g) ?? []).length, 1);
+        assert.equal((client.match(/@file_get_contents\(/g) ?? []).length, 1);
+        assert.match(client, /am2_node_auth_header\(\)/);
+    });
+
+    test('the duplex fallback is the restrictive one', () => {
+        // The two old copies disagreed: FULL in users.php, HALF in api_users.php.
+        assert.match(readSrc('node_client.php'),
+            /\$duplex = 'HALF DUPLEX'/,
+            'the fallback must match the column default');
+    });
+});
