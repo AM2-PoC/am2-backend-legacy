@@ -47,10 +47,29 @@ test('the role is the session\'s, never the request\'s', () => {
      * `if ($role === 'superadmin')` decided whether to dump the entire schema.
      */
     const src = SETTINGS();
-    for (const bad of [/\$_GET\['role'\]/, /\$_POST\['role'\]/,
-                       /\$_GET\['admin_id'\]/, /\$_POST\['admin_id'\]/]) {
-        assert.doesNotMatch(src, bad,
-            `api_settings.php takes identity from the request: ${bad}`);
+
+    // A role can never come from the request: there is no reading of it that
+    // is not the caller choosing their own privileges.
+    for (const bad of [/\$_GET\['role'\]/, /\$_POST\['role'\]/]) {
+        assert.doesNotMatch(src, bad, `api_settings.php takes a role from the request: ${bad}`);
+    }
+
+    /*
+     * admin_id is different: reading it to refuse a mismatch is not trusting
+     * it. Ignoring it outright was the first fix and it was too quiet -- a
+     * caller asking to change admin 5's password had admin 6's changed and was
+     * told it worked, which a contract test found by having its own fixture
+     * password rewritten underneath it.
+     *
+     * So the rule is about use, not mention: it may be compared against the
+     * session, never assigned from.
+     */
+    for (const m of src.matchAll(/\$(?:admin_id|target)\s*=\s*[^;\n]*\$_(?:GET|POST)\['admin_id'\]/g)) {
+        assert.fail(`api_settings.php selects an admin from the request: ${m[0]}`);
+    }
+    if (/\$_(?:GET|POST)\['admin_id'\]/.test(src)) {
+        assert.match(src, /!==\s*\(string\)\s*\$admin_id|\$named\s*!==\s*null/,
+            'admin_id is read from the request but never compared against the session');
     }
     assert.match(src, /\$_SESSION\['admin_role'\]/, 'the role no longer comes from the session');
 });
