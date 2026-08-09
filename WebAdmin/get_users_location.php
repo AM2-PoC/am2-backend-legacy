@@ -1,9 +1,29 @@
 <?php
+session_start();
 require_once 'config.php';
 
 if (ob_get_length()) ob_clean();
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+/*
+ * Who is asking, taken from the session.
+ *
+ * This is the endpoint livetrack.php polls, and it had no tenant filter at all
+ * -- every branch admin saw every branch's units, by name, channel and live
+ * coordinates, and so did anyone who could reach the host, because it required
+ * no session either.
+ *
+ * The scope comes from the session and nowhere else: a caller that can name its
+ * own admin_id can name somebody else's.
+ */
+if (empty($_SESSION['admin_logged_in'])) {
+    header('Content-Type: application/json', true, 401);
+    exit(json_encode(['error' => 'Unauthorized']));
+}
+
+$session_admin_id = $_SESSION['admin_id'] ?? null;
+$scoped = strtolower((string) ($_SESSION['admin_role'] ?? '')) !== 'superadmin';
 
 try {
     $sql = "SELECT
@@ -21,6 +41,10 @@ try {
               AND u.latitude IS NOT NULL 
               AND u.latitude != 0";
 
+    if ($scoped) {
+        $sql .= " AND u.admin_id = :admin_id";
+    }
+
     if ($search !== '') {
         $sql .= " AND (u.id::text ILIKE :s OR u.name ILIKE :s)";
     }
@@ -29,11 +53,10 @@ try {
 
     $stmt = $pdo->prepare($sql);
 
-    if ($search !== '') {
-        $stmt->execute(['s' => "%$search%"]);
-    } else {
-        $stmt->execute();
-    }
+    $params = [];
+    if ($scoped)        $params['admin_id'] = $session_admin_id;
+    if ($search !== '') $params['s'] = "%$search%";
+    $stmt->execute($params);
 
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
