@@ -408,10 +408,11 @@ $bulkActions = [
      'data' => ['hs-overlay' => '#am2-bulk-duplex']],
     ['verb' => 'feature',  'key' => 'usr.bulk_feature',  'toolbar_key' => 'usr.bulk_feature_label', 'icon' => 'sliders',
      'data' => ['hs-overlay' => '#am2-bulk-feature']],
-    ['verb' => 'export',   'key' => 'usr.bulk_export',   'icon' => 'download'],
+    ['verb' => 'export',   'key' => 'usr.bulk_export',   'icon' => 'download', 'utility' => true],
     ['verb' => 'delete',   'key' => 'usr.bulk_delete',   'icon' => 'trash', 'danger' => true,
      'data' => ['hs-overlay' => '#am2-bulk-delete']],
 ];
+$bulkUnitKey = 'tbl.units_selected';
 
 include 'partials/head.php';
 include 'partials/shell.php';

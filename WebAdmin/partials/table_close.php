@@ -12,6 +12,9 @@ $pages      = max(1, (int) ($pages ?? 1));
 $total      = (int) ($total ?? 0);
 $pageSize   = (int) ($pageSize ?? 20);
 $bulkActions = $bulkActions ?? [];
+$bulkUnitKey = $bulkUnitKey ?? 'tbl.items_selected';
+$bulkMobileDirect = count($bulkActions) <= 2;
+$bulkEditCount = count(array_filter($bulkActions, static fn ($act) => empty($act['danger']) && empty($act['utility'])));
 
 $from = $total === 0 ? 0 : (($page - 1) * $pageSize) + 1;
 $to   = min($total, $page * $pageSize);
@@ -86,7 +89,8 @@ for ($i = 1; $i <= $pages; $i++) {
         phone only the two highest-frequency commands remain in the tray; More
         keeps every other action reachable without making five tiny targets.
     -->
-    <div data-bulk-bar hidden role="toolbar" aria-label="<?= e('tbl.bulk_actions') ?>"
+    <div data-bulk-bar <?= $bulkMobileDirect ? 'data-bulk-mobile-direct' : '' ?> hidden
+         role="toolbar" aria-label="<?= e('tbl.bulk_actions') ?>"
          class="fixed inset-x-0 bottom-2 z-40 mx-auto flex w-[calc(100vw-1rem)] max-w-[46rem]
                 flex-col gap-1.5 rounded-card border border-edge bg-card p-2 shadow-panel sm:bottom-4 sm:w-fit">
 
@@ -101,10 +105,12 @@ for ($i = 1; $i <= $pages; $i++) {
             </button>
         </p>
 
-        <div class="flex min-w-0 items-center gap-2">
-            <div class="flex min-w-0 flex-1 items-center justify-between gap-2 sm:flex-none">
-                <span class="whitespace-nowrap ps-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
-                    <span data-bulk-count aria-live="polite" class="text-brand">0</span> <?= e('tbl.selected') ?>
+        <div class="flex min-w-0 items-center gap-1.5">
+            <div data-bulk-selection
+                 class="flex min-w-0 flex-1 items-center justify-between gap-1.5 sm:flex-none">
+                <span class="flex whitespace-nowrap ps-1 text-sm font-medium text-ink">
+                    <span data-bulk-count aria-live="polite" class="tabular-nums text-brand">0</span>&nbsp;
+                    <span data-bulk-unit-label><?= e($bulkUnitKey) ?></span>
                 </span>
                 <button type="button" data-clear-selection
                         aria-label="<?= e('tbl.clear_selection') ?>" title="<?= e('tbl.clear_selection') ?>"
@@ -115,22 +121,62 @@ for ($i = 1; $i <= $pages; $i++) {
                 </button>
             </div>
 
-            <span data-bulk-verbs class="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+            <span data-bulk-verbs class="flex min-w-0 flex-1 items-center justify-end">
+                <?php if ($bulkEditCount > 0): ?>
+                <span data-bulk-edit-group>
+                <span data-bulk-edit-label aria-hidden="true"><?= e('tbl.edit_group') ?></span>
                 <?php foreach ($bulkActions as $index => $act):
                     $isDanger = !empty($act['danger']);
-                    $isPrimary = !$isDanger && $index < 2;
-                    $actionClass = $isDanger ? 'data-bulk-danger' : ($isPrimary ? 'data-bulk-primary' : 'data-bulk-optional'); ?>
+                    $isUtility = !$isDanger && !empty($act['utility']);
+                    $isPrimary = !$isDanger && !$isUtility && $index < 2;
+                    if ($isDanger || $isUtility) continue;
+                    $actionClass = $isPrimary ? 'data-bulk-primary' : 'data-bulk-optional';
+                    $hasDisclosure = !empty($act['data']['hs-overlay']); ?>
                     <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>" <?= $actionClass ?>
+                            <?= $hasDisclosure ? 'data-bulk-disclosure' : '' ?>
                             <?php foreach (($act['data'] ?? []) as $k => $v): ?>
                                 data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
                             <?php endforeach; ?>
                             aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
-                            class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-control border px-3
-                                   text-sm transition-colors duration-[var(--duration-micro)] focus:outline-none focus-visible:ring-2
-                                   <?= $isDanger
-                                       ? 'border-bad/50 text-bad hover:bg-bad/10 focus-visible:ring-bad/60'
-                                       : 'border-edge text-ink hover:border-brand hover:bg-brand/5 hover:text-brand focus-visible:ring-brand/60' ?>">
+                            class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-control px-3
+                                   text-sm font-medium text-ink transition-colors duration-[var(--duration-micro)]
+                                   hover:bg-brand/7 hover:text-brand focus:outline-none focus-visible:ring-2
+                                   focus-visible:ring-brand/60">
                         <?= am2_icon($act['icon'] ?? 'chevron', 'h-4 w-4') ?>
+                        <span data-bulk-label class="hidden sm:inline"><?= e($act['toolbar_key'] ?? $act['key']) ?></span>
+                        <?php if ($hasDisclosure): ?>
+                            <?= am2_icon('chevron', 'hidden h-3 w-3 text-ink-subtle sm:block') ?>
+                        <?php endif; ?>
+                    </button>
+                <?php endforeach; ?>
+                </span>
+                <?php endif; ?>
+
+                <?php foreach ($bulkActions as $act):
+                    if (empty($act['utility'])) continue; ?>
+                    <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
+                            data-bulk-optional data-bulk-utility <?= $bulkMobileDirect ? 'data-bulk-direct-action' : '' ?>
+                            aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
+                            class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-control px-3
+                                   text-sm font-medium text-ink transition-colors duration-[var(--duration-micro)]
+                                   hover:bg-card hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60">
+                        <?= am2_icon($act['icon'] ?? 'download', 'h-4 w-4') ?>
+                        <span data-bulk-label class="hidden sm:inline"><?= e($act['toolbar_key'] ?? $act['key']) ?></span>
+                    </button>
+                <?php endforeach; ?>
+
+                <?php foreach ($bulkActions as $act):
+                    if (empty($act['danger'])) continue; ?>
+                    <button type="button" data-bulk="<?= htmlspecialchars($act['verb']) ?>" data-bulk-danger
+                            <?= $bulkMobileDirect ? 'data-bulk-direct-action' : '' ?>
+                            <?php foreach (($act['data'] ?? []) as $k => $v): ?>
+                                data-<?= $k ?>="<?= htmlspecialchars((string) $v) ?>"
+                            <?php endforeach; ?>
+                            aria-label="<?= e($act['key']) ?>" title="<?= e($act['key']) ?>"
+                            class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-control px-3
+                                   text-sm font-medium text-bad transition-colors duration-[var(--duration-micro)]
+                                   hover:bg-bad/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-bad/60">
+                        <?= am2_icon($act['icon'] ?? 'trash', 'h-4 w-4') ?>
                         <span data-bulk-label class="hidden sm:inline"><?= e($act['toolbar_key'] ?? $act['key']) ?></span>
                     </button>
                 <?php endforeach; ?>
@@ -153,7 +199,7 @@ for ($i = 1; $i <= $pages; $i++) {
              class="rounded-control border border-edge bg-card-muted p-1 sm:hidden">
             <?php foreach ($bulkActions as $index => $act):
                 $isDanger = !empty($act['danger']);
-                $isPrimary = !$isDanger && $index < 2;
+                $isPrimary = !$isDanger && empty($act['utility']) && $index < 2;
                 if ($isPrimary) continue; ?>
                 <button type="button" role="menuitem" data-bulk="<?= htmlspecialchars($act['verb']) ?>"
                         <?php foreach (($act['data'] ?? []) as $k => $v): ?>
