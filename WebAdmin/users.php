@@ -233,385 +233,356 @@ if ($admin_role === 'superadmin') {
     $all_channels = $stmt_ch->fetchAll();
 }
 ?>
+<?php
+$pageTitle = t('usr.heading');
+$pageLede  = t('usr.lede', ['n' => count($users)]);
 
-<!DOCTYPE html>
-<html <?= am2_html_attrs() ?>>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>User - am²</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="asset/css/am2-ui.css">
-    <style>
-        body { background-color: var(--color-bg); font-family: 'Segoe UI', sans-serif; }
-        .main-content { padding: 20px; transition: 0.3s; }
-        .card-custom { background: var(--color-surface); border-radius: 15px; border: 1px solid var(--color-border); box-shadow: var(--am2-shadow-sm); }
-        .header-title { font-weight: 800; color: var(--color-text); border-left: 5px solid var(--color-primary); padding-left: 15px; }
-        .table thead { background-color: var(--color-sidebar-surface); color: var(--color-sidebar-hover-text); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
-        .form-switch .form-check-input { width: 2.5em; height: 1.25em; cursor: pointer; }
-        .form-switch .form-check-input:checked { background-color: var(--color-success); border-color: var(--color-success); }
+/** Feature switches, in the order they appear on a row. */
+$features = [
+    ['enable_maps',      'usr.f_maps',  (bool) ($auth['can_manage_maps'] ?? false)],
+    ['enable_p2p',       'usr.f_p2p',   (bool) ($auth['can_manage_p2p'] ?? false)],
+    ['enable_ptt_video', 'usr.f_video', (bool) ($auth['can_manage_video'] ?? false)],
+];
 
-        @media (max-width: 768px) {
-            .header-title { font-size: 1.1rem; }
+include 'partials/head.php';
+include 'partials/shell.php';
+?>
 
-            .card-custom form .col-md-3, .card-custom form .col-md-4, .card-custom form .col-md-2 {
-                margin-bottom: 15px;
-            }
-            .card-custom form .col-md-2 { margin-bottom: 0; }
-        }
-    </style>
-</head>
-<body>
+<?php if ($success_msg !== ''): ?>
+    <p role="status" class="mb-5 rounded-control border-l-2 border-ok bg-ok/5 py-3 pl-3 pr-3 text-sm"><?= $success_msg ?></p>
+<?php endif; ?>
+<?php if ($error_msg !== ''): ?>
+    <p role="alert" class="mb-5 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm"><?= htmlspecialchars($error_msg) ?></p>
+<?php endif; ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <?php include 'sidebar.php'; ?>
+<section class="rounded-card border border-edge bg-card" x-data="usersPage()">
 
-        <main class="col-md-9 ms-sm-auto col-lg-10 main-content">
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="app-toolbar am2-page-hero d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                        <h4 class="header-title m-0">Manajemen User</h4>
-                        <div class="am2-hero-actions">
-                            <span class="badge am2-hero-pill px-3 py-2 rounded-pill">Total: <?= count($users) ?> User</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <?php if($success_msg): ?>
-                <div class="alert alert-success alert-dismissible fade show small" role="alert">
-                    <i class="fas fa-check-circle me-2"></i> <?= $success_msg ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
+    <div class="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 lg:px-5">
+        <!-- Search is a GET round trip because the list is paged by the server
+             and always has been; filtering only what is on screen would lie. -->
+        <form method="GET" class="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm">
+            <input name="search" type="search" value="<?= htmlspecialchars($search ?? '') ?>"
+                   class="w-full rounded-control border border-edge bg-card px-3 py-1.5 text-sm
+                          transition-colors hover:border-edge-strong focus:border-brand focus:outline-none"
+                   placeholder="<?= e('usr.search') ?>">
+            <button type="submit"
+                    class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">
+                <?= e('usr.find') ?>
+            </button>
+            <?php if (!empty($search)): ?>
+                <a href="users.php" class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle! no-underline! hover:text-ink!"><?= e('usr.clear') ?></a>
             <?php endif; ?>
-            <?php if($error_msg): ?>
-                <div class="alert alert-danger alert-dismissible fade show small" role="alert">
-                    <i class="fas fa-exclamation-triangle me-2"></i> <?= $error_msg ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            <?php endif; ?>
+        </form>
 
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="card card-custom toolbar-card p-3 p-md-4">
-                        <form method="POST" class="row g-2 g-md-3">
-                    <?= am2_csrf_field() ?>
-                            <div class="col-md-3">
-                                <label class="small fw-bold text-muted">ID / USERNAME</label>
-                                <input type="text" name="id" class="form-control form-control-sm" placeholder="Contoh: 12345" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small fw-bold text-muted">NAMA LENGKAP</label>
-                                <input type="text" name="name" class="form-control form-control-sm" placeholder="Nama User" style="text-transform: uppercase;" required>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small fw-bold text-muted">PASSWORD</label>
-                                <div class="input-group input-group-sm">
-                                    <input type="password" name="password" id="pass_add" class="form-control" placeholder="******" required>
-                                    <span class="input-group-text" style="cursor:pointer" onclick="togglePass('pass_add', this)"><i class="fas fa-eye"></i></span>
-                                </div>
-                            </div>
-                            <div class="col-md-2 d-grid">
-                                <button type="submit" name="add_user" class="btn btn-dark btn-sm fw-bold align-self-end mt-2 mt-md-0 py-2 py-md-1">TAMBAH</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="card card-custom toolbar-card p-3">
-                        <form method="GET" class="row g-2">
-                            <div class="col-md-10">
-                                <div class="input-group input-group-sm">
-                                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
-                                    <input type="text" name="search" class="form-control border-start-0" placeholder="Cari berdasarkan Nama atau ID..." value="<?= htmlspecialchars($search) ?>">
-                                </div>
-                            </div>
-                            <div class="col-md-2 d-grid">
-                                <button type="submit" class="btn btn-primary btn-sm py-2 py-md-1">CARI</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="card card-custom overflow-hidden">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0 data-table">
-                        <thead>
-                            <tr>
-                                <th class="px-4 py-3">USER</th>
-                                <th class="text-center">FULL-Duplex</th>
-                                <th class="text-center">Maps</th>
-                                <th class="text-center">PTP</th>
-                                <th class="text-center">Video</th>
-                                <th class="text-center">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($users) > 0): ?>
-                                <?php foreach ($users as $u): ?>
-                                <tr>
-                                    <td data-label="User" class="px-4" onclick="openChannelModal(<?= htmlspecialchars(json_encode((string)$u['id']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode((string)$u['name']), ENT_QUOTES, 'UTF-8') ?>)" style="cursor: pointer;">
-                                        <div class="fw-bold text-dark text-decoration-underline"><?= htmlspecialchars($u['name']) ?></div>
-                                        <div class="text-muted" style="font-size: 0.7rem;">ID: <?= htmlspecialchars($u['id']) ?></div>
-                                    </td>
-                                    <td data-label="Duplex" class="text-center">
-                                        <div class="form-check form-switch d-inline-block">
-                                            <input class="form-check-input" type="checkbox" <?= ($u['duplex_mode'] === 'FULL DUPLEX') ? 'checked' : '' ?>
-                                             onchange="updateDuplex('<?= $u['id'] ?>', this.checked)">
-                                        </div>
-                                    </td>
-                                    <td data-label="Maps" class="text-center">
-                                        <div class="form-check form-switch d-inline-block">
-                                            <input class="form-check-input" type="checkbox" <?= ($u['enable_maps'] ?? false) ? 'checked' : '' ?>
-                                            <?= !$auth['can_manage_maps'] ? 'disabled' : '' ?> onchange="updateFeature('<?= $u['id'] ?>', 'enable_maps', this.checked)">
-                                        </div>
-                                    </td>
-                                    <td data-label="PTP" class="text-center">
-                                        <div class="form-check form-switch d-inline-block">
-                                            <input class="form-check-input" type="checkbox" <?= ($u['enable_p2p'] ?? false) ? 'checked' : '' ?>
-                                            <?= !$auth['can_manage_p2p'] ? 'disabled' : '' ?> onchange="updateFeature('<?= $u['id'] ?>', 'enable_p2p', this.checked)">
-                                        </div>
-                                    </td>
-                                    <td data-label="Video" class="text-center">
-                                        <div class="form-check form-switch d-inline-block">
-                                            <input class="form-check-input" type="checkbox" <?= ($u['enable_ptt_video'] ?? false) ? 'checked' : '' ?>
-                                            <?= !$auth['can_manage_video'] ? 'disabled' : '' ?> onchange="updateFeature('<?= $u['id'] ?>', 'enable_ptt_video', this.checked)">
-                                        </div>
-                                    </td>
-                                    <td data-label="Aksi" class="text-center">
-                                        <div class="btn-group user-action-group">
-                                            <button type="button" class="btn btn-sm btn-light border btn-action-mobile" onclick="event.stopPropagation(); openEditModal(<?= htmlspecialchars(json_encode((string)$u['id']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode((string)$u['name']), ENT_QUOTES, 'UTF-8') ?>)">
-                                                <i class="fas fa-edit text-primary"></i> <span class="d-md-none">EDIT</span>
-                                            </button>
-                                            <form method="POST" class="d-inline" onsubmit="return confirm('Hapus user ini?')">
-                                                <?= am2_csrf_field() ?>
-                                                <input type="hidden" name="delete_user" value="<?= htmlspecialchars($u['id'], ENT_QUOTES, 'UTF-8') ?>">
-                                                <button type="submit" class="btn btn-sm btn-light border btn-danger-soft">
-                                                    <i class="fas fa-trash text-danger"></i> <span class="d-md-none">HAPUS</span>
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr><td data-label="" colspan="6" class="text-center py-4 text-muted small">Data tidak ditemukan.</td></tr>
-                            <?php endif; ?>
-                        </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
+        <button type="button" @click="add.open = true"
+                class="ml-auto rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px]
+                       uppercase tracking-[0.15em] text-slate-950 transition-colors hover:bg-brand-hover">
+            <?= e('usr.add') ?>
+        </button>
     </div>
-</div>
 
-<div class="modal fade" id="editModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
-                    <?= am2_csrf_field() ?>
-            <div class="modal-header border-0 pb-0">
-                 <h6 class="fw-bold mb-0">Update Data User</h6>
-                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="edit_id" id="edit_id">
-                <div class="mb-3">
-                    <label class="small fw-bold">Nama Lengkap</label>
-                    <input type="text" name="edit_name" id="edit_name" class="form-control" style="text-transform: uppercase;" required>
+    <?php if (empty($users)): ?>
+        <p class="px-5 py-12 text-center text-sm text-ink-muted"><?= e('usr.empty') ?></p>
+    <?php else: ?>
+    <div class="overflow-x-auto">
+        <table class="data-table w-full text-sm">
+            <thead>
+                <tr class="border-b border-edge text-left font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <th scope="col" class="px-4 py-2.5 font-normal lg:px-5"><?= e('usr.unit') ?></th>
+                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('usr.features') ?></th>
+                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('usr.duplex') ?></th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-normal"><?= e('usr.actions') ?></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-edge">
+                <?php foreach ($users as $u): $uid = (string) $u['id']; ?>
+                    <tr class="transition-colors hover:bg-card-muted">
+                        <td data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle lg:px-5">
+                            <span class="block font-medium"><?= htmlspecialchars($u['name']) ?></span>
+                            <span class="block font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($uid) ?></span>
+                        </td>
+
+                        <td data-label="<?= e('usr.features') ?>" class="px-4 py-2.5 align-middle">
+                            <div class="flex flex-wrap gap-1.5">
+                                <?php foreach ($features as [$key, $labelKey, $allowed]):
+                                    $on = (bool) ($u[$key] ?? false); ?>
+                                    <button type="button"
+                                            <?= $allowed ? '' : 'disabled' ?>
+                                            @click="toggle($el, <?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, '<?= $key ?>')"
+                                            data-on="<?= $on ? '1' : '0' ?>"
+                                            :class="$el.dataset.on === '1'
+                                                ? 'border-brand bg-brand/10 text-brand'
+                                                : 'border-edge text-ink-subtle'"
+                                            class="rounded-control border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em]
+                                                   transition-colors enabled:hover:border-brand disabled:cursor-not-allowed disabled:opacity-40
+                                                   <?= $on ? 'border-brand bg-brand/10 text-brand' : 'border-edge text-ink-subtle' ?>"
+                                            title="<?= $allowed ? e($labelKey) : e('usr.not_permitted') ?>">
+                                        <?= e($labelKey) ?>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+
+                        <td data-label="<?= e('usr.duplex') ?>" class="px-4 py-2.5 align-middle">
+                            <?php $full = ($u['duplex_mode'] ?? 'HALF DUPLEX') === 'FULL DUPLEX'; ?>
+                            <button type="button"
+                                    @click="toggleDuplex($el, <?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>)"
+                                    data-full="<?= $full ? '1' : '0' ?>"
+                                    :class="$el.dataset.full === '1' ? 'border-accent bg-accent/10 text-accent' : 'border-edge text-ink-subtle'"
+                                    class="rounded-control border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors hover:border-accent
+                                           <?= $full ? 'border-accent bg-accent/10 text-accent' : 'border-edge text-ink-subtle' ?>"
+                                    x-text="$el.dataset.full === '1' ? <?= js('usr.full') ?> : <?= js('usr.half') ?>"><?= $full ? e('usr.full') : e('usr.half') ?></button>
+                        </td>
+
+                        <td data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
+                            <div class="inline-flex gap-1.5">
+                                <button type="button"
+                                        @click="openChannels(<?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($u['name']), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                                    <?= e('usr.channels') ?>
+                                </button>
+                                <button type="button"
+                                        @click="openEdit(<?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($u['name']), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                                    <?= e('usr.edit') ?>
+                                </button>
+                                <form method="POST" class="inline"
+                                      onsubmit="return confirm(<?= htmlspecialchars(json_encode(t('usr.delete_confirm')), ENT_QUOTES) ?>)">
+                                    <?= am2_csrf_field() ?>
+                                    <input type="hidden" name="delete_user" value="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>">
+                                    <button type="submit"
+                                            class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle transition-colors hover:border-bad hover:text-bad">
+                                        <?= e('usr.delete') ?>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <!-- Toast. The old one showed the same sentence whatever happened; this one
+         says what actually changed, and turns red when it did not. -->
+    <div id="liveToast" x-cloak x-show="toast.text" x-transition.opacity
+         class="fixed bottom-5 right-5 z-[80] rounded-card border px-4 py-2.5 text-sm shadow-lg"
+         :class="toast.ok ? 'border-ok bg-card text-ink' : 'border-bad bg-card text-ink'"
+         role="status" x-text="toast.text"></div>
+
+    <!-- Add -->
+    <div x-cloak x-show="add.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="add.open = false" @keydown.window.escape="add.open = false" role="dialog" aria-modal="true">
+        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <?= am2_csrf_field() ?>
+            <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.add_title') ?></h2></div>
+            <div class="space-y-4 px-5 py-4">
+                <div>
+                    <label for="id" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.id') ?></label>
+                    <input id="id" name="id" type="text" required
+                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
                 </div>
-                <div class="mb-3">
-                    <label class="small fw-bold">Password Baru (Kosongkan jika tidak ganti)</label>
-                    <div class="input-group">
-                        <input type="password" name="edit_password" id="pass_edit" class="form-control" placeholder="******">
-                        <span class="input-group-text" style="cursor:pointer" onclick="togglePass('pass_edit', this)"><i class="fas fa-eye"></i></span>
+                <div>
+                    <label for="name" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.name') ?></label>
+                    <input id="name" name="name" type="text" required
+                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none">
+                </div>
+                <div x-data="{ shown: false }">
+                    <label for="pass_add" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.password') ?></label>
+                    <div class="mt-2 flex gap-2">
+                        <input id="pass_add" name="password" required :type="shown ? 'text' : 'password'"
+                               class="w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
+                        <button type="button" @click="shown = !shown" :aria-pressed="shown ? 'true' : 'false'"
+                                class="rounded-control border border-edge px-2 font-mono text-[10px] uppercase text-ink-subtle hover:text-ink"
+                                x-text="shown ? <?= js('login.hide_password') ?> : <?= js('login.show_password') ?>"><?= e('login.show_password') ?></button>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer border-0 pt-0 d-flex gap-2">
-                <button type="button" class="btn btn-light flex-fill py-2" data-bs-dismiss="modal">Batal</button>
-                <button type="submit" name="edit_user" class="btn btn-dark flex-fill py-2">Simpan Perubahan</button>
+            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
+                <button type="button" @click="add.open = false"
+                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
+                <button type="submit" name="add_user" value="1"
+                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover"><?= e('ch.save') ?></button>
             </div>
         </form>
     </div>
-</div>
 
-<div class="modal fade" id="channelModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
-            <div class="modal-header bg-light border-0">
-                <h6 class="fw-bold mb-0"><i class="fas fa-broadcast-tower me-2"></i> Akses Channel: <span id="ch_user_name"></span></h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="ch_user_id">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <label class="small fw-bold text-muted">DAFTAR CHANNEL</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="selectAllChannels">
-                        <label class="form-check-label small fw-bold" for="selectAllChannels">Pilih Semua</label>
+    <!-- Edit -->
+    <div id="editModal" x-cloak x-show="edit.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="edit.open = false" @keydown.window.escape="edit.open = false" role="dialog" aria-modal="true">
+        <form method="POST" class="w-full max-w-sm overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <?= am2_csrf_field() ?>
+            <input type="hidden" name="edit_id" id="edit_id" :value="edit.id">
+            <div class="border-b border-edge px-5 py-4"><h2 class="text-sm font-semibold"><?= e('usr.edit_title') ?></h2></div>
+            <div class="space-y-4 px-5 py-4">
+                <div>
+                    <label for="edit_name" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.name') ?></label>
+                    <input id="edit_name" name="edit_name" type="text" required x-model="edit.name"
+                           class="mt-2 w-full rounded-control border border-edge bg-card px-3 py-2 text-sm focus:border-brand focus:outline-none">
+                </div>
+                <div x-data="{ shown: false }">
+                    <label for="pass_edit" class="block font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.new_password') ?></label>
+                    <div class="mt-2 flex gap-2">
+                        <input id="pass_edit" name="edit_password" :type="shown ? 'text' : 'password'"
+                               class="w-full rounded-control border border-edge bg-card px-3 py-2 font-mono text-sm focus:border-brand focus:outline-none">
+                        <button type="button" @click="shown = !shown" :aria-pressed="shown ? 'true' : 'false'"
+                                class="rounded-control border border-edge px-2 font-mono text-[10px] uppercase text-ink-subtle hover:text-ink"
+                                x-text="shown ? <?= js('login.hide_password') ?> : <?= js('login.show_password') ?>"><?= e('login.show_password') ?></button>
                     </div>
+                    <p class="mt-1.5 text-xs text-ink-subtle"><?= e('usr.password_hint') ?></p>
                 </div>
-                <div id="quickChannelList" class="choice-list" style="max-height: 300px; overflow-y: auto; padding: 10px;">
-                    <?php foreach ($all_channels as $c): ?>
-                    <label class="d-flex align-items-center p-2 border-bottom" style="cursor: pointer;">
-                        <input type="checkbox" class="quick-ch-checkbox me-3" value="<?= $c['id'] ?>">
-                        <span class="small fw-bold text-dark"><?= htmlspecialchars($c['display_name']) ?></span>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
+                <button type="button" @click="edit.open = false"
+                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
+                <button type="submit" name="edit_user" value="1"
+                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover"><?= e('ch.save') ?></button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Quick channel assignment -->
+    <div id="channelModal" x-cloak x-show="ch.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="ch.open = false" @keydown.window.escape="ch.open = false" role="dialog" aria-modal="true">
+        <div class="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <div class="border-b border-edge px-5 py-4">
+                <h2 class="text-sm font-semibold"><?= e('usr.channels_title') ?></h2>
+                <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand" id="ch_user_name" x-text="ch.name"></p>
+                <input type="hidden" id="ch_user_id" :value="ch.id">
+            </div>
+            <div class="flex items-center justify-between border-b border-edge px-5 py-2.5">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="selectAllChannels" @change="toggleAllChannels($event.target.checked)"
+                           class="h-4 w-4 rounded-sm border-edge-strong accent-brand">
+                    <?= e('ch.select_all') ?>
+                </label>
+                <!-- The first ticked channel becomes the default, and without a
+                     valid default the unit cannot sign in at all. -->
+                <span class="font-mono text-[9px] uppercase tracking-[0.15em] text-ink-subtle"><?= e('usr.first_is_default') ?></span>
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 py-3">
+                <?php foreach ($all_channels as $c): ?>
+                    <label class="flex items-center gap-3 rounded-control px-2 py-1.5 text-sm hover:bg-card-muted">
+                        <input type="checkbox" class="quick-ch-checkbox h-4 w-4 rounded-sm border-edge-strong accent-brand"
+                               value="<?= (int) $c['id'] ?>">
+                        <span class="min-w-0 flex-1 truncate"><?= htmlspecialchars($c['display_name']) ?></span>
                     </label>
-                    <?php endforeach; ?>
-                </div>
+                <?php endforeach; ?>
             </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-light btn-sm px-4" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-dark btn-sm px-4" onclick="saveQuickChannels()">Simpan Akses</button>
+            <div class="flex justify-end gap-2 border-t border-edge px-5 py-3">
+                <button type="button" @click="ch.open = false"
+                        class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
+                <button type="button" @click="saveChannels()" :disabled="ch.saving"
+                        class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover disabled:opacity-60"><?= e('ch.save') ?></button>
             </div>
         </div>
     </div>
-</div>
+</section>
 
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="liveToast" class="toast align-items-center text-white bg-success border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="d-flex">
-            <div class="toast-body" id="toastMsg">Izin fitur diperbarui secara real-time.</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-        </div>
-    </div>
-</div>
+<?php include 'partials/shell_end.php'; ?>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     const AM2_CSRF = <?= json_encode(am2_csrf_token()) ?>;
-    const toastObj = new bootstrap.Toast(document.getElementById('liveToast'));
-    const channelModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('channelModal'));
+    const USR_MSG = <?= json_encode([
+        'saved'   => t('usr.saved'),
+        'failed'  => t('usr.failed'),
+        'offline' => t('usr.offline'),
+    ]) ?>;
 
-    function getEditModalInstance() {
-        const modalEl = document.getElementById('editModal');
-        return modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
-    }
+    function usersPage() {
+        return {
+            toast: { text: '', ok: true },
+            add:  { open: false },
+            edit: { open: false, id: null, name: '' },
+            ch:   { open: false, id: null, name: '', saving: false },
 
-    function togglePass(inputId, iconEl) {
-        const input = document.getElementById(inputId);
-        const icon = iconEl.querySelector('i');
-        if (input.type === "password") {
-            input.type = "text";
-            icon.classList.replace('fa-eye', 'fa-eye-slash');
-        } else {
-            input.type = "password";
-            icon.classList.replace('fa-eye-slash', 'fa-eye');
-        }
-    }
+            say(text, ok = true) {
+                this.toast = { text, ok };
+                setTimeout(() => { this.toast.text = ''; }, 3000);
+            },
 
-    function updateFeature(uId, feature, val) {
-        const fd = new FormData();
-        fd.append('update_feature', '1');
-        fd.append('_csrf', AM2_CSRF);
-        fd.append('u_id', uId);
-        fd.append('feature', feature);
-        fd.append('val', val);
+            async post(fields) {
+                const fd = new FormData();
+                Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+                fd.append('_csrf', AM2_CSRF);
+                const res = await fetch('users.php', { method: 'POST', body: fd });
+                return res.json();
+            },
 
-        fetch('users.php', { method: 'POST', body: fd })
-        .then(res => res.json())
-        .then(data => {
-            if(data.success) {
-                toastObj.show();
-            } else {
-                alert(data.msg);
-                location.reload();
-            }
-        }).catch(() => location.reload());
-    }
+            // The button holds its own state in a data attribute, so a failed
+            // request can put it back rather than leaving the row lying.
+            async toggle(el, uid, feature) {
+                const next = el.dataset.on !== '1';
+                el.dataset.on = next ? '1' : '0';
+                try {
+                    const r = await this.post({ update_feature: '1', u_id: uid, feature, val: next ? 'true' : 'false' });
+                    if (!r.success) throw new Error(r.msg || 'failed');
+                    this.say(USR_MSG.saved);
+                } catch (err) {
+                    el.dataset.on = next ? '0' : '1';
+                    this.say(String(err.message || USR_MSG.failed), false);
+                }
+            },
 
-    function updateDuplex(uId, isFull) {
-        const mode = isFull ? 'FULL DUPLEX' : 'HALF DUPLEX';
-        const fd = new FormData();
-        fd.append('update_feature', '1');
-        fd.append('_csrf', AM2_CSRF);
-        fd.append('u_id', uId);
-        fd.append('feature', 'duplex_mode');
-        fd.append('val', mode);
+            async toggleDuplex(el, uid) {
+                const next = el.dataset.full !== '1';
+                el.dataset.full = next ? '1' : '0';
+                try {
+                    const r = await this.post({
+                        update_feature: '1', u_id: uid, feature: 'duplex_mode',
+                        val: next ? 'FULL DUPLEX' : 'HALF DUPLEX',
+                    });
+                    if (!r.success) throw new Error(r.msg || 'failed');
+                    this.say(USR_MSG.saved);
+                } catch (err) {
+                    el.dataset.full = next ? '0' : '1';
+                    this.say(String(err.message || USR_MSG.failed), false);
+                }
+            },
 
-        fetch('users.php', { method: 'POST', body: fd })
-        .then(res => res.json())
-        .then(data => {
-            if(data.success) {
-                toastObj.show();
-            } else {
-                alert(data.msg);
-                location.reload();
-            }
-        }).catch(() => location.reload());
-    }
+            openEdit(id, name) { this.edit = { open: true, id, name }; },
 
-    function openEditModal(id, name) {
-        document.getElementById('edit_id').value = id;
-        document.getElementById('edit_name').value = name;
-        document.getElementById('pass_edit').value = "";
-        const modal = getEditModalInstance();
-        if (modal) modal.show();
-    }
+            async openChannels(id, name) {
+                this.ch = { open: true, id, name, saving: false };
+                document.querySelectorAll('.quick-ch-checkbox').forEach((c) => { c.checked = false; });
+                document.getElementById('selectAllChannels').checked = false;
+                try {
+                    const res = await fetch(`users.php?get_user_channels=1&u_id=${encodeURIComponent(id)}`);
+                    const ids = new Set((await res.json() ?? []).map(String));
+                    document.querySelectorAll('.quick-ch-checkbox').forEach((c) => {
+                        c.checked = ids.has(String(c.value));
+                    });
+                } catch {
+                    this.say(USR_MSG.offline, false);
+                }
+            },
 
-    function openChannelModal(id, name) {
-        document.getElementById('ch_user_id').value = id;
-        document.getElementById('ch_user_name').innerText = name;
+            toggleAllChannels(on) {
+                document.querySelectorAll('.quick-ch-checkbox').forEach((c) => { c.checked = on; });
+            },
 
-        document.querySelectorAll('.quick-ch-checkbox').forEach(cb => cb.checked = false);
-        document.getElementById('selectAllChannels').checked = false;
-
-        fetch(`users.php?get_user_channels=1&u_id=${id}`)
-        .then(res => res.json())
-        .then(data => {
-            data.forEach(chId => {
-                const cb = document.querySelector(`.quick-ch-checkbox[value="${chId}"]`);
-                if(cb) cb.checked = true;
-            });
-            updateSelectAllState();
-            channelModal.show();
-        });
-    }
-
-    document.getElementById('selectAllChannels').addEventListener('change', function() {
-        document.querySelectorAll('.quick-ch-checkbox').forEach(cb => cb.checked = this.checked);
-    });
-
-    document.querySelectorAll('.quick-ch-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateSelectAllState);
-    });
-
-    function updateSelectAllState() {
-        const total = document.querySelectorAll('.quick-ch-checkbox').length;
-        const checked = document.querySelectorAll('.quick-ch-checkbox:checked').length;
-        document.getElementById('selectAllChannels').checked = (total > 0 && total === checked);
-    }
-
-    function saveQuickChannels() {
-        const userId = document.getElementById('ch_user_id').value;
-        const selected = Array.from(document.querySelectorAll('.quick-ch-checkbox:checked')).map(cb => cb.value);
-
-        const fd = new FormData();
-        fd.append('save_user_channels', '1');
-        fd.append('_csrf', AM2_CSRF);
-        fd.append('u_id', userId);
-        fd.append('channels', JSON.stringify(selected));
-
-        fetch('users.php', { method: 'POST', body: fd })
-        .then(res => res.json())
-        .then(data => {
-            if(data.success) {
-                toastObj.show();
-                channelModal.hide();
-            } else {
-                alert(data.msg);
-            }
-        });
+            async saveChannels() {
+                this.ch.saving = true;
+                const picked = [...document.querySelectorAll('.quick-ch-checkbox:checked')]
+                    .map((c) => Number(c.value));
+                try {
+                    const r = await this.post({
+                        save_user_channels: '1', u_id: this.ch.id, channels: JSON.stringify(picked),
+                    });
+                    if (!r.success) throw new Error(r.msg || 'failed');
+                    this.ch.open = false;
+                    this.say(USR_MSG.saved);
+                } catch (err) {
+                    this.say(String(err.message || USR_MSG.failed), false);
+                } finally {
+                    this.ch.saving = false;
+                }
+            },
+        };
     }
 </script>
 </body>

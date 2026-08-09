@@ -37,16 +37,21 @@ describe('locale', () => {
     test('rendered strings actually change', async () => {
         const id = await (await page('/login.php', 'am2_lang=id')).text();
         const en = await (await page('/login.php', 'am2_lang=en')).text();
-        assert.match(id, /Masukkan username/);
-        assert.match(en, /Enter your username/);
-        assert.ok(!/Masukkan username/.test(en));
+        // The wordmark line, not a placeholder: the fields are labelled, so a
+        // placeholder repeating the label was removed in the redesign.
+        assert.match(id, /Pusat Kendali Radio/);
+        assert.match(en, /Radio Control Centre/);
+        assert.ok(!/Pusat Kendali Radio/.test(en));
     });
 
     test('the sidebar switches with the session', async () => {
         const id = await (await page('/dashboard.php', `${sup};am2_lang=id`)).text();
         const en = await (await page('/dashboard.php', `${sup};am2_lang=en`)).text();
-        assert.match(id, /sidebar-heading">Manajemen/);
-        assert.match(en, /sidebar-heading">Management/);
+        // Asserts the translated label, not the markup around it: pages move
+        // to the new shell one at a time and the class changes with them.
+        assert.match(id, /Manajemen/);
+        assert.match(en, /Management/);
+        assert.ok(!/Manajemen/.test(en));
     });
 
     test('?lang= persists the choice in a cookie', async () => {
