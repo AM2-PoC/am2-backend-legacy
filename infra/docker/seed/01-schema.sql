@@ -341,7 +341,10 @@ CREATE TABLE public.users (
     role character varying(20) DEFAULT 'superadmin'::character varying,
     current_device_id text,
     force_logout boolean DEFAULT false,
-    is_speaking boolean DEFAULT false
+    is_speaking boolean DEFAULT false,
+    entity_type character varying(16) DEFAULT 'user'::character varying NOT NULL,
+    location_updated_at timestamp with time zone,
+    CONSTRAINT users_entity_type_check CHECK (((entity_type)::text = ANY (ARRAY['user'::text, 'tracker'::text])))
 );
 
 

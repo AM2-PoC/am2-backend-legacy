@@ -659,6 +659,52 @@ a.am2-surface-accent:hover {
                 var(--am2-shadow);
 }
 
+/* LiveTrack dimensions remain independent: geometry is identity, border/opacity
+   is freshness, and the red outer ring is TX. */
+.custom-marker { position: relative; }
+.custom-marker .pulse-dot,
+.legend-shape {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 3px solid var(--color-success);
+    background: var(--color-surface);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+.custom-marker .pulse-dot {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+}
+.custom-marker.entity-user .pulse-dot,
+.legend-shape.entity-user { border-radius: 9999px; }
+.custom-marker.entity-tracker .pulse-dot { transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
+.legend-shape.entity-tracker { transform: rotate(45deg); border-radius: 2px; }
+.custom-marker.freshness-delayed .pulse-dot { border-color: var(--color-warning); border-style: dashed; }
+.custom-marker.freshness-stale { filter: grayscale(1); opacity: .48; }
+.custom-marker.freshness-stale .pulse-dot { border-color: var(--color-text-muted); }
+.custom-marker.speaking-marker .pulse-dot {
+    outline: 4px solid rgb(248 113 113 / 45%);
+    animation: am2-live 1.6s var(--ease-standard) infinite;
+}
+.marker-label {
+    position: absolute;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    border-radius: var(--am2-radius);
+    background: var(--color-surface);
+    padding: 2px 6px;
+    color: var(--color-text);
+    font: 600 11px var(--font-mono);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+.legend-state { display: block; width: 12px; height: 3px; border-radius: 9999px; background: var(--color-success); }
+.legend-state.freshness-delayed { background: var(--color-warning); }
+.legend-state.freshness-stale { background: var(--color-text-muted); opacity: .5; }
+
 /* A marker with no label is only its dot, so it must not reserve label space. */
 .custom-marker-bare { width: 16px !important; height: 16px !important; }
 .custom-marker-bare .marker-label { display: none; }

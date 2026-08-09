@@ -73,15 +73,21 @@ include 'partials/shell.php';
         Legend. The marker colours mean something, and colour alone does not
         carry meaning for everyone looking at this screen.
     -->
-    <div class="absolute bottom-4 left-4 z-20 hidden items-center gap-4 rounded-control
+    <div class="absolute bottom-4 left-4 z-20 hidden flex-wrap items-center gap-3 rounded-control
                 border border-edge bg-card/95 px-3 py-2 font-mono text-[11px] uppercase
-                tracking-[0.15em] text-ink-subtle shadow-pop backdrop-blur-sm lg:flex">
-        <span class="flex items-center gap-1.5">
-            <span class="h-2 w-2 rounded-full bg-ok" aria-hidden="true"></span><?= e('rail.online') ?>
-        </span>
-        <span class="flex items-center gap-1.5">
-            <span class="am2-live h-2 w-2 rounded-full bg-bad" aria-hidden="true"></span><?= e('track.transmitting') ?>
-        </span>
+                tracking-[0.12em] text-ink-subtle shadow-pop backdrop-blur-sm lg:flex">
+        <span class="flex items-center gap-1.5"><span class="legend-shape entity-user" aria-hidden="true"></span><?= e('track.type_user') ?></span>
+        <span class="flex items-center gap-1.5"><span class="legend-shape entity-tracker" aria-hidden="true"></span><?= e('track.type_tracker') ?></span>
+        <span class="flex items-center gap-1.5"><span class="legend-state freshness-fresh" aria-hidden="true"></span><?= e('track.fresh') ?></span>
+        <span class="flex items-center gap-1.5"><span class="legend-state freshness-delayed" aria-hidden="true"></span><?= e('track.delayed') ?></span>
+        <span class="flex items-center gap-1.5"><span class="legend-state freshness-stale" aria-hidden="true"></span><?= e('track.stale') ?></span>
+        <span class="flex items-center gap-1.5"><span class="am2-live h-2 w-2 rounded-full bg-bad" aria-hidden="true"></span><?= e('track.transmitting') ?></span>
+    </div>
+
+    <div id="feed-status" hidden role="status"
+         class="absolute left-4 top-4 z-30 rounded-control border border-bad/40 bg-card/95 px-3 py-2
+                font-mono text-[11px] uppercase tracking-[0.15em] text-bad shadow-pop">
+        <?= e('track.feed_disconnected') ?>
     </div>
 
     <!-- Transmitting right now. The one pulse in the application. -->
@@ -134,6 +140,9 @@ include 'partials/shell.php';
             <span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.15em]">
                 <span id="count-online" class="text-ink">0</span>
                 <span class="text-ink-subtle"><?= e('rail.online') ?></span>
+                <span aria-hidden="true" class="text-ink-subtle">·</span>
+                <span id="count-fresh" class="text-ok">0</span>
+                <span class="text-ink-subtle"><?= e('track.fresh_locations') ?></span>
             </span>
             <!-- Desktop gets the same escape the phone has: the panel covers a
                  third of the map, and sometimes the map is the point. -->
@@ -165,13 +174,32 @@ include 'partials/shell.php';
 <?php include 'partials/shell_end.php'; ?>
 
 <script src="<?= am2_asset('asset/vendor/leaflet/leaflet.js') ?>"></script>
-<script>
+<script type="module">
+import {
+    accuracyQuality, classifyUnit, formatAccuracy, formatAge, hasValidLocation, summarizeUnits,
+} from <?= json_encode(am2_asset_url('./asset/js/src/livetrack-model.js')) ?>;
+// Stable class hook produced by classifyUnit(): speaking-marker.
+
 (() => {
     'use strict';
 
     const $ = (id) => document.getElementById(id);
     const EMPTY = <?= json_encode(t('track.empty')) ?>;
     const CHANNEL = <?= json_encode(t('track.channel')) ?>;
+    const TYPE = <?= json_encode(t('usr.entity_type')) ?>;
+    const TYPES = {
+        user: <?= json_encode(t('track.type_user')) ?>,
+        tracker: <?= json_encode(t('track.type_tracker')) ?>,
+    };
+    const FRESHNESS_LABELS = {
+        fresh: <?= json_encode(t('track.fresh')) ?>,
+        delayed: <?= json_encode(t('track.delayed')) ?>,
+        stale: <?= json_encode(t('track.stale')) ?>,
+    };
+    const LAST_LOCATION = <?= json_encode(t('track.last_location')) ?>;
+    const ACCURACY = <?= json_encode(t('track.accuracy')) ?>;
+    const NO_LOCATION = <?= json_encode(t('track.no_location')) ?>;
+    const FEED_DISCONNECTED = <?= json_encode(t('track.feed_disconnected')) ?>;
 
     const map = L.map('map', { zoomControl: false, attributionControl: true })
                  .setView([-2.5, 118], 5);
@@ -209,7 +237,11 @@ include 'partials/shell.php';
         { attributes: true, attributeFilter: ['data-theme'] });
 
     const markers = {};
+    const locationCircles = {};
     let userCache = [];
+    let feedFailures = 0;
+    let syncInFlight = false;
+    const FETCH_TIMEOUT_MS = 2500;
 
     /** Zoom at which unit names stop colliding. */
     const LABEL_ZOOM = 9;
@@ -220,30 +252,51 @@ include 'partials/shell.php';
         (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     async function syncData() {
+        if (syncInFlight) return;
+        syncInFlight = true;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
         try {
-            const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
+            const res = await fetch('get-users-ajax.php', {
+                headers: { Accept: 'application/json' },
+                signal: controller.signal,
+            });
             if (!res.ok) throw new Error(res.status);
             const data = await res.json();
-            if (!data || data.error) return;
+            if (!Array.isArray(data)) throw new Error(data?.error || 'invalid response');
+            feedFailures = 0;
+            $('feed-status').hidden = true;
             userCache = data;
             updateMarkers();
             renderList();
         } catch {
             // The last known positions stay on the map rather than vanishing.
+            feedFailures += 1;
+            if (feedFailures >= 2) {
+                $('feed-status').textContent = FEED_DISCONNECTED;
+                $('feed-status').hidden = false;
+            }
+        } finally {
+            clearTimeout(timeout);
+            syncInFlight = false;
         }
     }
 
     function updateMarkers() {
-        const activeIds = userCache.map((u) => String(u.id));
+        const activeIds = userCache.filter(hasValidLocation).map((u) => String(u.id));
         let txFound = false;
 
         userCache.forEach((user) => {
             const uid = String(user.id);
-            const lat = parseFloat(user.lat);
-            const lng = parseFloat(user.lng);
-            if (Number.isNaN(lat) || lat === 0) return;
-
-            const isSpeaking = parseInt(user.is_speaking, 10) === 1;
+            if (!hasValidLocation(user)) {
+                if (markers[uid]) { map.removeLayer(markers[uid]); delete markers[uid]; }
+                if (locationCircles[uid]) { map.removeLayer(locationCircles[uid]); delete locationCircles[uid]; }
+                return;
+            }
+            const lat = Number(user.lat);
+            const lng = Number(user.lng);
+            const state = classifyUnit(user);
+            const isSpeaking = state.speaking;
             if (isSpeaking) txFound = true;
 
             // Class names are the contract am2-ui.css styles the markers with.
@@ -252,30 +305,48 @@ include 'partials/shell.php';
             // still says where each unit is, and the name is a click or a
             // glance at the panel away.
             const showLabel = map.getZoom() >= LABEL_ZOOM;
+            const markerDescription = `${TYPES[state.entityType]}, ${FRESHNESS_LABELS[state.freshness]}`;
             const icon = L.divIcon({
-                className: (isSpeaking ? 'custom-marker speaking-marker' : 'custom-marker')
-                    + (showLabel ? '' : ' custom-marker-bare'),
-                html: (showLabel ? `<div class="marker-label">${esc(user.name)}</div>` : '')
-                    + '<div class="pulse-dot"></div>',
+                className: state.markerClass + (showLabel ? '' : ' custom-marker-bare'),
+                html: `<span class="sr-only">${esc(markerDescription)}</span>`
+                    + (showLabel ? `<div class="marker-label">${esc(user.name)}</div>` : '')
+                    + '<div class="pulse-dot" aria-hidden="true"></div>',
                 iconSize: showLabel ? [100, 40] : [16, 16],
-                iconAnchor: showLabel ? [50, 35] : [8, 8],
+                // Dot centre is y=32: 40px icon minus 8px radius.
+                iconAnchor: showLabel ? [50, 32] : [8, 8],
             });
 
             if (markers[uid]) {
                 markers[uid].setLatLng([lat, lng]);
-                if (markers[uid]._speakingState !== isSpeaking
-                    || markers[uid]._labelState !== showLabel) {
+                if (markers[uid]._renderState !== `${state.markerClass}:${showLabel}`) {
                     markers[uid].setIcon(icon);
-                    markers[uid]._speakingState = isSpeaking;
-                    markers[uid]._labelState = showLabel;
+                    markers[uid]._renderState = `${state.markerClass}:${showLabel}`;
                 }
                 markers[uid].setZIndexOffset(isSpeaking ? 1000 : 0);
             } else {
                 markers[uid] = L.marker([lat, lng], { icon }).addTo(map);
-                markers[uid]._speakingState = isSpeaking;
-                markers[uid]._labelState = showLabel;
-                markers[uid].bindPopup(
-                    `<b>${esc(user.name)}</b><br><small>${CHANNEL}: ${esc(user.channel_name)}</small>`);
+                markers[uid]._renderState = `${state.markerClass}:${showLabel}`;
+                markers[uid].bindPopup('');
+            }
+            const popup = `<b>${esc(user.name)}</b><br><small>`
+                + `${esc(TYPE)}: ${esc(TYPES[state.entityType])}<br>`
+                + `${esc(CHANNEL)}: ${esc(user.channel_name)}<br>`
+                + `${esc(LAST_LOCATION)}: ${esc(formatAge(user.location_age_seconds))} (${esc(FRESHNESS_LABELS[state.freshness])})<br>`
+                + `${esc(ACCURACY)}: ${esc(formatAccuracy(user.accuracy))}</small>`;
+            markers[uid].setPopupContent(popup);
+
+            const acc = Number(user.accuracy);
+            if (Number.isFinite(acc) && acc > 0) {
+                if (!locationCircles[uid]) {
+                    locationCircles[uid] = L.circle([lat, lng], { interactive: false, weight: 1, fillOpacity: 0.08 }).addTo(map);
+                }
+                locationCircles[uid].setLatLng([lat, lng]).setRadius(acc).setStyle({
+                    color: accuracyQuality(acc) === 'poor' ? '#f59e0b' : '#22c55e',
+                    dashArray: accuracyQuality(acc) === 'poor' ? '6 5' : null,
+                });
+            } else if (locationCircles[uid]) {
+                map.removeLayer(locationCircles[uid]);
+                delete locationCircles[uid];
             }
         });
 
@@ -285,18 +356,30 @@ include 'partials/shell.php';
                 delete markers[id];
             }
         });
+        Object.keys(locationCircles).forEach((id) => {
+            if (!activeIds.includes(id)) {
+                map.removeLayer(locationCircles[id]);
+                delete locationCircles[id];
+            }
+        });
 
         $('tx-indicator').hidden = !txFound;
-        window.AM2?.countTo($('count-online'), userCache.length);
-        $('count-online-badge').textContent = String(userCache.length);
-        $('panelRestoreCount').textContent = String(userCache.length);
+        const summary = summarizeUnits(userCache);
+        window.AM2?.countTo($('count-online'), summary.online);
+        window.AM2?.countTo($('count-fresh'), summary.fresh);
+        $('count-online-badge').textContent = String(summary.online);
+        $('panelRestoreCount').textContent = String(summary.online);
     }
 
     function renderList() {
         const q = $('unitSearch').value.toLowerCase();
         const list = $('unitList');
-        const filtered = userCache.filter(
-            (u) => String(u.name).toLowerCase().includes(q) || String(u.id).includes(q));
+        const filtered = userCache.filter((u) => {
+            const state = classifyUnit(u);
+            return String(u.name).toLowerCase().includes(q)
+                || String(u.id).toLowerCase().includes(q)
+                || TYPES[state.entityType].toLowerCase().includes(q);
+        });
 
         list.textContent = '';
 
@@ -309,7 +392,8 @@ include 'partials/shell.php';
         }
 
         for (const u of filtered) {
-            const speaking = parseInt(u.is_speaking, 10) === 1;
+            const state = classifyUnit(u);
+            const speaking = state.speaking;
 
             // A button, so it is reachable by keyboard. The old rows were divs
             // with an inline onclick and could only be used with a mouse.
@@ -318,10 +402,12 @@ include 'partials/shell.php';
             row.className = 'unit-item flex w-full items-center gap-3 border-b border-edge px-4 '
                 + 'py-2.5 text-left transition-colors duration-[var(--duration-micro)] '
                 + 'hover:bg-card-muted' + (speaking ? ' speaking-active' : '');
-            row.dataset.lat = u.lat;
-            row.dataset.lng = u.lng;
             row.dataset.uid = String(u.id);
-            row.addEventListener('click', () => gotoUnit(u.lat, u.lng, String(u.id)));
+            if (hasValidLocation(u)) {
+                row.addEventListener('click', () => gotoUnit(u.lat, u.lng, String(u.id)));
+            } else {
+                row.disabled = true;
+            }
 
             const dot = document.createElement('span');
             dot.className = 'h-2.5 w-2.5 shrink-0 rounded-full '
@@ -337,6 +423,10 @@ include 'partials/shell.php';
             name.className = 'truncate text-sm font-semibold text-ink';
             name.textContent = u.name ?? '';
             top.appendChild(name);
+            const type = document.createElement('span');
+            type.className = 'shrink-0 rounded-control bg-card-muted px-1.5 font-mono text-[10px] uppercase text-ink-subtle';
+            type.textContent = TYPES[state.entityType];
+            top.appendChild(type);
             if (speaking) {
                 const tx = document.createElement('span');
                 tx.className = 'shrink-0 rounded-control bg-bad/10 px-1.5 font-mono text-[11px] text-bad';
@@ -354,7 +444,13 @@ include 'partials/shell.php';
             chEl.textContent = u.channel_name ?? '';
             meta.append(idEl, chEl);
 
-            body.append(top, meta);
+            const locationMeta = document.createElement('span');
+            locationMeta.className = 'mt-1 block font-mono text-[11px] text-ink-subtle';
+            locationMeta.textContent = hasValidLocation(u)
+                ? `${LAST_LOCATION}: ${formatAge(u.location_age_seconds)} · ${formatAccuracy(u.accuracy)} · ${FRESHNESS_LABELS[state.freshness]}`
+                : NO_LOCATION;
+
+            body.append(top, meta, locationMeta);
             row.append(dot, body);
             list.appendChild(row);
         }
