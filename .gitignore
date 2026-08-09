@@ -37,12 +37,22 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-dist/
-build/
+# Anchored for the same reason as vendor/ below: unanchored, these would match
+# a directory of that name anywhere, including one holding real assets.
+/dist/
+/*/dist/
+/build/
+/*/build/
 coverage/
 
-# PHP/composer dependencies and caches
-vendor/
+# PHP/composer dependencies and caches.
+# Anchored to the root: a bare `vendor/` matches any directory of that name at
+# any depth, and it silently swallowed WebAdmin/asset/vendor/leaflet -- which
+# livetrack.php loads by <script src>. Staging is a git checkout so the files
+# were there and the map worked; production is built with `git archive`, which
+# ships only tracked files, so leaflet 404'd and the map never rendered.
+/vendor/
+/*/vendor/
 .phpunit.result.cache
 
 # WebAdmin runtime/uploads/backups
