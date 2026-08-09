@@ -162,6 +162,61 @@ export function sqlOne(query, db) {
     return rows.length ? rows[0] : null;
 }
 
+
+/**
+ * Staging carries a copy of production. Every fixture account is prefixed
+ * `ct_`; everything else is somebody's real account.
+ *
+ * A probe that hardcoded `admin_id=1` overwrote the real superadmin's password
+ * hash: the probe was written to assert a 403, but it was run against a build
+ * where the guard did not exist yet, so it did what it was asking permission
+ * to do. An assertion is not a safety mechanism -- it runs after the request.
+ *
+ * These resolve fixtures by name and refuse anything else, before the request.
+ */
+export function ctAdminId(username) {
+    guardCtTarget(username);
+    const row = sqlOne(`SELECT id FROM public.admin WHERE username = '${username}'`);
+    if (!row) throw new Error(`fixture admin ${username} is missing; run contract-test-fixtures.sh`);
+    return row[0];
+}
+
+/**
+ * A fixture channel, by name. Channel ids are sequence values on a copy of
+ * production, so a literal id in a probe names whatever real channel happens
+ * to hold that number -- `1` is a live channel with real members on it.
+ */
+export function ctChannelId(name) {
+    guardCtTarget(name);
+    const row = sqlOne(`SELECT id FROM public.channels WHERE name = '${name}'`);
+    if (!row) throw new Error(`fixture channel ${name} is missing; run contract-test-fixtures.sh`);
+    return row[0];
+}
+
+/** Throw unless this names a fixture. Call it before mutating, not after. */
+export function guardCtTarget(value) {
+    const v = String(value ?? '');
+    if (!/^ct_/i.test(v)) {
+        throw new Error(
+            `refusing to target "${v}": staging holds production data and only ct_* rows may be mutated`
+        );
+    }
+    return v;
+}
+
+/** The stored hash, so a probe can put it back whatever the outcome. */
+export function adminPasswordHash(username) {
+    guardCtTarget(username);
+    const row = sqlOne(`SELECT password_hash FROM public.admin WHERE username = '${username}'`);
+    return row ? row[0] : null;
+}
+
+export function restoreAdminPasswordHash(username, hash) {
+    guardCtTarget(username);
+    if (!hash) return;
+    sql(`UPDATE public.admin SET password_hash = '${hash}' WHERE username = '${username}'`);
+}
+
 /** Assert an object has exactly these keys — catches additions and removals. */
 export function hasExactKeys(obj, keys) {
     return JSON.stringify(Object.keys(obj).sort()) === JSON.stringify([...keys].sort());

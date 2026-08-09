@@ -2,128 +2,168 @@
 </div>
 
 <!--
-    Command palette. Opens on Cmd/Ctrl+K from anywhere, or from the header
-    button. It navigates, and typing anything offers a unit search that submits
-    to users.php?search= — the parameter that page has always accepted, so
-    nothing new had to be exposed for it.
+    Command palette. Preline's free modal:
+    https://preline.co/docs/modal.html
+    Preline owns open, close, Escape and focus; the list and the keyboard
+    cursor are plain JavaScript, because they are about the panel's data rather
+    than the component's state.
+
+    It navigates, and typing anything offers a unit search that submits to
+    users.php?search= — the parameter that page has always accepted, so nothing
+    new had to be exposed for it.
 -->
-<div x-data="palette()" @open-palette.window="open()" @keydown.window.escape="shown = false">
-    <div x-cloak x-show="shown" x-transition:enter="transition-opacity duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm" @click="shown = false"></div>
-
-    <div x-cloak x-show="shown" x-transition:enter="transition duration-[var(--duration-modal)] ease-enter"
-         x-transition:enter-start="opacity-0 translate-y-1"
-         x-transition:enter-end="opacity-100 translate-y-0"
-         x-transition:leave="transition duration-[var(--duration-exit)] ease-exit"
-         x-transition:leave-start="opacity-100 translate-y-0"
-         x-transition:leave-end="opacity-0 translate-y-1"
-         class="fixed inset-x-0 top-[12vh] z-[70] mx-auto w-[92%] max-w-xl"
-         role="dialog" aria-modal="true" aria-label="<?= e('search.placeholder') ?>">
-        <div class="overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
-            <div class="flex items-center gap-3 border-b border-edge px-4">
-                <span class="text-ink-subtle"><?= am2_icon('search', 'h-4 w-4') ?></span>
-                <input x-ref="input" x-model="q" @keydown.down.prevent="move(1)"
-                       @keydown.up.prevent="move(-1)" @keydown.enter.prevent="run()"
-                       type="text" autocomplete="off" spellcheck="false"
-                       class="w-full border-0 bg-transparent py-3.5 text-sm text-ink
-                              placeholder:text-ink-subtle focus:outline-none focus:ring-0"
-                       placeholder="<?= e('search.hint') ?>">
-                <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[10px] text-ink-subtle sm:block">ESC</kbd>
-            </div>
-
-            <ul class="max-h-80 overflow-y-auto py-2" role="listbox">
-                <template x-for="(item, i) in results" :key="item.id">
-                    <li role="option" :aria-selected="i === cursor"
-                        @mouseenter="cursor = i" @click="run(i)"
-                        class="mx-2 flex cursor-pointer items-center gap-3 rounded-control px-3 py-2 text-sm"
-                        :class="i === cursor ? 'bg-brand/10 text-ink' : 'text-ink-muted'">
-                        <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.15em]"
-                              :class="i === cursor ? 'text-brand' : 'text-ink-subtle'"
-                              x-text="item.group"></span>
-                        <span class="min-w-0 flex-1 truncate" x-text="item.label"></span>
-                        <span x-show="i === cursor" class="font-mono text-[10px] text-ink-subtle">&crarr;</span>
-                    </li>
-                </template>
-                <li x-show="results.length === 0" class="px-5 py-6 text-center text-sm text-ink-muted">
-                    <?= e('search.no_results') ?>
-                </li>
-            </ul>
+<div id="am2-palette" role="dialog" tabindex="-1" aria-labelledby="am2-palette-label"
+     class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
+            bg-slate-950/40 backdrop-blur-sm">
+    <div data-am2-panel
+         class="pointer-events-auto mx-auto mt-[12vh] w-[92%] max-w-xl overflow-hidden
+                am2-surface rounded-card">
+        <div class="flex items-center gap-3 border-b border-edge px-4">
+            <span class="text-ink-subtle"><?= am2_icon('search', 'h-4 w-4') ?></span>
+            <label id="am2-palette-label" for="am2-palette-input" class="sr-only">
+                <?= e('search.placeholder') ?>
+            </label>
+            <input id="am2-palette-input" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="true" aria-controls="am2-palette-list"
+                   class="w-full border-0 bg-transparent py-3.5 text-sm text-ink
+                          placeholder:text-ink-subtle focus:outline-none focus:ring-0"
+                   placeholder="<?= e('search.hint') ?>">
+            <kbd class="hidden rounded border border-edge px-1.5 py-0.5 font-mono text-[10px]
+                        text-ink-subtle sm:block">ESC</kbd>
         </div>
+        <ul id="am2-palette-list" role="listbox" class="max-h-80 overflow-y-auto py-2"></ul>
     </div>
 </div>
 
+<script src="<?= am2_asset('asset/js/am2-ui.min.js') ?>" defer></script>
+<?php /* Alpine still drives the bodies of pages this release has not reached.
+         It controls nothing in the shell; it goes when the last page lands. */ ?>
+<?php if (!empty($pageUsesAlpine)): ?>
+    <?php /*
+        Only the pages that still have Alpine markup. It was loaded on all of
+        them, which meant every migrated page paid for a second runtime it did
+        not use -- and on users.php, whose 4,500 nodes Alpine walks at startup,
+        that was measured at 800ms of the 1,750ms to DOMContentLoaded on a
+        four-times-slower CPU. Deleted outright once the last page migrates.
+    */ ?>
+    <script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
+<?php endif; ?>
+
 <script>
-    // Registered before Alpine loads, which is how a store has to be declared.
-    // The initial value comes from PHP, so the rail renders at the right width
-    // on first paint instead of snapping after hydration.
-    document.addEventListener('alpine:init', () => {
-        Alpine.store('nav', {
-            rail: <?= am2_sidebar_collapsed() ? 'true' : 'false' ?>,
-            // Which nav groups are folded. A cookie again, so the sidebar
-            // renders already folded instead of folding after paint.
-            folded: <?= json_encode(am2_folded_groups()) ?>,
-            isFolded(g) { return this.folded.includes(g); },
-            fold(g) {
-                this.folded = this.isFolded(g)
-                    ? this.folded.filter((x) => x !== g)
-                    : [...this.folded, g];
-                document.cookie = 'am2_folded=' + encodeURIComponent(this.folded.join(','))
-                    + ';path=/;max-age=31536000;samesite=lax';
-            },
-            wide: window.matchMedia('(min-width: 1024px)').matches,
-            init() {
-                window.matchMedia('(min-width: 1024px)')
-                      .addEventListener('change', (e) => { this.wide = e.matches; });
-            },
-            // The rail is a desktop affordance. Below lg the sidebar is an
-            // off-canvas drawer, and it opens with its labels.
-            get collapsed() { return this.rail && this.wide; },
-            toggle() {
-                this.rail = !this.rail;
-                // A cookie rather than localStorage: PHP reads it on the next
-                // request and renders the correct width immediately.
-                document.cookie = 'am2_nav=' + (this.rail ? 'rail' : 'wide')
-                    + ';path=/;max-age=31536000;samesite=lax';
-            },
-        });
+(() => {
+    'use strict';
+
+    /* ---- The rail -------------------------------------------------- *
+     * A cookie rather than storage: PHP reads it on the next request and
+     * renders the correct width immediately, so there is no snap after paint.
+     * Preline owns the drawer below lg; this only touches widths above it. */
+    const sidebar = document.getElementById('am2-sidebar');
+    const content = document.getElementById('am2-content');
+    const railBtn = document.getElementById('am2-rail-toggle');
+    let rail = <?= am2_sidebar_collapsed() ? 'true' : 'false' ?>;
+
+    railBtn?.addEventListener('click', () => {
+        rail = !rail;
+        sidebar.classList.toggle('lg:w-[72px]', rail);
+        sidebar.classList.toggle('lg:w-[272px]', !rail);
+        content.classList.toggle('lg:ps-[72px]', rail);
+        content.classList.toggle('lg:ps-[272px]', !rail);
+        document.documentElement.classList.toggle('am2-rail', rail);
+        railBtn.setAttribute('aria-expanded', rail ? 'false' : 'true');
+        // The icon is the only thing left saying which way this goes.
+        const icon = document.getElementById('am2-rail-icon');
+        if (icon) icon.style.transform = rail ? 'rotate(180deg)' : '';
+        document.cookie = 'am2_nav=' + (rail ? 'rail' : 'wide')
+            + ';path=/;max-age=31536000;samesite=lax';
     });
-</script>
-<script src="<?= am2_asset('asset/js/alpine.min.js') ?>" defer></script>
-<script>
-    /**
-     * How many units are keyed right now, and how many are online.
-     * Reads get-users-ajax.php, the same session-scoped endpoint the tracking
-     * page polls, so a branch admin only ever counts its own units.
-     */
-    function txRail() {
-        return {
-            count: 0, online: 0, stale: false,
-            start() {
-                this.tick();
-                // A transmission lasts seconds, but this sits on every page and
-                // does not need to be a live meter.
-                setInterval(() => this.tick(), 10000);
-            },
-            async tick() {
-                try {
-                    const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
-                    if (!res.ok) throw new Error(res.status);
-                    const users = await res.json();
-                    this.online = users.length;
-                    this.count = users.filter((u) => Number(u.is_speaking) === 1).length;
-                    this.stale = false;
-                } catch {
-                    // Say nothing rather than show a stale number as if it were live.
-                    this.stale = true;
-                }
-            },
-        };
+
+    /* ---- Which nav groups are folded -------------------------------- *
+     * Preline decides open and closed; this only records what it decided, so
+     * the sidebar renders already folded on the next page rather than folding
+     * after paint. */
+    document.addEventListener('open.hs.accordion', recordFolds);
+    document.addEventListener('hide.hs.accordion', recordFolds);
+    function recordFolds() {
+        const folded = [...document.querySelectorAll('.hs-accordion')]
+            .filter((el) => !el.classList.contains('active'))
+            .map((el) => el.dataset.group)
+            .filter(Boolean);
+        document.cookie = 'am2_folded=' + encodeURIComponent(folded.join(','))
+            + ';path=/;max-age=31536000;samesite=lax';
     }
 
-    const AM2_COMMANDS = <?= json_encode(array_values(array_filter([
+    /* ---- Theme ------------------------------------------------------- *
+     * Outside every framework on purpose: the theme must work whether or not
+     * anything else loaded. */
+    document.getElementById('themeToggle')?.addEventListener('click', function () {
+        const root = document.documentElement;
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        // Switch, do not animate. Without this every bordered control eases to
+        // its new colour at once and the change reads as a sweep.
+        root.classList.add('am2-theme-switching');
+        root.setAttribute('data-theme', next);
+        requestAnimationFrame(() => requestAnimationFrame(
+            () => root.classList.remove('am2-theme-switching')));
+        document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
+        this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
+        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
+        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
+    });
+
+    /* ---- Operational status ------------------------------------------ *
+     * Reads get-users-ajax.php, the same session-scoped endpoint the tracking
+     * page polls, so a branch admin only ever counts its own units. */
+    const $ = (id) => document.getElementById(id);
+    async function pollStatus() {
+        try {
+            const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
+            if (!res.ok) throw new Error(res.status);
+            const users = await res.json();
+            const tx = users.filter((u) => Number(u.is_speaking) === 1).length;
+
+            $('am2-relay-dot').className = 'h-1.5 w-1.5 rounded-full bg-ok';
+            $('am2-relay-text').textContent = <?= json_encode(t('status.relay_up')) ?>;
+            $('am2-relay-text').className = 'text-ok';
+            window.AM2?.countTo($('am2-online'), users.length);
+            window.AM2?.countTo($('am2-tx'), tx);
+            // The one pulse in the application, and only while it is true.
+            $('am2-tx-dot').classList.toggle('hidden', tx === 0);
+            $('am2-tx-dot').classList.toggle('am2-live', tx > 0);
+            $('am2-stale').classList.add('hidden');
+        } catch {
+            // Say the numbers are old rather than show them as if they were live.
+            $('am2-relay-dot').className = 'h-1.5 w-1.5 rounded-full bg-warn';
+            $('am2-stale').classList.remove('hidden');
+        }
+    }
+    /*
+     * Every ten seconds on every page was a request for the whole fleet -- the
+     * endpoint returns one row per unit, so on a full deployment that is tens
+     * of kilobytes a tab, forever, including tabs nobody is looking at. Thirty
+     * seconds is still inside the window an operator would call live, and a
+     * hidden tab asks for nothing at all until it comes back.
+     */
+    const STATUS_EVERY = 30000;
+    let statusTimer = null;
+
+    function startStatus() {
+        if (statusTimer) return;
+        pollStatus();
+        statusTimer = setInterval(pollStatus, STATUS_EVERY);
+    }
+    function stopStatus() {
+        clearInterval(statusTimer);
+        statusTimer = null;
+    }
+
+    document.addEventListener('visibilitychange',
+        () => (document.hidden ? stopStatus() : startStatus()));
+    if (!document.hidden) startStatus();
+
+    /* ---- Command palette --------------------------------------------- */
+    // A page may add its own sections; the shell owns the search, so this
+    // stays one list rather than a second one appearing per page.
+    const COMMANDS = <?= json_encode(array_merge(array_values(array_filter([
         ['id' => 'p-dash',     'group' => t('nav.home'),       'label' => t('nav.dashboard'),      'href' => 'dashboard.php'],
         ['id' => 'p-users',    'group' => t('nav.management'), 'label' => t('nav.users'),          'href' => 'users.php'],
         ['id' => 'p-chan',     'group' => t('nav.management'), 'label' => t('nav.channels'),       'href' => 'channels.php'],
@@ -137,67 +177,150 @@
         ['id' => 'a-theme', 'group' => t('search.action'), 'label' => t('pref.theme'),    'action' => 'theme'],
         ['id' => 'a-lang',  'group' => t('search.action'), 'label' => t('pref.language'), 'action' => 'lang'],
         ['id' => 'a-out',   'group' => t('search.action'), 'label' => t('nav.logout'),    'href'   => 'logout.php'],
-    ]))) ?>;
-    const AM2_SEARCH_UNITS = <?= json_encode(t('search.units')) ?>;
+    ])), array_values(is_array($pageCommands ?? null) ? $pageCommands : []))) ?>;
+    const UNITS_LABEL = <?= json_encode(t('search.units')) ?>;
+    const NO_RESULTS = <?= json_encode(t('search.no_results')) ?>;
 
-    function palette() {
-        return {
-            shown: false, q: '', cursor: 0,
-            get results() {
-                const q = this.q.trim().toLowerCase();
-                const matched = AM2_COMMANDS.filter(
-                    (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q));
-                if (!q) return matched;
-                return [{
-                    id: 's-units', group: AM2_SEARCH_UNITS, label: this.q.trim(),
-                    href: 'users.php?search=' + encodeURIComponent(this.q.trim()),
-                }, ...matched];
-            },
-            open() {
-                this.shown = true; this.q = ''; this.cursor = 0;
-                this.$nextTick(() => this.$refs.input.focus());
-            },
-            move(d) {
-                const n = this.results.length;
-                if (n) this.cursor = (this.cursor + d + n) % n;
-            },
-            run(i) {
-                const item = this.results[i ?? this.cursor];
-                if (!item) return;
-                this.shown = false;
-                if (item.href) { window.location.href = item.href; return; }
-                if (item.action === 'theme') { document.getElementById('themeToggle').click(); return; }
-                if (item.action === 'lang') {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('lang', document.documentElement.lang === 'id' ? 'en' : 'id');
-                    window.location.href = url.toString();
-                }
-            },
-        };
+    const input = $('am2-palette-input');
+    const list = $('am2-palette-list');
+    let cursor = 0, results = [];
+
+    function compute() {
+        const q = input.value.trim().toLowerCase();
+        const matched = COMMANDS.filter(
+            (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q));
+        results = q
+            ? [{ id: 's-units', group: UNITS_LABEL, label: input.value.trim(),
+                 href: 'users.php?search=' + encodeURIComponent(input.value.trim()) }, ...matched]
+            : matched;
+        if (cursor >= results.length) cursor = 0;
+        render();
     }
 
-    // Bound outside Alpine so the shortcut works even before it hydrates.
-    window.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    function render() {
+        list.textContent = '';
+        if (!results.length) {
+            const li = document.createElement('li');
+            li.className = 'px-5 py-6 text-center text-sm text-ink-muted';
+            li.textContent = NO_RESULTS;
+            list.appendChild(li);
+            return;
+        }
+        results.forEach((item, i) => {
+            const li = document.createElement('li');
+            li.role = 'option';
+            li.setAttribute('aria-selected', i === cursor ? 'true' : 'false');
+            li.className = 'mx-2 flex h-11 cursor-pointer items-center gap-3 rounded-control px-3 text-sm '
+                + (i === cursor ? 'bg-brand/10 text-ink' : 'text-ink-muted');
+
+            const g = document.createElement('span');
+            g.className = 'shrink-0 font-mono text-[9px] uppercase tracking-[0.15em] '
+                + (i === cursor ? 'text-brand' : 'text-ink-subtle');
+            // textContent, not innerHTML: `label` is whatever was typed.
+            g.textContent = item.group;
+
+            const l = document.createElement('span');
+            l.className = 'min-w-0 flex-1 truncate';
+            l.textContent = item.label;
+
+            li.append(g, l);
+            li.addEventListener('mouseenter', () => { cursor = i; render(); });
+            li.addEventListener('click', () => run(i));
+            list.appendChild(li);
+        });
+    }
+
+    function run(i) {
+        const item = results[i ?? cursor];
+        if (!item) return;
+        if (item.href) { window.location.href = item.href; return; }
+        if (item.target) {
+            /*
+             * A section of the page that is already open. Closing the overlay
+             * while the Enter key was still travelling had Preline re-open it
+             * 53ms later, with no click on any trigger -- traced, not guessed.
+             * The fix is in the keydown handler below, which lets the key event
+             * finish first; this only has to avoid fighting the focus restore.
+             */
+            const el = document.querySelector(item.target);
+            window.HSOverlay?.close(document.getElementById('am2-palette'));
+            // Preline restores focus as part of closing; landing after it has
+            // settled means the two are not competing for the same element.
+            setTimeout(() => {
+                el?.setAttribute('tabindex', '-1');
+                el?.focus({ preventScroll: true });
+                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 220);
+            return;
+        }
+        if (item.action === 'theme') {
+            window.HSOverlay?.close(document.getElementById('am2-palette'));
+            document.getElementById('themeToggle')?.click();
+            return;
+        }
+        if (item.action === 'lang') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('lang', document.documentElement.lang === 'id' ? 'en' : 'id');
+            window.location.href = url.toString();
+        }
+    }
+
+    input?.addEventListener('input', compute);
+    input?.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); cursor = (cursor + 1) % results.length; render(); }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); cursor = (cursor - 1 + results.length) % results.length; render(); }
+        if (e.key === 'Enter') {
+            // Deferred, and kept off the document: closing the overlay while
+            // the Enter key was still travelling had Preline re-open it 53ms
+            // later. Letting the key event finish first stops that.
             e.preventDefault();
-            window.dispatchEvent(new CustomEvent('open-palette'));
+            e.stopPropagation();
+            setTimeout(run, 0);
         }
     });
 
-    // Outside Alpine on purpose: the theme must work whether or not that loads.
-    document.getElementById('themeToggle').addEventListener('click', function () {
-        const root = document.documentElement;
-        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        // Switch, do not animate. Without this every bordered control eases to
-        // its new colour at the same time and the change reads as a sweep.
-        root.classList.add('am2-theme-switching');
-        root.setAttribute('data-theme', next);
-        requestAnimationFrame(() => requestAnimationFrame(
-            () => root.classList.remove('am2-theme-switching')));
-        document.cookie = 'am2_theme=' + next + ';path=/;max-age=31536000;samesite=lax';
-        this.setAttribute('aria-pressed', next === 'dark' ? 'true' : 'false');
-        // A moon offers dark; a sun offers light.
-        this.querySelector('[data-theme-icon="light"]').classList.toggle('hidden', next === 'dark');
-        this.querySelector('[data-theme-icon="dark"]').classList.toggle('hidden', next !== 'dark');
+    // Preline moves focus into the panel; this only resets what is in it.
+    document.getElementById('am2-palette')?.addEventListener('open.hs.overlay', () => {
+        input.value = ''; cursor = 0; compute();
+        setTimeout(() => input.focus(), 50);
     });
+
+    compute();
+
+    // Preline still owns open and closed -- these only call it. Its own Escape
+    // handling covers overlays opened through a data-hs-overlay trigger, and an
+    // overlay opened from script was not registered as the active one, so the
+    // palette opened and could not be closed by any means at all.
+    const palette = document.getElementById('am2-palette');
+    const paletteOpen = () => palette && !palette.classList.contains('hidden');
+
+    // Capture phase. Preline's accessibility manager registers its own keydown
+    // on document and consumes Escape for whichever overlay it considers
+    // active -- which is never one that script opened. Listening on the bubble
+    // meant this handler was never reached, and the palette could not be
+    // closed by any means.
+    window.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            if (paletteOpen()) {
+                window.HSOverlay?.close(palette);
+            } else {
+                document.querySelector('header [data-hs-overlay="#am2-palette"]')?.click();
+            }
+            return;
+        }
+        if (e.key === 'Escape' && paletteOpen()) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.HSOverlay?.close(palette);
+        }
+    }, true);
+
+    // Clicking the backdrop, which means anywhere that is not the panel.
+    palette?.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-am2-panel]')) window.HSOverlay?.close(palette);
+    });
+})();
 </script>
+</body>
+</html>

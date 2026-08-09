@@ -5,7 +5,13 @@
 // before any HTML is emitted.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, asBranchA, get, postForm, json } from './helpers.mjs';
+import { asSuper, asBranchA, get, postForm, json , ctChannelId} from './helpers.mjs';
+
+// This file owns CT_A3. It used to write CT_A1, which channel-access.test.mjs
+// seeds and asserts on -- the two ran concurrently and the cross-tenant
+// assertion failed on membership this file had rewritten underneath it.
+const PANEL_UNIT = 'CT_A3';
+const PANEL_CHANNEL = ctChannelId('ct_channel_a');
 
 let sup, branchA;
 before(async () => {
@@ -15,7 +21,7 @@ before(async () => {
 
 describe('users.php hidden JSON endpoints', () => {
     test('GET ?get_user_channels=1&u_id= returns a bare array of channel ids', async () => {
-        const res = await get('/users.php?get_user_channels=1&u_id=CT_A1', sup);
+        const res = await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup);
         assert.equal(res.status, 200);
         assert.match(res.headers.get('content-type'), /application\/json/);
         const body = await json(res);
@@ -25,17 +31,17 @@ describe('users.php hidden JSON endpoints', () => {
 
     test('POST update_feature answers {success} and uses msg (not message) on failure', async () => {
         const ok = await json(await postForm('/users.php', sup, {
-            update_feature: '1', u_id: 'CT_A1', feature: 'enable_maps', val: 'true',
+            update_feature: '1', u_id: PANEL_UNIT, feature: 'enable_maps', val: 'true',
         }));
         assert.equal(ok.success, true);
 
         // Restore, so the suite is repeatable.
         await postForm('/users.php', sup, {
-            update_feature: '1', u_id: 'CT_A1', feature: 'enable_maps', val: 'false',
+            update_feature: '1', u_id: PANEL_UNIT, feature: 'enable_maps', val: 'false',
         });
 
         const bad = await json(await postForm('/users.php', sup, {
-            update_feature: '1', u_id: 'CT_A1', feature: 'not_a_feature', val: 'true',
+            update_feature: '1', u_id: PANEL_UNIT, feature: 'not_a_feature', val: 'true',
         }));
         assert.equal(bad.success, false);
         assert.ok('msg' in bad, 'users.php uses msg; every api_*.php uses message');
@@ -45,40 +51,40 @@ describe('users.php hidden JSON endpoints', () => {
     test('POST update_feature accepts exactly four feature names', async () => {
         for (const feature of ['enable_maps', 'enable_p2p', 'enable_ptt_video']) {
             const r = await json(await postForm('/users.php', sup, {
-                update_feature: '1', u_id: 'CT_A1', feature, val: 'false',
+                update_feature: '1', u_id: PANEL_UNIT, feature, val: 'false',
             }));
             assert.equal(r.success, true, `${feature} must be accepted`);
         }
         const duplex = await json(await postForm('/users.php', sup, {
-            update_feature: '1', u_id: 'CT_A1', feature: 'duplex_mode', val: 'HALF DUPLEX',
+            update_feature: '1', u_id: PANEL_UNIT, feature: 'duplex_mode', val: 'HALF DUPLEX',
         }));
         assert.equal(duplex.success, true);
     });
 
     test('POST save_user_channels takes a JSON string and makes the first entry default', async () => {
-        const chans = await json(await get('/channels.php?ajax_action=get_channel_users&channel_id=1', sup));
+        const chans = await json(await get(`/channels.php?ajax_action=get_channel_users&channel_id=${PANEL_CHANNEL}`, sup));
         assert.ok(Array.isArray(chans));
 
         const res = await json(await postForm('/users.php', sup, {
-            save_user_channels: '1', u_id: 'CT_A1', channels: JSON.stringify([1]),
+            save_user_channels: '1', u_id: PANEL_UNIT, channels: JSON.stringify([PANEL_CHANNEL]),
         }));
         assert.equal(res.success, true);
 
-        const after = await json(await get('/users.php?get_user_channels=1&u_id=CT_A1', sup));
-        assert.deepEqual(after, [1]);
+        const after = await json(await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup));
+        assert.deepEqual(after, [Number(PANEL_CHANNEL)]);
 
         // Empty list is a valid input meaning "revoke everything".
         const cleared = await json(await postForm('/users.php', sup, {
-            save_user_channels: '1', u_id: 'CT_A1', channels: JSON.stringify([]),
+            save_user_channels: '1', u_id: PANEL_UNIT, channels: JSON.stringify([]),
         }));
         assert.equal(cleared.success, true);
-        assert.deepEqual(await json(await get('/users.php?get_user_channels=1&u_id=CT_A1', sup)), []);
+        assert.deepEqual(await json(await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup)), []);
     });
 });
 
 describe('channels.php hidden JSON endpoint', () => {
     test('GET ?ajax_action=get_channel_users returns a bare array of user ids', async () => {
-        const res = await get('/channels.php?ajax_action=get_channel_users&channel_id=1', sup);
+        const res = await get(`/channels.php?ajax_action=get_channel_users&channel_id=${PANEL_CHANNEL}`, sup);
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.ok(Array.isArray(body), 'must be a bare array');

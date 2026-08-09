@@ -6,7 +6,9 @@
 // accident in the meantime.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, asBranchA, get, postForm, json, BASE, EDGE, NODE_URL } from './helpers.mjs';
+import {
+    asSuper, asBranchA, get, postForm, json, sqlOne, ctAdminId, BASE, EDGE, NODE_URL,
+} from './helpers.mjs';
 
 let sup, branchA;
 before(async () => { sup = await asSuper(); branchA = await asBranchA(); });
@@ -170,11 +172,43 @@ describe('tenant scoping, corrected in the security release', () => {
     });
 
     test('the dashboard chart scopes to the branch', async () => {
-        const branch = await json(await get('/api_dashboard_chart.php?admin_id=6&role=admin', null));
-        const global = await json(await get('/api_dashboard_chart.php?admin_id=1&role=superadmin', null));
+        /*
+         * This used to assert branch < global, which says "some other branch
+         * must also be busy" rather than "the filter works". It went red the
+         * day ct_branch_a happened to own every event in the window: 430 out
+         * of 430, filter working perfectly, test failing.
+         *
+         * The property is that each answer matches what the database holds for
+         * that scope. A small tolerance covers rows arriving between the two
+         * reads -- staging takes real traffic, and the alternative is a test
+         * that fails whenever a unit keys the mic at the wrong moment.
+         */
+        const branchId = ctAdminId('ct_branch_a');
+        const branch = await json(
+            await get(`/api_dashboard_chart.php?admin_id=${branchId}&role=admin`, null));
+        const global = await json(
+            await get(`/api_dashboard_chart.php?admin_id=${ctAdminId('ct_super')}&role=superadmin`, null));
+
         const sum = (a) => a.reduce((x, y) => x + y, 0);
-        assert.ok(sum(branch.values) < sum(global.values),
-            'a branch total that equals the global total means the filter is a no-op again');
+        // event_time is a timestamp without a zone, and the endpoint reads it
+        // with the session set to Jakarta. psql here has its own session, so
+        // the zone is written into the expression rather than the session --
+        // a SET in the same -c returns its own command tag and broke the parse.
+        const count = (where) => Number(sqlOne(
+            `SELECT COUNT(*) FROM public.ptt_logs l
+              WHERE l.event_time > (NOW() AT TIME ZONE 'Asia/Jakarta') - INTERVAL '24 hours'
+              ${where}`)[0]);
+
+        const expectedBranch = count(
+            `AND l.user_id IN (SELECT id FROM public.users WHERE admin_id = ${branchId})`);
+        const expectedGlobal = count('');
+
+        assert.ok(Math.abs(sum(branch.values) - expectedBranch) <= 5,
+            `branch chart says ${sum(branch.values)}, the branch's own rows are ${expectedBranch}`);
+        assert.ok(Math.abs(sum(global.values) - expectedGlobal) <= 5,
+            `global chart says ${sum(global.values)}, every row is ${expectedGlobal}`);
+        assert.ok(sum(branch.values) <= sum(global.values),
+            'a branch cannot hold more events than exist');
     });
 
     test('the chart refuses a branch request with no branch', async () => {

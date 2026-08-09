@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 /*
+ * Preline. The @source makes Tailwind scan Preline's own JS for the class
+ * names it applies at runtime -- without it, every class Preline adds on open
+ * is absent from the build and the component opens invisible. variants.css
+ * supplies the hs-* custom variants the markup keys off.
+ * Paths are relative to this file, which sits two levels under WebAdmin.
+ */
+@source "../../node_modules/preline/dist/*.js";
+@import "../../node_modules/preline/variants.css";
+
+/*
  * Self-hosted, so the panel does not reach a third party to render itself.
  * Variable weights: one file each instead of six.
  */
@@ -68,6 +78,17 @@
     --radius-control: var(--am2-radius);
     --radius-card: var(--am2-card-radius);
     --radius-panel: 14px;
+
+    /*
+     * Elevation. am2-ui.css has carried these since before the redesign and
+     * nothing was using them -- Tailwind's own shadow-sm was standing in, which
+     * on a white card over #f8fafc is very nearly nothing at all. Same mistake
+     * as overriding the project's border radii: the visual language was already
+     * here.
+     */
+    --shadow-card: var(--am2-card-shadow);
+    --shadow-panel: var(--am2-shadow);
+    --shadow-pop: var(--am2-shadow-sm);
 }
 
 /* Someone watching a live map for hours did not ask for movement. */
@@ -89,13 +110,8 @@
     border-radius: 9999px;
     border: 1px solid var(--color-primary);
     opacity: 0;
-    animation: am2-emit 4.8s ease-out infinite;
-    animation-delay: var(--delay, 0s);
-}
-@keyframes am2-emit {
-    0%   { transform: scale(1);   opacity: 0.55; }
-    70%  { opacity: 0.06; }
-    100% { transform: scale(3.4); opacity: 0; }
+    /* Geometry only. The travel is Motion's -- see emit() in am2-ui.js. Two
+       owners on one transform is how an animation ends up fighting itself. */
 }
 [x-cloak] { display: none !important; }
 
@@ -236,4 +252,223 @@
     ::view-transition-new(root) {
         animation: none;
     }
+}
+
+/*
+ * The rail. Labels are hidden by a root class rather than by each element
+ * asking the sidebar how wide it is, so PHP can render the collapsed state on
+ * the first paint and the toggle is a single class flip afterwards.
+ */
+@media (min-width: 1024px) {
+    .am2-rail .am2-rail-hide { display: none; }
+    .am2-rail .am2-nav-item  { justify-content: center; padding-inline: 0; }
+    .am2-rail .am2-nav-child { padding-inline-start: 0; }
+}
+
+/* A child item is indented, which is the whole signal that it belongs to the
+ * one above it. */
+.am2-nav-child { padding-inline-start: 1.25rem; }
+
+/*
+ * No transition below lg, and this is load-bearing rather than cosmetic.
+ *
+ * Preline destroys an overlay's backdrop only after the overlay's own
+ * transition ends, and its helper waits whenever transition-property is
+ * anything but `none`. The drawer transitioned a property that does not change
+ * when it opens or closes, so the wait never ended: `hidden` was never
+ * restored, destroyBackdrop() was never reached, and a full-screen backdrop
+ * stayed over the page at full opacity swallowing every click.
+ *
+ * From lg up the sidebar is a static column that Preline never opens or
+ * closes, so the rail can transition its width freely.
+ */
+#am2-sidebar { transition-property: none; }
+
+@media (min-width: 1024px) {
+    #am2-sidebar {
+        transition-property: width;
+        transition-duration: var(--duration-drawer);
+        transition-timing-function: var(--ease-enter);
+    }
+}
+
+/*
+ * The login brand panel. It was bg-slate-950 whatever the theme, so light mode
+ * covered three fifths of the page and stopped. Light gets a raised neutral
+ * surface with the mark in colour; dark keeps the deep panel, because there it
+ * is the page.
+ */
+.am2-brand-panel {
+    background: var(--color-surface-muted);
+    border-inline-end: 1px solid var(--color-border);
+}
+[data-theme="dark"] .am2-brand-panel {
+    background: #020617;
+    border-inline-end-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+/*
+ * A surface has to be findable before it can be read. In light mode a white
+ * card sits on #f8fafc behind a #e2e8f0 border, which is three shades of the
+ * same thing; the stronger border and the real shadow are what separate them.
+ */
+.am2-surface {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--am2-card-shadow);
+}
+[data-theme="dark"] .am2-surface {
+    border-color: var(--color-border);
+}
+
+/* The console's own detail: a hairline of brand across the top of the card it
+ * is asking you to fill in. */
+.am2-surface-accent { position: relative; overflow: hidden; }
+.am2-surface-accent::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 2px;
+    background: var(--color-primary);
+}
+
+/* A marker with no label is only its dot, so it must not reserve label space. */
+.custom-marker-bare { width: 16px !important; height: 16px !important; }
+.custom-marker-bare .marker-label { display: none; }
+
+/* A selected row, said with the background and not only with a ticked box.
+   A checkbox is 16px of evidence for a decision that can affect two hundred
+   units; the row itself has to carry it. */
+.am2-row-selected { background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
+.am2-row-selected:hover { background: color-mix(in oklab, var(--color-primary) 12%, transparent); }
+tr[data-row-id]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+/* Condensed rows: 40px against the default 48. Padding only -- nothing that
+   changes the type size, because a smaller call sign is a call sign misread. */
+.am2-dense td, .am2-dense th { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+
+/* The small state chip a roster row is made of. Written here rather than as a
+   utility string repeated on eighty buttons a page -- it was 1.5kB of markup
+   per row saying the same thing. */
+.am2-chip {
+    border-radius: var(--am2-radius);
+    border-width: 1px;
+    padding: 0.25rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transition: color var(--duration-micro), background-color var(--duration-micro),
+                border-color var(--duration-micro);
+}
+.am2-chip:disabled { cursor: not-allowed; opacity: 0.4; }
+.am2-chip:enabled:hover { border-color: var(--color-primary); }
+
+/*
+ * The roster on a narrow screen.
+ *
+ * The generic card mode prints every column's name beside its value, which for
+ * a unit produced a six-line form -- "PILIH", a checkbox, "UNIT", a call sign,
+ * and so on. A roster is scanned, not filled in. So this table opts out of the
+ * labels and lays a row out the way it would be read: who, then where, then
+ * what they are allowed to do, then the verbs.
+ */
+@media (max-width: 1023px) {
+    /* Stop being a table: tbody is laid out as a flex column, and the table
+       width algorithm would size every card to its content. */
+    .am2-roster { display: block; width: 100%; }
+    .am2-roster thead { display: none; }
+
+    .am2-roster tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+        padding: 0.75rem;
+    }
+
+    /*
+     * Three columns: the checkbox, then two equal ones. Channel and duplex are
+     * both a word long and had a ruled row each, which spent a hundred and
+     * twenty pixels on three short values. Paired, they cost one row.
+     */
+    .am2-roster tr {
+        display: grid;
+        grid-template-columns: 1.25rem 1fr 1fr;
+        /* No column gap: the rule above the paired cells has to read as one
+           line, and a gap cut a notch in it. Padding does the spacing. */
+        gap: 0;
+        border: 1px solid var(--color-border);
+        border-radius: var(--am2-radius);
+        background: var(--color-surface);
+        overflow: hidden;
+    }
+
+    /* display:block needs the !important too. Without it the card mode's own
+       rule wins and every cell stays a two-column grid -- a 90px column for a
+       label, and 167px of the 266px available for everything else. */
+    .am2-roster td { display: block !important; border: 0 !important; }
+
+    /* Who. The headline of the card, so it carries no label: a name does not
+       need to be told it is a name. */
+    .am2-roster td[data-cell="select"] {
+        grid-column: 1; grid-row: 1;
+        padding: 0.75rem 0 0 0.75rem !important;
+    }
+    .am2-roster td[data-cell="unit"] {
+        grid-column: 2 / span 2; grid-row: 1;
+        padding: 0.75rem 0.75rem 0.625rem 0 !important;
+    }
+    .am2-roster td[data-cell="unit"] * { white-space: normal; overflow: visible; text-overflow: clip; }
+
+    /* What. The label sits above its value rather than beside it: a 4.5rem
+       gutter on a 390px screen is a sixth of the card spent on a word that
+       repeats on every row. */
+    .am2-roster td[data-cell="channel"] { grid-column: 2; grid-row: 2; }
+    .am2-roster td[data-cell="duplex"]  { grid-column: 3; grid-row: 2; }
+    .am2-roster td[data-cell="features"] {
+        grid-column: 2 / span 2; grid-row: 3;
+        padding-inline: 0 0.75rem !important;
+    }
+
+    .am2-roster td[data-cell="channel"],
+    .am2-roster td[data-cell="duplex"],
+    .am2-roster td[data-cell="features"] {
+        border-top: 1px solid var(--color-border) !important;
+        padding-block: 0.5rem 0.625rem !important;
+    }
+    .am2-roster td[data-cell="channel"] { padding-inline: 0.75rem 0.625rem !important; }
+    .am2-roster td[data-cell="duplex"]  { padding-inline: 0 0.75rem !important; }
+
+    .am2-roster td[data-cell="channel"]::before,
+    .am2-roster td[data-cell="duplex"]::before,
+    .am2-roster td[data-cell="features"]::before {
+        content: attr(data-label) !important;
+        display: block;
+        margin-bottom: 0.3125rem;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--color-text-subtle);
+    }
+
+    /* The verbs, on their own band at the foot of the card. */
+    .am2-roster td[data-cell="actions"] {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--color-border) !important;
+        background: var(--color-surface-muted);
+        padding: 0.5rem 0.625rem !important;
+        text-align: end;
+    }
+
+    .am2-roster td[data-cell="select"]::before,
+    .am2-roster td[data-cell="unit"]::before,
+    .am2-roster td[data-cell="actions"]::before { content: none !important; }
+
+    /* An empty state is one message, not a card with a checkbox. */
+    .am2-roster tr:has(td[colspan]) { display: block; border: 0; background: none; }
 }
