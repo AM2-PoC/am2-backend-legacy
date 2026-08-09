@@ -5,6 +5,17 @@ am2_api_auth();
 
 $current_admin_id = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? $_POST['role'] ?? 'admin';
+// 24h buckets by hour, 7d buckets by day. Anything else falls back to 24h
+// rather than erroring, so a stale bookmark still renders.
+$range = ($_GET['range'] ?? '24h') === '7d' ? '7d' : '24h';
+$bucket   = $range === '7d' ? "TO_CHAR(series.jam, 'DD/MM')" : "TO_CHAR(series.jam, 'HH24:00')";
+$stepExpr = $range === '7d'
+    ? "generate_series(date_trunc('day', NOW()) - INTERVAL '6 days', date_trunc('day', NOW()), '1 day')"
+    : "generate_series(NOW() - INTERVAL '23 hours', NOW(), '1 hour')";
+$matchExpr = $range === '7d'
+    ? "date_trunc('day', l.event_time) = series.jam"
+    : "TO_CHAR(l.event_time, 'HH24:00') = TO_CHAR(series.jam, 'HH24:00')";
+$window = $range === '7d' ? "7 days" : "24 hours";
 
 try {
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
@@ -18,28 +29,28 @@ try {
 
     if ($admin_role === 'superadmin') {
         $query = "
-            SELECT 
-                TO_CHAR(series.jam, 'HH24:00') as jam,
+            SELECT
+                {$bucket} as jam,
                 COUNT(l.id) as total
             FROM (
-                SELECT generate_series(NOW() - INTERVAL '23 hours', NOW(), '1 hour') as jam
+                SELECT {$stepExpr} as jam
             ) series
-            LEFT JOIN public.ptt_logs l ON TO_CHAR(l.event_time, 'HH24:00') = TO_CHAR(series.jam, 'HH24:00')
-                 AND l.event_time > NOW() - INTERVAL '24 hours'
+            LEFT JOIN public.ptt_logs l ON {$matchExpr}
+                 AND l.event_time > NOW() - INTERVAL '{$window}'
             GROUP BY series.jam
             ORDER BY series.jam ASC
         ";
         $stmt = $pdo->query($query);
     } else {
         $query = "
-            SELECT 
-                TO_CHAR(series.jam, 'HH24:00') as jam,
+            SELECT
+                {$bucket} as jam,
                 COUNT(l.id) as total
             FROM (
-                SELECT generate_series(NOW() - INTERVAL '23 hours', NOW(), '1 hour') as jam
+                SELECT {$stepExpr} as jam
             ) series
-            LEFT JOIN public.ptt_logs l ON TO_CHAR(l.event_time, 'HH24:00') = TO_CHAR(series.jam, 'HH24:00')
-                 AND l.event_time > NOW() - INTERVAL '24 hours'
+            LEFT JOIN public.ptt_logs l ON {$matchExpr}
+                 AND l.event_time > NOW() - INTERVAL '{$window}'
                  AND l.user_id IN (SELECT id FROM public.users WHERE admin_id = :admin_id)
             GROUP BY series.jam
             ORDER BY series.jam ASC

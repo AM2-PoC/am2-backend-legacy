@@ -6,7 +6,7 @@
 // assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { asSuper, get, readSrc, SERVER_JS } from './helpers.mjs';
+import { asSuper, get, readSrc, SRC, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
 
 let sup;
@@ -48,8 +48,14 @@ describe('form field names are the API', () => {
             for (const n of names) {
                 assert.ok(src.includes(`'${n}'`),
                     `${file}: PHP no longer reads the field ${n}`);
-                assert.ok(new RegExp(`append\\(\\s*['"\`]${n}['"\`]`).test(src),
-                    `${file}: nothing appends ${n} to a FormData — the branch is now unreachable`);
+                // Either an explicit append or an object key handed to a
+                // helper that appends. What matters is that the literal field
+                // name still appears in the code that builds the request, so
+                // renaming one side of the pair breaks this.
+                const built = new RegExp(
+                    `append\\(\\s*['"\`]${n}['"\`]|['"\`]?${n}['"\`]?\\s*:`).test(src);
+                assert.ok(built,
+                    `${file}: nothing posts ${n} — the branch is now unreachable`);
             }
         });
     }
@@ -185,14 +191,19 @@ describe('rendered markup that the CSS and JS depend on', () => {
 });
 
 describe('untrusted text is not rendered as markup', () => {
-    test('logs.php escapes every value it interpolates', () => {
+    test('logs.php never builds markup from a log field', () => {
+        // keterangan is free text an admin typed, and a database trigger also
+        // writes it. The page renders through x-text now, which escapes, so the
+        // stronger property to hold is that no HTML is assembled from these
+        // values at all: no innerHTML, no template literal, and no manual
+        // escaper anyone can forget to call.
         const src = readSrc('logs.php');
-        assert.ok(/function esc\(/.test(src), 'the escaping helper is gone');
-        // keterangan is admin-controlled free text, also written by a database
-        // trigger, and it is inserted with innerHTML.
-        const raw = [...src.matchAll(/\$\{log\.[a-z_]+\}/g)].map((m) => m[0]);
-        assert.deepEqual(raw, [],
-            `these interpolations bypass esc(): ${raw.join(', ')}`);
+        // Assignment, not the word: a comment explaining why it is absent is not a use.
+        assert.ok(!/\binnerHTML\s*=/.test(src), 'log rows must not be assigned as HTML');
+        const interpolated = [...src.matchAll(/\$\{\s*(?:row|log)\.[a-z_]+/g)].map((m) => m[0]);
+        assert.deepEqual(interpolated, [],
+            `log fields interpolated into a string: ${interpolated.join(', ')}`);
+        assert.match(src, /x-text="row\.target"/, 'the detail column must render as text');
     });
 
     test('livetrack.php does not build a handler argument from a raw id', () => {
@@ -275,4 +286,63 @@ describe('one relay client, not eleven copies', () => {
             /\$duplex = 'HALF DUPLEX'/,
             'the fallback must match the column default');
     });
+});
+
+describe('alpine expressions in attributes', () => {
+    // json_encode emits double quotes, which terminate the attribute they sit
+    // in. The tag then parses as garbage and Alpine throws — and a server
+    // rendered fallback keeps the element looking correct, so it survives a
+    // screenshot review. js() escapes the quotes; json_encode stays correct
+    // inside a <script> block.
+    // Detected, not listed: a hand-written list silently stops covering the
+    // next page that migrates, which is exactly how this slipped through once.
+    const MIGRATED = ['login.php', 'partials/shell.php', 'partials/shell_end.php'].concat(
+        fs.readdirSync(SRC)
+          .filter((f) => f.endsWith('.php'))
+          .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+    );
+
+    for (const f of MIGRATED) {
+        test(`${f} does not put raw json_encode in an attribute`, () => {
+            const src = readSrc(f);
+            const withoutScripts = src.replace(/<script[\s\S]*?<\/script>/g, '');
+            const bad = [...withoutScripts.matchAll(/<\?=\s*json_encode\(t\(/g)];
+            assert.equal(bad.length, 0,
+                `${f}: use js('key') in attributes; json_encode belongs in <script>`);
+        });
+    }
+
+    test('a rendered attribute keeps its quotes escaped', async () => {
+        const html = await (await get('/login.php', null)).text();
+        const m = html.match(/x-text="([^"]*)"/g) ?? [];
+        assert.ok(m.length > 0, 'no x-text attribute rendered');
+        for (const attr of m) {
+            assert.ok(!/\?\s*$/.test(attr),
+                `attribute truncated at a quote: ${attr.slice(0, 60)}`);
+        }
+        assert.match(html, /&quot;/, 'quotes inside alpine expressions must be entities');
+    });
+});
+
+describe('js() and json_encode belong in different places', () => {
+    // The pair fails in both directions and each failure looks different.
+    // json_encode in an attribute terminates it at the first quote, and the
+    // element keeps rendering its fallback so it looks fine. js() inside a
+    // <script> emits &quot;, which is a syntax error that kills the block.
+    const FILES = ['login.php', 'partials/shell_end.php'].concat(
+        fs.readdirSync(SRC)
+          .filter((f) => f.endsWith('.php'))
+          .filter((f) => /include\s+'partials\/shell\.php'/.test(readSrc(f)))
+    );
+
+    for (const f of FILES) {
+        test(`${f} keeps js() out of script blocks`, () => {
+            const scripts = readSrc(f).match(/<script[\s\S]*?<\/script>/g) ?? [];
+            for (const block of scripts) {
+                const bad = [...block.matchAll(/<\?=\s*js\(/g)];
+                assert.equal(bad.length, 0,
+                    `${f}: js() emits &quot; which is invalid JavaScript; use json_encode here`);
+            }
+        });
+    }
 });

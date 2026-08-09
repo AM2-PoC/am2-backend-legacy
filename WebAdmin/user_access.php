@@ -169,304 +169,228 @@ $stmt_acc = $pdo->prepare($sql_access);
 $stmt_acc->execute($params);
 $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
 ?>
+<?php
+$pageTitle = t('acc.heading');
+$pageLede  = t('acc.lede');
 
-<!DOCTYPE html>
-<html <?= am2_html_attrs() ?>>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Akses Channel - am²</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="asset/css/am2-ui.css">
-    <style>
-        body { background-color: var(--color-bg); font-family: 'Segoe UI', sans-serif; }
-        .main-content { padding: 20px; transition: all 0.3s; }
-        .card-custom {
-            background: var(--color-surface); border-radius: 15px; padding: 25px;
-            box-shadow: var(--am2-shadow-sm); border: 1px solid var(--color-border);
-            border-top: 5px solid var(--color-primary);
-        }
-        .header-title { font-weight: 800; color: var(--color-text); text-transform: uppercase; letter-spacing: 1px; }
-        .ch-badge {
-            display: inline-flex;
-            align-items: center;
-            max-width: 100%;
-            background: var(--color-surface-muted); color: var(--color-text-muted); padding: 4px 12px;
-            border-radius: 20px; font-size: 11px; margin: 2px; font-weight: 600;
-            line-height: 1.2; overflow-wrap: anywhere; white-space: normal;
-        }
-        .ch-badge.default { background: var(--color-secondary); color: var(--color-on-secondary); }
-        .channel-item {
-            cursor: pointer; transition: 0.2s; border-radius: 12px;
-            margin-bottom: 8px; border: 2px solid var(--color-border); background: var(--color-surface-muted);
-        }
-        .access-channel-main,
-        .access-channel-text {
-            min-width: 0;
-        }
-        .access-channel-main {
-            flex: 1 1 auto;
-        }
-        .access-channel-text label {
-            overflow-wrap: anywhere;
-        }
-        .access-rx-toggle {
-            flex: 0 0 auto;
-        }
-        .access-row {
-            cursor: pointer;
-        }
-        .channel-item:hover { border-color: var(--color-primary); }
-        .channel-item.is-default { background-color: var(--color-warning-surface); border-color: var(--color-primary); }
-        .btn-navy { background-color: var(--color-primary); color: var(--color-on-primary); border-radius: 10px; }
+include 'partials/head.php';
+include 'partials/shell.php';
+?>
 
-        @media (max-width: 768px) {
-            .card-custom { padding: 15px; border-radius: 10px; }
-            .header-title { font-size: 1.1rem; }
-            .table-responsive { border: none; }
+<?php if ($success_msg !== ''): ?>
+    <p role="status" class="mb-5 rounded-control border-l-2 border-ok bg-ok/5 py-3 pl-3 pr-3 text-sm"><?= $success_msg ?></p>
+<?php endif; ?>
+<?php if ($error_msg !== ''): ?>
+    <p role="alert" class="mb-5 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm"><?= htmlspecialchars($error_msg) ?></p>
+<?php endif; ?>
 
-            .ch-badge { font-size: 10px; padding: 3px 8px; }
+<section class="rounded-card border border-edge bg-card" x-data="accessPage()">
 
-            .modal-dialog { margin: 10px; }
-            .channel-item { padding: 10px !important; }
-            .access-channel-option {
-                align-items: stretch !important;
-            }
-            .access-rx-toggle {
-                justify-content: flex-start;
-            }
-        }
-    </style>
-</head>
-<body>
-
-<div class="container-fluid">
-    <div class="row">
-        <?php include 'sidebar.php'; ?>
-
-        <main class="col-md-9 ms-sm-auto col-lg-10 main-content">
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="app-toolbar am2-page-hero d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                        <h4 class="header-title m-0"><i class="fas fa-key me-2"></i>Izin Akses User</h4>
-                        <form method="GET" class="input-group input-group-sm am2-hero-form shadow-sm">
-                            <input type="text" name="search" class="form-control border-0" placeholder="Cari User..." value="<?= htmlspecialchars($search) ?>" style="border-radius: 10px 0 0 10px;">
-                            <button class="btn btn-navy" type="submit" style="border-radius: 0 10px 10px 0;"><i class="fas fa-search"></i></button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <?php if($success_msg): ?>
-                <div class="alert alert-success border-0 shadow-sm rounded-3 small animate__animated animate__fadeIn"><?= $success_msg ?></div>
-            <?php endif; ?>
-            <?php if($error_msg): ?>
-                <div class="alert alert-danger border-0 shadow-sm rounded-3 small animate__animated animate__fadeIn"><?= $error_msg ?></div>
-            <?php endif; ?>
-
-            <div class="row g-3 g-md-4 mb-4">
-                <div class="col-12">
-                    <div class="card-custom">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0 data-table">
-                        <thead>
-                            <tr>
-                                <th>ID / USERNAME</th>
-                                <th>USER</th>
-                                <th>AKSES CHANNEL</th>
-                                <th class="text-center">AKSI</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($access_list as $row):
-                                $ids_array = json_decode($row['channel_ids_json'] ?? '[]', true) ?: [];
-                                $perms_array = json_decode($row['permissions_json'] ?? '[]', true) ?: [];
-                                $perm_map = [];
-                                foreach($ids_array as $idx => $id) {
-                                    if($id) $perm_map[$id] = $perms_array[$idx] ?? 'FULL DUPLEX';
-                                }
-                            ?>
-                            <tr class="access-row"
-                                data-user-id="<?= htmlspecialchars($row['id'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-user-name="<?= htmlspecialchars($row['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-current-ids='<?= htmlspecialchars(json_encode($ids_array), ENT_QUOTES, 'UTF-8') ?>'
-                                data-default-id="<?= htmlspecialchars($row['default_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                                data-perm-map='<?= htmlspecialchars(json_encode($perm_map), ENT_QUOTES, 'UTF-8') ?>'>
-                                <td data-label="ID" class="fw-bold text-navy">#<?= $row['id'] ?></td>
-                                <td data-label="USER" class="fw-bold text-uppercase"><?= htmlspecialchars($row['name']) ?></td>
-                                <td data-label="AKSES CHANNEL">
-                                    <?php if ($row['allowed_channels']):
-                                        $ch_names = explode(', ', $row['allowed_channels']);
-                                        foreach($ch_names as $idx => $n):
-                                            $is_def = (strpos($n, '*') === 0);
-                                            $display_n = $is_def ? substr($n, 1) : $n;
-                                            $is_rx = ($perms_array[$idx] ?? '') === 'RX';
-                                    ?>
-                                        <span class="ch-badge <?= $is_def?'default':'' ?>">
-                                            <?= htmlspecialchars($display_n) ?>
-                                            <?= $is_rx ? '<i class="fas fa-volume-mute ms-1 text-danger"></i>' : '' ?>
-                                        </span>
-                                    <?php endforeach; else: echo "<span class='text-muted small italic'>Belum ada akses</span>"; endif; ?>
-                                </td>
-                                <td data-label="Aksi" class="text-center">
-                                    <button type="button" class="btn btn-outline-danger btn-danger-soft btn-sm rounded-pill px-3" onclick="event.stopPropagation(); forceLogout(<?= htmlspecialchars(json_encode((string)$row['id']), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode((string)$row['name']), ENT_QUOTES, 'UTF-8') ?>)">
-                                        <i class="fas fa-power-off me-1"></i> KICK
-                                    </button>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
+    <div class="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 lg:px-5">
+        <form method="GET" class="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm">
+            <input name="search" type="search" value="<?= htmlspecialchars($search ?? '') ?>"
+                   class="w-full rounded-control border border-edge bg-card px-3 py-1.5 text-sm
+                          transition-colors hover:border-edge-strong focus:border-brand focus:outline-none"
+                   placeholder="<?= e('acc.search') ?>">
+            <button type="submit"
+                    class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:border-brand hover:text-brand">
+                <?= e('usr.find') ?>
+            </button>
+        </form>
+        <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+            <span class="tabular-nums text-ink-muted"><?= count($access_list) ?></span> <?= e('acc.units') ?>
+        </p>
     </div>
-</div>
 
-<div class="modal fade" id="accessModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <form method="POST" class="modal-content shadow-lg border-0" style="border-radius:15px;">
-                    <?= am2_csrf_field() ?>
-            <div class="modal-header bg-light border-0">
-                <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i>Edit Izin Akses</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="user_id" id="m_user_id">
-                <input type="hidden" name="default_channel" id="m_default_channel">
-
-                <div class="bg-primary-subtle p-3 rounded-3 mb-3 border border-primary-subtle">
-                    <small class="text-muted d-block text-uppercase fw-bold" style="font-size:10px;">User</small>
-                    <h5 id="m_user_name" class="fw-bold text-dark m-0"></h5>
-                </div>
-
-                <div id="channel_list" class="choice-list" style="max-height: 350px; overflow-y: auto; padding: 10px;">
-                    <?php foreach($all_channels as $ch): ?>
-                    <div class="channel-item access-channel-option p-3 d-flex align-items-center justify-content-between gap-3" id="item_<?= $ch['id'] ?>">
-                        <div class="access-channel-main d-flex align-items-center" onclick="setAsDefault(<?= $ch['id'] ?>)" style="cursor:pointer">
-                            <input class="form-check-input me-3 ch-checkbox shadow-sm" type="checkbox" name="channels[]"
-                                   value="<?= $ch['id'] ?>" id="check_<?= $ch['id'] ?>" onclick="event.stopPropagation();">
-                            <div class="access-channel-text">
-                                <label class="fw-bold d-block mb-0" style="cursor:pointer; font-size: 14px;"><?= htmlspecialchars($ch['display_name']) ?></label>
-                                <small class="text-warning fw-bold" style="font-size:9px; display:none;" id="def_label_<?= $ch['id'] ?>"><i class="fas fa-star"></i> DEFAULT UTAMA</small>
+    <?php if (empty($access_list)): ?>
+        <p class="px-5 py-12 text-center text-sm text-ink-muted"><?= e('usr.empty') ?></p>
+    <?php else: ?>
+    <div class="overflow-x-auto">
+        <table class="data-table w-full text-sm">
+            <thead>
+                <tr class="border-b border-edge text-left font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle">
+                    <th scope="col" class="px-4 py-2.5 font-normal lg:px-5"><?= e('usr.unit') ?></th>
+                    <th scope="col" class="px-4 py-2.5 font-normal"><?= e('acc.channels') ?></th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-normal"><?= e('usr.actions') ?></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-edge">
+                <?php foreach ($access_list as $row):
+                    $ids  = json_decode($row['channel_ids_json'] ?? '[]', true) ?: [];
+                    $perm = json_decode($row['permissions_json'] ?? '[]', true) ?: [];
+                    $permMap = [];
+                    foreach ($ids as $i => $cid) { $permMap[(string) $cid] = $perm[$i] ?? 'FULL DUPLEX'; }
+                    $uid = (string) $row['id'];
+                ?>
+                    <tr class="access-row transition-colors hover:bg-card-muted">
+                        <td data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-top lg:px-5">
+                            <span class="block font-medium"><?= htmlspecialchars($row['name']) ?></span>
+                            <span class="block font-mono text-[10px] text-ink-subtle"><?= htmlspecialchars($uid) ?></span>
+                        </td>
+                        <td data-label="<?= e('acc.channels') ?>" class="px-4 py-2.5 align-top">
+                            <?php if (empty($ids)): ?>
+                                <!-- Without a default channel server.js refuses app_login outright. -->
+                                <span class="rounded-control bg-warn/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-warn">
+                                    <?= e('acc.none') ?>
+                                </span>
+                            <?php else: ?>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <?php foreach ($ids as $cid):
+                                        $isDefault = (string) $cid === (string) ($row['default_id'] ?? '');
+                                        $isRx      = ($permMap[(string) $cid] ?? '') === 'RX';
+                                        $label     = '';
+                                        foreach ($all_channels as $c) { if ((string) $c['id'] === (string) $cid) { $label = $c['display_name']; break; } }
+                                    ?>
+                                        <span class="rounded-control border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]
+                                                     <?= $isDefault ? 'border-brand bg-brand/10 text-brand' : 'border-edge text-ink-subtle' ?>">
+                                            <?= htmlspecialchars($label ?: $cid) ?><?= $isRx ? ' · RX' : '' ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                        <td data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-top">
+                            <div class="inline-flex gap-1.5">
+                                <button type="button"
+                                        @click="open(<?= htmlspecialchars(json_encode([
+                                            'id' => $uid, 'name' => $row['name'],
+                                            'ids' => array_map('strval', $ids),
+                                            'def' => (string) ($row['default_id'] ?? ''),
+                                            'perm' => $permMap,
+                                        ]), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted transition-colors hover:border-brand hover:text-brand">
+                                    <?= e('acc.edit') ?>
+                                </button>
+                                <button type="button"
+                                        @click="kick(<?= htmlspecialchars(json_encode($uid), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($row['name']), ENT_QUOTES, 'UTF-8') ?>)"
+                                        class="rounded-control border border-edge px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-subtle transition-colors hover:border-bad hover:text-bad">
+                                    <?= e('acc.kick') ?>
+                                </button>
                             </div>
-                        </div>
-                        <div class="form-check form-switch access-rx-toggle">
-                            <input class="form-check-input" type="checkbox" name="permissions[<?= $ch['id'] ?>]" value="RX" id="rx_<?= $ch['id'] ?>">
-                            <label class="small fw-bold text-muted ms-1 d-none d-sm-inline" style="font-size: 10px;">RX ONLY</label>
-                            <label class="small fw-bold text-muted ms-1 d-inline d-sm-none" style="font-size: 10px;">RX</label>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <div id="accessModal" x-cloak x-show="m.open" x-transition.opacity.duration.120ms
+         class="fixed inset-0 z-[60] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"
+         @click.self="m.open = false" @keydown.window.escape="m.open = false" role="dialog" aria-modal="true">
+        <form method="POST" class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-card border border-edge bg-card shadow-2xl">
+            <?= am2_csrf_field() ?>
+            <input type="hidden" name="user_id" id="m_user_id" :value="m.id">
+            <input type="hidden" name="default_channel" id="m_default_channel" :value="m.def">
+
+            <div class="border-b border-edge px-5 py-4">
+                <h2 class="text-sm font-semibold"><?= e('acc.modal_title') ?></h2>
+                <p class="mt-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-brand" id="m_user_name" x-text="m.name"></p>
             </div>
-            <div class="modal-footer border-0 pt-0">
-                <button type="submit" name="update_multi_access" class="btn btn-navy w-100 fw-bold py-3 rounded-3 shadow-sm">SIMPAN KONFIGURASI</button>
+
+            <p class="border-b border-edge px-5 py-2 text-xs text-ink-muted"><?= e('acc.modal_note') ?></p>
+
+            <div class="flex-1 overflow-y-auto px-5 py-3">
+                <?php foreach ($all_channels as $ch): $cid = (string) $ch['id']; ?>
+                    <div id="item_<?= $cid ?>"
+                         class="channel-item mb-1 flex items-center gap-3 rounded-control px-2 py-2 transition-colors"
+                         :class="m.ids.includes('<?= $cid ?>') && 'bg-card-muted'">
+                        <input type="checkbox" id="check_<?= $cid ?>" name="channels[]" value="<?= $cid ?>"
+                               class="ch-checkbox h-4 w-4 rounded-sm border-edge-strong accent-brand"
+                               :checked="m.ids.includes('<?= $cid ?>')"
+                               @change="pick('<?= $cid ?>', $event.target.checked)">
+                        <label for="check_<?= $cid ?>" class="min-w-0 flex-1 truncate text-sm"><?= htmlspecialchars($ch['display_name']) ?></label>
+
+                        <!-- Receive-only. The relay reads exactly one value here:
+                             anything that is not RX means the unit may transmit. -->
+                        <label class="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-subtle">
+                            <input type="checkbox" id="rx_<?= $cid ?>" name="permissions[<?= $cid ?>]" value="RX"
+                                   class="h-3.5 w-3.5 rounded-sm border-edge-strong accent-accent"
+                                   :checked="m.perm['<?= $cid ?>'] === 'RX'"
+                                   :disabled="!m.ids.includes('<?= $cid ?>')"
+                                   @change="m.perm['<?= $cid ?>'] = $event.target.checked ? 'RX' : 'FULL DUPLEX'">
+                            RX
+                        </label>
+
+                        <button type="button" id="def_label_<?= $cid ?>"
+                                @click="m.def = '<?= $cid ?>'"
+                                x-show="m.ids.includes('<?= $cid ?>')"
+                                :class="m.def === '<?= $cid ?>'
+                                    ? 'border-brand bg-brand/10 text-brand'
+                                    : 'border-edge text-ink-subtle hover:border-brand'"
+                                class="rounded-control border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors">
+                            <?= e('acc.default') ?>
+                        </button>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 border-t border-edge px-5 py-3">
+                <p class="font-mono text-[9px] uppercase tracking-[0.15em]"
+                   :class="m.ids.length && !m.def ? 'text-warn' : 'text-ink-subtle'"
+                   x-text="m.ids.length && !m.def ? <?= js('acc.pick_default') ?> : ''"></p>
+                <div class="flex gap-2">
+                    <button type="button" @click="m.open = false"
+                            class="rounded-control border border-edge px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted hover:text-ink"><?= e('ch.cancel') ?></button>
+                    <button type="submit" name="update_multi_access" value="1"
+                            :disabled="m.ids.length > 0 && !m.def"
+                            class="rounded-control border border-brand bg-brand px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-950 hover:bg-brand-hover disabled:opacity-50"><?= e('ch.save') ?></button>
+                </div>
             </div>
         </form>
     </div>
-</div>
+</section>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<?php include 'partials/shell_end.php'; ?>
+
 <script>
-    function getAccessModalInstance() {
-        const modalEl = document.getElementById('accessModal');
-        return modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
-    }
+    const AM2_CSRF = <?= json_encode(am2_csrf_token()) ?>;
+    const ACC_MSG = <?= json_encode([
+        'kick_confirm' => t('acc.kick_confirm'),
+        'kicked'       => t('acc.kicked'),
+        'kick_failed'  => t('acc.kick_failed'),
+    ]) ?>;
 
-    function setAsDefault(id) {
-        document.getElementById('check_' + id).checked = true;
-        document.querySelectorAll('#accessModal .channel-item').forEach(el => el.classList.remove('is-default'));
-        document.querySelectorAll('[id^="def_label_"]').forEach(el => el.style.display = 'none');
+    function accessPage() {
+        return {
+            m: { open: false, id: null, name: '', ids: [], def: '', perm: {} },
 
-        document.getElementById('item_' + id).classList.add('is-default');
-        document.getElementById('def_label_' + id).style.display = 'block';
-        document.getElementById('m_default_channel').value = id;
-    }
+            open(row) {
+                this.m = {
+                    open: true, id: row.id, name: row.name,
+                    ids: [...row.ids], def: row.def, perm: { ...row.perm },
+                };
+            },
 
-    function openModal(id, name, currentIds, defaultId, permMap) {
-        document.getElementById('m_user_id').value = id;
-        document.getElementById('m_user_name').innerText = name;
-        document.getElementById('m_default_channel').value = defaultId || "";
+            pick(cid, on) {
+                this.m.ids = on
+                    ? [...this.m.ids, cid]
+                    : this.m.ids.filter((x) => x !== cid);
+                // Unticking the default leaves the unit unable to sign in, so
+                // clear it rather than submit a default that is not granted.
+                if (!on && this.m.def === cid) this.m.def = '';
+                if (on && !this.m.def) this.m.def = cid;
+            },
 
-        document.querySelectorAll('#accessModal .channel-item').forEach(el => el.classList.remove('is-default'));
-        document.querySelectorAll('[id^="def_label_"]').forEach(el => el.style.display = 'none');
-        document.querySelectorAll('#accessModal .ch-checkbox').forEach(cb => cb.checked = false);
-        document.querySelectorAll('#accessModal .form-switch input').forEach(sw => sw.checked = false);
-
-        if(currentIds && Array.isArray(currentIds)) {
-            currentIds.forEach(val => {
-                if(!val) return;
-                const cb = document.getElementById('check_' + val);
-                if(cb) cb.checked = true;
-                if(permMap && permMap[val] === 'RX') {
-                    const sw = document.getElementById('rx_' + val);
-                    if(sw) sw.checked = true;
-                }
-            });
-        }
-
-        if(defaultId) {
-            const item = document.getElementById('item_' + defaultId);
-            if(item) {
-                item.classList.add('is-default');
-                const label = document.getElementById('def_label_' + defaultId);
-                if(label) label.style.display = 'block';
-            }
-        }
-        const modal = getAccessModalInstance();
-        if (modal) modal.show();
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.access-row').forEach(row => {
-            row.addEventListener('click', function(event) {
-                if (event.target.closest('button') || event.target.closest('a') || event.target.closest('input')) return;
-
-                let currentIds = [];
-                let permMap = {};
+            async kick(uid, name) {
+                if (!confirm(ACC_MSG.kick_confirm.replace(':name', name))) return;
+                const fd = new FormData();
+                fd.append('action', 'db_force_logout');
+                fd.append('user_id', uid);
+                fd.append('_csrf', AM2_CSRF);
                 try {
-                    currentIds = JSON.parse(this.dataset.currentIds || '[]');
+                    // Posts to the current URL on purpose: the page has always
+                    // done so, which carries any ?search= along with it.
+                    const res = await fetch(window.location.href, { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'failed');
+                    alert(ACC_MSG.kicked);
+                    location.reload();
                 } catch (err) {
-                    currentIds = [];
+                    alert(ACC_MSG.kick_failed + ' — ' + (err.message || ''));
                 }
-                try {
-                    permMap = JSON.parse(this.dataset.permMap || '{}');
-                } catch (err) {
-                    permMap = {};
-                }
-
-                openModal(
-                    this.dataset.userId || '',
-                    this.dataset.userName || '',
-                    currentIds,
-                    this.dataset.defaultId || '',
-                    permMap
-                );
-            });
-        });
-    });
-
-    async function forceLogout(userId, userName) {
-        if (!confirm(`Putuskan koneksi perangkat ${userName}?`)) return;
-        let fd = new FormData();
-        fd.append('action', 'db_force_logout');
-        fd.append('_csrf', <?= json_encode(am2_csrf_token()) ?>);
-        fd.append('user_id', userId);
-
-        try {
-            const resp = await fetch(window.location.href, { method: 'POST', body: fd });
-            const res = await resp.json();
-            if(res.success) {
-                alert("Berhasil: Instruksi Force Logout dikirim.");
-                location.reload();
-            }
-        } catch (e) {
-            alert("Gagal menghubungi database.");
-        }
+            },
+        };
     }
 </script>
 </body>

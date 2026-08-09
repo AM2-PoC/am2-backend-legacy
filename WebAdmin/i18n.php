@@ -99,3 +99,45 @@ function am2_js_catalogue(array $keys): string
     }
     return json_encode($out, JSON_UNESCAPED_UNICODE);
 }
+
+/**
+ * A versioned URL for a static asset.
+ *
+ * Without this, a deploy leaves every browser and every CDN edge holding the
+ * previous stylesheet. Cloudflare sits in front of this panel, so a changed
+ * class simply does not arrive until the cache expires — which looks exactly
+ * like the CSS build being broken.
+ */
+function am2_asset(string $path): string
+{
+    $full = __DIR__ . '/' . ltrim($path, '/');
+    $version = is_file($full) ? filemtime($full) : 0;
+    return htmlspecialchars($path . '?v=' . $version, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * A translated string, safe to drop inside an HTML attribute that JavaScript
+ * will evaluate — an Alpine x-text, :class, @click and so on.
+ *
+ * json_encode alone is not enough: it emits double quotes, and those terminate
+ * the attribute they sit in. The result parses as a broken tag and Alpine
+ * throws, which is easy to miss when the element has server-rendered fallback
+ * text that keeps looking correct.
+ */
+function js(string $key, array $replace = []): string
+{
+    return htmlspecialchars(json_encode(t($key, $replace), JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+}
+
+/** Whether the sidebar is collapsed to an icon rail. */
+function am2_sidebar_collapsed(): bool
+{
+    return ($_COOKIE['am2_nav'] ?? 'wide') === 'rail';
+}
+
+/** Nav groups the operator has folded away, from a cookie. */
+function am2_folded_groups(): array
+{
+    $raw = $_COOKIE['am2_folded'] ?? '';
+    return $raw === '' ? [] : array_values(array_filter(explode(',', $raw)));
+}
