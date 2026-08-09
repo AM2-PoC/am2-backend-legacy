@@ -575,12 +575,251 @@
  * is the page.
  */
 .am2-brand-panel {
-    background: var(--color-surface-muted);
+    background:
+        linear-gradient(150deg,
+            color-mix(in srgb, var(--color-primary) 4%, transparent),
+            transparent 46%),
+        var(--color-surface-muted);
     border-inline-end: 1px solid var(--color-border);
 }
 [data-theme="dark"] .am2-brand-panel {
-    background: #020617;
+    background:
+        radial-gradient(circle at 50% 44%, rgba(245, 158, 11, 0.055), transparent 30%),
+        #020617;
     border-inline-end-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+/*
+ * Left and right speak different dialects of the same technical system. The
+ * form side is Cartesian; the brand side is radial, built around the logo as a
+ * transmitter. Keeping one square grid under both prevents the split screen
+ * from reading as two unrelated pages.
+ */
+.am2-brand-geometry {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--color-primary) 48%, var(--color-border-strong));
+    opacity: 0.48;
+}
+.am2-brand-grid {
+    position: absolute;
+    inset: 0;
+    opacity: 0.16;
+    background-image:
+        linear-gradient(to right, currentColor 1px, transparent 1px),
+        linear-gradient(to bottom, currentColor 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at 50% 44%, #000 0 12%, #0000 68%);
+}
+.am2-brand-axis {
+    position: absolute;
+    background: currentColor;
+    opacity: 0.22;
+}
+.am2-brand-axis-x { top: 44%; left: 8%; right: 8%; height: 1px; }
+.am2-brand-axis-y { top: 12%; bottom: 18%; left: 50%; width: 1px; }
+.am2-brand-sweep {
+    position: absolute;
+    top: 44%;
+    left: 50%;
+    width: 38%;
+    height: 1px;
+    background: linear-gradient(90deg, currentColor, transparent);
+    opacity: 0.52;
+    transform: rotate(-34deg);
+    transform-origin: left center;
+}
+
+[data-theme="dark"] .am2-brand-geometry {
+    color: color-mix(in srgb, var(--color-primary) 56%, #334155);
+    opacity: 0.4;
+}
+
+.am2-signal-core {
+    width: min(80%, 340px);
+    aspect-ratio: 1;
+}
+.am2-signal-core::before,
+.am2-signal-core::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    border-radius: 50%;
+}
+.am2-signal-core::before {
+    inset: 14%;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 42%, transparent);
+}
+.am2-signal-core::after {
+    inset: 2%;
+    border: 1px dashed color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.am2-brand-copy::before {
+    content: "";
+    position: absolute;
+    top: -18px;
+    left: 0;
+    width: 42px;
+    height: 2px;
+    background: var(--color-primary);
+}
+.am2-brand-facts {
+    border-block: 1px solid var(--color-border);
+}
+.am2-brand-fact {
+    min-width: 0;
+    padding: 1rem 0.75rem;
+    hyphens: none;
+}
+.am2-brand-fact:first-child { padding-inline-start: 0; }
+.am2-brand-fact:last-child { padding-inline-end: 0; }
+.am2-brand-fact + .am2-brand-fact {
+    border-inline-start: 1px solid var(--color-border);
+}
+
+/*
+ * The form side used to be an empty sheet around a finished card. This is a
+ * geometric field rather than an illustration: a measured grid, stepped
+ * corner, orbit and registration marks echo radio infrastructure without
+ * adding another object to read. Every piece lives behind the card and ignores
+ * input so the login flow remains the only interaction on the page.
+ */
+.am2-login-stage {
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--color-primary) 3%, transparent),
+            transparent 42%),
+        var(--color-bg);
+}
+
+.am2-login-geometry {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border-strong));
+    opacity: 0.62;
+}
+
+.am2-geo {
+    position: absolute;
+    display: block;
+}
+
+.am2-geo-grid {
+    inset: 0;
+    opacity: 0.26;
+    background-image:
+        linear-gradient(to right, currentColor 1px, transparent 1px),
+        linear-gradient(to bottom, currentColor 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 60% 76% at 68% 50%, #0000 0 30%, #000 76%);
+}
+
+.am2-geo-steps {
+    top: -74px;
+    right: -66px;
+    width: 310px;
+    height: 310px;
+    border: 1px solid currentColor;
+    opacity: 0.38;
+    transform: rotate(45deg);
+    box-shadow:
+        30px 30px 0 -1px var(--color-bg),
+        30px 30px 0 0 currentColor,
+        60px 60px 0 -1px var(--color-bg),
+        60px 60px 0 0 currentColor;
+}
+
+.am2-geo-orbit {
+    left: -150px;
+    bottom: -205px;
+    width: 460px;
+    aspect-ratio: 1;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    opacity: 0.42;
+    box-shadow:
+        0 0 0 30px var(--color-bg),
+        0 0 0 31px currentColor,
+        0 0 0 64px var(--color-bg),
+        0 0 0 65px currentColor;
+}
+
+.am2-geo-diamond {
+    right: clamp(24px, 7vw, 110px);
+    bottom: clamp(32px, 8vh, 90px);
+    width: 78px;
+    aspect-ratio: 1;
+    border: 1px solid currentColor;
+    opacity: 0.54;
+    transform: rotate(45deg);
+}
+.am2-geo-diamond::before {
+    content: "";
+    position: absolute;
+    inset: 14px;
+    border: 1px solid currentColor;
+}
+
+.am2-geo-cross {
+    width: 36px;
+    height: 36px;
+    opacity: 0.56;
+}
+.am2-geo-cross::before,
+.am2-geo-cross::after {
+    content: "";
+    position: absolute;
+    background: currentColor;
+}
+.am2-geo-cross::before { inset: 17px 0 auto; height: 1px; }
+.am2-geo-cross::after { inset: 0 auto 0 17px; width: 1px; }
+.am2-geo-cross-a { top: 18%; left: 8%; }
+.am2-geo-cross-b { right: 10%; bottom: 38%; transform: scale(0.65); }
+
+[data-theme="dark"] .am2-login-stage {
+    background:
+        radial-gradient(circle at 70% 45%, rgba(245, 158, 11, 0.04), transparent 34%),
+        #020617;
+}
+[data-theme="dark"] .am2-login-geometry {
+    color: color-mix(in srgb, var(--color-primary) 62%, #334155);
+    opacity: 0.48;
+}
+[data-theme="dark"] .am2-geo-steps {
+    box-shadow:
+        30px 30px 0 -1px #020617,
+        30px 30px 0 0 currentColor,
+        60px 60px 0 -1px #020617,
+        60px 60px 0 0 currentColor;
+}
+[data-theme="dark"] .am2-geo-orbit {
+    box-shadow:
+        0 0 0 30px #020617,
+        0 0 0 31px currentColor,
+        0 0 0 64px #020617,
+        0 0 0 65px currentColor;
+}
+
+@media (max-width: 1023px) {
+    .am2-login-geometry { opacity: 0.34; }
+    .am2-geo-grid { mask-image: radial-gradient(circle at 50% 52%, #0000 0 34%, #000 92%); }
+    .am2-geo-steps { width: 230px; height: 230px; }
+    .am2-geo-orbit { width: 330px; left: -180px; bottom: -170px; }
+    .am2-geo-cross-a { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .am2-login-geometry,
+    .am2-login-geometry * {
+        animation: none !important;
+        transition: none !important;
+    }
 }
 
 /*
