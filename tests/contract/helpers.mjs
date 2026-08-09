@@ -54,7 +54,11 @@ export async function login(user, pass) {
         body: new URLSearchParams({ username: user, password: pass }),
     });
     const raw = res.headers.getSetCookie?.() ?? [];
-    const sid = raw.map((c) => c.split(';')[0]).find((c) => c.startsWith('PHPSESSID='));
+    // session_regenerate_id(true) emits two PHPSESSID cookies: one expiring the
+    // old id, then the new one. The last wins, which is what a browser stores.
+    const sid = raw.map((c) => c.split(';')[0])
+                   .filter((c) => c.startsWith('PHPSESSID='))
+                   .pop();
     if (!sid) {
         throw new Error(`login failed for ${user}: status ${res.status}, no session cookie`);
     }
@@ -81,7 +85,25 @@ export function get(pathname, cookie, opts = {}) {
     });
 }
 
-export function postForm(pathname, cookie, fields) {
+// One token per session, read out of a rendered form. Cached because every
+// mutation in the suite needs it.
+const csrfCache = new Map();
+export async function csrfToken(cookie) {
+    if (csrfCache.has(cookie)) return csrfCache.get(cookie);
+    const html = await (await get('/users.php', cookie)).text();
+    const m = html.match(/name="_csrf" value="([a-f0-9]+)"/);
+    if (!m) throw new Error('no CSRF token in the rendered page');
+    csrfCache.set(cookie, m[1]);
+    return m[1];
+}
+
+export async function postForm(pathname, cookie, fields) {
+    // Panel POSTs are rejected without the token, so send it unless the caller
+    // is deliberately testing its absence.
+    if (cookie && !('_csrf' in fields) && fields._csrf !== null) {
+        fields = { ...fields, _csrf: await csrfToken(cookie) };
+    }
+    if (fields._csrf === null) delete fields._csrf;
     return fetch(`${BASE}${pathname}`, {
         method: 'POST',
         redirect: 'manual',

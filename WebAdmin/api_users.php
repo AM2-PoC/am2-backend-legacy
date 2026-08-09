@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 function syncUserChannels($userId) {
     $url = AM2_NODE_BASE . "/api/admin/sync-channels?userId=" . urlencode($userId);
@@ -18,7 +19,7 @@ function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'HALF DU
     ];
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => json_encode($data),
             'timeout' => 2
@@ -42,7 +43,7 @@ if ($method == 'GET') {
             $stmt->execute([$u_id]);
             echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
         } catch (PDOException $e) {
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => am2_safe_error($e, 'api_users')]);
         }
         exit;
     }
@@ -85,7 +86,7 @@ if ($method == 'GET') {
         echo json_encode($users);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_users')]);
     }
 }
 elseif ($method == 'POST') {
@@ -124,7 +125,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'User berhasil ' . ($action == 'add' ? 'ditambahkan' : 'diperbarui')]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'Gagal: ' . am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'save_user_channels') {
@@ -154,10 +155,16 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'update_feature') {
+        $target_uid = $_POST['u_id'] ?? '';
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $target_uid)
+            && am2_api_authz_denied('feature-foreign-user')) {
+            exit;
+        }
+
         $u_id = $_POST['u_id'] ?? '';
         $feature = $_POST['feature'] ?? '';
 
@@ -169,8 +176,31 @@ elseif ($method == 'POST') {
             $sql_val = $val;
         }
 
+        // $feature is interpolated as a column name below. users.php has always
+        // validated it against an allow-list; this copy never did, and this file
+        // takes its caller's word for who they are.
+        //
+        // duplex_mode belongs here. It has its own branch eight lines above --
+        // which is the proof the app calls this endpoint with it -- and leaving
+        // it out made every FULL/HALF toggle in Admin Native answer "Fitur tidak
+        // valid". users.php keeps its own list and still accepts it, so the
+        // panel works and this would not have shown up in panel testing.
+        //
+        // Safe to interpolate for the same reason as the rest: the column name
+        // is a literal from this list, and the value took the $pdo->quote()
+        // branch above.
+        //
+        // Checked before the transaction is opened, so the exit below does not
+        // leave one dangling for the request to unwind.
+        $allowed = ['enable_maps', 'enable_p2p', 'enable_ptt_video', 'duplex_mode'];
+        if (!in_array($feature, $allowed, true)) {
+            echo json_encode(['success' => false, 'message' => 'Fitur tidak valid']);
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
+
             $sql = "INSERT INTO public.user_app_permissions (user_id, $feature, updated_at)
                     VALUES (?, $sql_val, NOW())
                     ON CONFLICT (user_id)
@@ -186,15 +216,20 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true]);
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
     }
     elseif ($action == 'delete') {
         $id = $_POST['id'] ?? '';
+        if (!am2_admin_owns_user($pdo, $admin_id, $admin_role, $id)
+            && am2_api_authz_denied('delete-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
             echo json_encode(['success' => true]);
-        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => $e->getMessage()]); }
+        } catch (PDOException $e) { echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]); }
     }
 }
 ?>

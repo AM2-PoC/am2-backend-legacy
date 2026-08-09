@@ -97,14 +97,17 @@ describe('user_access.php force logout', () => {
 
     test('the endpoint is the current URL, so a search query must survive', async () => {
         // The page posts to window.location.href, so ?search= rides along.
-        const { BASE, HOST } = await import('./helpers.mjs');
+        const { BASE, HOST, csrfToken } = await import('./helpers.mjs');
         const res = await fetch(
             `${BASE}/user_access.php?search=CT`,
             {
                 method: 'POST', redirect: 'manual',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded',
                            Host: HOST, Cookie: sup },
-                body: new URLSearchParams({ action: 'db_force_logout', user_id: 'CT_A1' }),
+                body: new URLSearchParams({
+                    action: 'db_force_logout', user_id: 'CT_A1',
+                    _csrf: await csrfToken(sup),
+                }),
             }
         );
         assert.equal((await json(res)).success, true);

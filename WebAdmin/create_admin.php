@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $message = "<div class='alert alert-success'>Admin [$name] Berhasil Dibuat!</div>";
     } catch (PDOException $e) {
-        $message = "<div class='alert alert-danger'>Gagal: " . $e->getMessage() . "</div>";
+        $message = "<div class='alert alert-danger'>Gagal: " . am2_safe_error($e, 'create_admin') . "</div>";
     }
 }
 ?>

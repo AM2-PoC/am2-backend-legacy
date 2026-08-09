@@ -18,10 +18,11 @@ function syncUserChannels($userId) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array_filter([trim(am2_node_auth_header())]));
         @curl_exec($ch);
         curl_close($ch);
     } else {
-        $options = ['http' => ['timeout' => 2]];
+        $options = ['http' => ['timeout' => 2, 'header' => am2_node_auth_header()]];
         $context = stream_context_create($options);
         @file_get_contents($url, false, $context);
     }
@@ -48,13 +49,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_channel'])) {
         $stmt->execute([$name, $display_name, $category, $current_admin_id]);
         $success_msg = "Channel <strong>$display_name</strong> berhasil dibuat.";
     } catch (PDOException $e) {
-        $error_msg = ($e->getCode() == 23505) ? "Gagal: Nama channel sudah terdaftar." : "Error: " . $e->getMessage();
+        $error_msg = ($e->getCode() == 23505) ? "Gagal: Nama channel sudah terdaftar." : "Error: " . am2_safe_error($e, 'channels');
     }
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])) {
     $ch_id = (int)$_POST['manage_ch_id'];
     $selected_users = $_POST['users'] ?? [];
+
+    /*
+     * Both halves of this form are attacker-chosen, and only the DELETE below
+     * was scoped.
+     *
+     * The channel: without this check a branch admin could post another
+     * branch's channel id and manage its membership. The users: the INSERT loop
+     * further down ran over whatever ids arrived, so a foreign unit could be
+     * grafted onto a channel this admin controls -- and syncUserChannels()
+     * pushes that to the relay, which means being able to hear and transmit on
+     * another branch's traffic. Filtering here rather than inside the loop
+     * keeps the membership write a single scoped statement.
+     */
+    if (strtolower($role_user) !== 'superadmin') {
+        $stmtOwn = $pdo->prepare("SELECT 1 FROM public.channels WHERE id = ? AND created_by = ?");
+        $stmtOwn->execute([$ch_id, $current_admin_id]);
+        if (!$stmtOwn->fetchColumn()) {
+            http_response_code(403);
+            exit('Akses ditolak');
+        }
+
+        $selected_users = array_values(array_filter(
+            $selected_users,
+            fn($u) => am2_admin_owns_user($pdo, $current_admin_id, $role_user, (string) $u)
+        ));
+    }
 
     try {
         $pdo->beginTransaction();
@@ -87,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
         $success_msg = "Izin akses channel berhasil diperbarui.";
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal menyimpan akses: " . $e->getMessage();
+        $error_msg = "Gagal menyimpan akses: " . am2_safe_error($e, 'channels');
     }
 }
 
@@ -106,12 +133,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_channel'])) {
         }
         $success_msg = "Perubahan channel berhasil disimpan.";
     } catch (PDOException $e) {
-        $error_msg = "Gagal memperbarui channel: " . $e->getMessage();
+        $error_msg = "Gagal memperbarui channel: " . am2_safe_error($e, 'channels');
     }
 }
 
-if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
+if (isset($_POST['delete_channel'])) {
+    $id = (int)$_POST['delete_channel'];
     try {
         $pdo->beginTransaction();
         $stmt_get = $pdo->prepare("SELECT name FROM public.channels WHERE id = ?");
@@ -140,7 +167,7 @@ if (isset($_GET['delete'])) {
         $pdo->rollBack();
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal menghapus: " . $e->getMessage();
+        $error_msg = "Gagal menghapus: " . am2_safe_error($e, 'channels');
     }
 }
 
@@ -261,6 +288,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
                 <div class="col-lg-7">
                     <div class="card card-table toolbar-card p-3">
                         <form method="POST" class="row g-2 align-items-end">
+                    <?= am2_csrf_field() ?>
                             <div class="col-md-9">
                                 <label class="small fw-bold text-muted">NAMA CHANNEL</label>
                                 <input type="text" name="display_name" class="form-control form-control-sm text-uppercase" placeholder="Contoh: Channel Test" required>
@@ -312,7 +340,11 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
                                 <td data-label="Aksi" class="text-center pe-4">
                                     <div class="btn-group">
                                         <button class="btn btn-sm btn-outline-secondary" onclick="openEditModal(<?= $c['id'] ?>, '<?= htmlspecialchars($c['display_name']) ?>')"><i class="fas fa-edit"></i></button>
-                                        <a href="?delete=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger btn-danger-soft" onclick="return confirm('Hapus channel?')"><i class="fas fa-trash"></i></a>
+                                        <form method="POST" class="d-inline" onsubmit="return confirm('Hapus channel?')">
+                                            <?= am2_csrf_field() ?>
+                                            <input type="hidden" name="delete_channel" value="<?= (int) $c['id'] ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger btn-danger-soft"><i class="fas fa-trash"></i></button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -330,6 +362,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="accessModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i> Kelola Akses User</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -373,6 +406,7 @@ $managed_users = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header border-0 pb-0">
                 <h6 class="fw-bold mb-0">Update Channel</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

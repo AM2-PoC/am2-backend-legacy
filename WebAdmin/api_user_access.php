@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,10 +15,11 @@ function syncUserChannels($userId) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array_filter([trim(am2_node_auth_header())]));
         @curl_exec($ch);
         curl_close($ch);
     } else {
-        $options = ['http' => ['timeout' => 2]];
+        $options = ['http' => ['timeout' => 2, 'header' => am2_node_auth_header()]];
         $context = stream_context_create($options);
         @file_get_contents($url, false, $context);
     }
@@ -28,7 +30,7 @@ function notifyForceLogout($userId) {
     $data = json_encode(['userId' => $userId]);
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => $data,
             'timeout' => 2
@@ -61,7 +63,7 @@ if ($method == 'GET') {
     }
 
     if ($search !== '') {
-        $sql .= " AND (u.name ILIKE ? u.id::text ILIKE ?)";
+        $sql .= " AND (u.name ILIKE ? OR u.id::text ILIKE ?)";
         $params[] = "%$search%";
         $params[] = "%$search%";
     }
@@ -83,7 +85,7 @@ if ($method == 'GET') {
         echo json_encode($result);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_user_access')]);
     }
 }
 elseif ($method == 'POST') {
@@ -92,6 +94,11 @@ elseif ($method == 'POST') {
 
     if ($action == 'force_logout') {
         $user_id = (string)($_POST['user_id'] ?? '');
+        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+            && am2_api_authz_denied('kick-foreign-user')) {
+            exit;
+        }
+
         try {
             $pdo->beginTransaction();
 
@@ -112,11 +119,16 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'User berhasil dikeluarkan.']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }
     elseif ($action == 'update_access') {
         $user_id = (string)($_POST['user_id'] ?? '');
+        if (!am2_admin_owns_user($pdo, $current_admin_id, ($_POST['role'] ?? 'admin'), $user_id)
+            && am2_api_authz_denied('access-foreign-user')) {
+            exit;
+        }
+
         $selected_channels = $_POST['channels'] ?? [];
         $default_channel_id = $_POST['default_channel'] ?? null;
         $permissions_input = json_decode($_POST['permissions'] ?? '[]', true);
@@ -172,7 +184,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'Otoritas akses user berhasil diperbarui.']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);
         }
     }
 }

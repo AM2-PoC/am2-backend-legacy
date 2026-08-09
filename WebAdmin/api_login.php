@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'] ?? '';
@@ -27,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             echo json_encode(['success' => false, 'message' => 'Username atau Password salah.']);
         }
     } catch (PDOException $e) {
-        echo json_encode(['success' => false, 'message' => 'Kesalahan sistem: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Kesalahan sistem: ' . am2_safe_error($e, 'api_login')]);
     }
 } else {
     echo json_encode(['success' => false, 'message' => 'Method not allowed']);

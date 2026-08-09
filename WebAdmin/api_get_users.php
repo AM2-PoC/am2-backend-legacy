@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+am2_api_auth();
 
 $admin_id = $_GET['admin_id'] ?? null;
 $admin_role = $_GET['role'] ?? 'admin';
@@ -30,14 +31,21 @@ try {
             ) last_log ON TRUE
             WHERE u.status = 'online'";
 
-    if (!$is_superadmin && $admin_id) {
+    if (!$is_superadmin) {
+        // Previously this was `if (!$is_superadmin && $admin_id)`, so dropping
+        // the parameter dropped the filter and returned every online user's
+        // position instead of none.
+        if (!$admin_id) {
+            echo json_encode([]);
+            exit;
+        }
         $sql .= " AND u.admin_id = :admin_id";
     }
 
     $sql .= " ORDER BY is_speaking DESC, u.name ASC";
 
     $stmt = $pdo->prepare($sql);
-    if (!$is_superadmin && $admin_id) {
+    if (!$is_superadmin) {
         $stmt->bindValue(':admin_id', $admin_id);
     }
     $stmt->execute();
@@ -65,6 +73,6 @@ try {
 
 } catch (PDOException $e) {
     header('Content-Type: application/json', true, 500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => am2_safe_error($e, 'api_get_users')]);
 }
 ?>

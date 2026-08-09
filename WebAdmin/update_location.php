@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+am2_api_auth();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('HTTP/1.1 405 Method Not Allowed');
@@ -48,6 +49,6 @@ try {
 
 } catch (PDOException $e) {
     header('HTTP/1.1 500 Internal Server Error');
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => am2_safe_error($e, 'update_location')]);
 }
 ?>

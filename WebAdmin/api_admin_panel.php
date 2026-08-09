@@ -1,7 +1,13 @@
 <?php
 header('Content-Type: application/json');
 require_once 'config.php';
+am2_api_auth();
 
+// SECURITY: this endpoint carries no caller identity, so it cannot distinguish
+// one admin from another. Its only control is the shared key checked by
+// am2_api_auth(). Anyone holding that key can create or delete an admin,
+// including a superadmin. Giving it a real actor requires a contract change to
+// the Admin Native app.
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method == 'GET') {
@@ -37,7 +43,7 @@ if ($method == 'GET') {
         echo json_encode($admins);
     } catch (PDOException $e) {
         http_response_code(500);
-        echo json_encode(['error' => $e->getMessage()]);
+        echo json_encode(['error' => am2_safe_error($e, 'api_admin_panel')]);
     }
 }
 elseif ($method == 'POST') {
@@ -73,7 +79,7 @@ elseif ($method == 'POST') {
                 echo json_encode(['success' => true, 'message' => 'Admin created']);
             }
         } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_admin_panel')]);
         }
     }
     elseif ($action == 'delete') {
@@ -82,7 +88,7 @@ elseif ($method == 'POST') {
             $pdo->prepare("DELETE FROM public.admin WHERE id = ? AND role != 'superadmin'")->execute([$id]);
             echo json_encode(['success' => true, 'message' => 'Admin deleted']);
         } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_admin_panel')]);
         }
     }
     elseif ($action == 'delegate') {
@@ -102,7 +108,7 @@ elseif ($method == 'POST') {
             echo json_encode(['success' => true, 'message' => 'Delegation updated']);
         } catch (PDOException $e) {
             $pdo->rollBack();
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_admin_panel')]);
         }
     }
 }

@@ -17,10 +17,11 @@ function syncUserChannels($userId) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array_filter([trim(am2_node_auth_header())]));
         @curl_exec($ch);
         curl_close($ch);
     } else {
-        $options = ['http' => ['timeout' => 2]];
+        $options = ['http' => ['timeout' => 2, 'header' => am2_node_auth_header()]];
         $context = stream_context_create($options);
         @file_get_contents($url, false, $context);
     }
@@ -31,7 +32,7 @@ function notifyForceLogout($userId) {
     $data = json_encode(['userId' => $userId]);
     $options = [
         'http' => [
-            'header'  => "Content-type: application/json\r\n",
+            'header'  => "Content-type: application/json\r\n" . am2_node_auth_header(),
             'method'  => 'POST',
             'content' => $data,
             'timeout' => 2
@@ -43,6 +44,12 @@ function notifyForceLogout($userId) {
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'db_force_logout') {
     $uid_to_kick = $_POST['user_id'];
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, $uid_to_kick)) {
+        header('Content-Type: application/json');
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+        exit;
+    }
     try {
         $pdo->beginTransaction();
 
@@ -71,13 +78,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         header('Content-Type: application/json', true, 500);
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'user_access')]);
         exit;
     }
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])) {
     $user_id = $_POST['user_id'];
+
+    /*
+     * The same guard the force-logout path above carries, and the one this page
+     * most needed: this block deletes the target's entire channel membership,
+     * writes a new one, moves last_channel_id, and pushes the result to the
+     * relay. Without it a branch admin could post another branch's user id --
+     * from their own page, with their own valid CSRF token -- and take that
+     * unit off every channel it belongs to, or graft it onto one of theirs.
+     *
+     * The API twin of this action was guarded and the panel original was not,
+     * which is the harder half to notice: the endpoint that looks like the
+     * dangerous one had the check.
+     */
+    if (!am2_admin_owns_user($pdo, $current_admin_id, $role_user, $user_id)) {
+        http_response_code(403);
+        exit('Akses ditolak');
+    }
+
     $selected_channels = $_POST['channels'] ?? [];
     $default_channel_id = $_POST['default_channel'] ?? null;
     $permissions_input = $_POST['permissions'] ?? [];
@@ -128,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
         $success_msg = "Otoritas akses user berhasil diperbarui.";
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error_msg = "Gagal memperbarui database: " . $e->getMessage();
+        $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
     }
 }
 
@@ -335,6 +360,7 @@ $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
 <div class="modal fade" id="accessModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form method="POST" class="modal-content shadow-lg border-0" style="border-radius:15px;">
+                    <?= am2_csrf_field() ?>
             <div class="modal-header bg-light border-0">
                 <h6 class="fw-bold mb-0 text-navy"><i class="fas fa-user-shield me-2"></i>Edit Izin Akses</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -459,6 +485,7 @@ $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
         if (!confirm(`Putuskan koneksi perangkat ${userName}?`)) return;
         let fd = new FormData();
         fd.append('action', 'db_force_logout');
+        fd.append('_csrf', <?= json_encode(am2_csrf_token()) ?>);
         fd.append('user_id', userId);
 
         try {
