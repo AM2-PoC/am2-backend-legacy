@@ -54,6 +54,7 @@ define('AM2_ADMIN_UPDATE_BASE', rtrim(
     getenv('AM2_ADMIN_UPDATE_BASE_URL') ?: 'https://webadmin.am2-poc.com/update',
     '/'
 ));
+require_once __DIR__ . '/admin_update_validation.php';
 
 /**
  * Refuse an unauthorized machine-to-machine call — or, while the credential is
