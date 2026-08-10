@@ -285,23 +285,22 @@ function attachProtocol(server) {
                                 activeSpeakers.set(data.new_channel_slug, new Set());
                                 // Ambil dari Redis jika ada (mencegah data hilang saat restart)
                                 const savedSpeakers = await redisClient.sMembers(`speakers:${data.new_channel_slug}`);
+                                if (ws.channelJoinGeneration !== joinGeneration) break;
                                 savedSpeakers.forEach(s => activeSpeakers.get(data.new_channel_slug).add(s));
                             }
                             if (!activeVideoRooms.has(data.new_channel_slug)) {
                                 activeVideoRooms.set(data.new_channel_slug, new Set());
                                 const savedVideos = await redisClient.sMembers(`video:${data.new_channel_slug}`);
+                                if (ws.channelJoinGeneration !== joinGeneration) break;
                                 savedVideos.forEach(v => activeVideoRooms.get(data.new_channel_slug).add(v));
                             }
+
+                            if (ws.channelJoinGeneration !== joinGeneration) break;
 
                             channelRooms.get(data.new_channel_slug).add(ws);
                             ws.currentRoom = data.new_channel_slug;
                             ws.currentChannelId = channelData.id;
                             ws.is_rx_only = (channelData.permission === 'RX');
-                            // The socket is now authoritative for the new room;
-                            // release the transition gate before the bookkeeping
-                            // below so ordinary starts are not refused by slow
-                            // audit/default-channel writes.
-                            ws.channelTransitioning = false;
                             // Invalidate any start authorized while this join was
                             // waiting on I/O; its decision belongs to oldRoom.
                             ws.transmitAuthGeneration += 1;
@@ -323,6 +322,17 @@ function attachProtocol(server) {
                             } finally {
                                 client.release();
                             }
+
+                            // A later join can supersede this one while the DB
+                            // transaction is in flight. Roll the stale in-memory
+                            // membership back instead of announcing the wrong room.
+                            if (ws.channelJoinGeneration !== joinGeneration) {
+                                channelRooms.get(data.new_channel_slug)?.delete(ws);
+                                break;
+                            }
+
+                            // The socket is now authoritative for the new room.
+                            ws.channelTransitioning = false;
 
                             ws.send(JSON.stringify({
                                 type: 'join_channel_success',
