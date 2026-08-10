@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../WebAdmin/config.php';
+require_once __DIR__ . '/../../WebAdmin/admin_update_validation.php';
 
 $validate = static function (string $base, string $url, string $root): bool {
     return am2_admin_update_file($base, $url, $root) !== null;
@@ -14,6 +14,9 @@ if (!mkdir($root, 0700) || file_put_contents($root . '/admin.apk', 'apk') === fa
     exit(2);
 }
 file_put_contents($root . '/admin_version.json', '{}');
+file_put_contents($root . '/%61dmin.apk', 'encoded');
+file_put_contents($root . '/nested%2Fadmin.apk', 'encoded-slash');
+file_put_contents($root . '/nested\\admin.apk', 'backslash');
 symlink($root . '/admin.apk', $root . '/linked.apk');
 
 $base = 'https://webadmin.am2-poc.com/update';
@@ -21,6 +24,9 @@ $cases = [
     'valid direct APK' => [$base, $base . '/admin.apk', true],
     'nested path with basename collision' => [$base, $base . '/missing/admin.apk', false],
     'same host outside update path' => [$base, 'https://webadmin.am2-poc.com/admin.apk', false],
+    'percent-encoded filename' => [$base, $base . '/%61dmin.apk', false],
+    'encoded slash' => [$base, $base . '/nested%2Fadmin.apk', false],
+    'backslash filename' => [$base, $base . '/nested\\admin.apk', false],
     'metadata instead of APK' => [$base, $base . '/admin_version.json', false],
     'query string' => [$base, $base . '/admin.apk?build=1', false],
     'fragment' => [$base, $base . '/admin.apk#download', false],
@@ -43,6 +49,9 @@ foreach ($cases as $name => [$configuredBase, $candidate, $expected]) {
 @unlink($root . '/linked.apk');
 @unlink($root . '/admin.apk');
 @unlink($root . '/admin_version.json');
+@unlink($root . '/%61dmin.apk');
+@unlink($root . '/nested%2Fadmin.apk');
+@unlink($root . '/nested\\admin.apk');
 @rmdir($root);
 
 if ($failed) {

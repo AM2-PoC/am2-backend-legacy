@@ -54,50 +54,7 @@ define('AM2_ADMIN_UPDATE_BASE', rtrim(
     getenv('AM2_ADMIN_UPDATE_BASE_URL') ?: 'https://webadmin.am2-poc.com/update',
     '/'
 ));
-
-/**
- * Resolve a published administrator APK to the exact regular file it names.
- * Returns null unless both URLs are simple HTTPS origins and the candidate is
- * directly below the configured update path.
- */
-function am2_admin_update_file(string $baseUrl, string $downloadUrl, string $updateDir): ?string
-{
-    $base = parse_url($baseUrl);
-    $candidate = parse_url($downloadUrl);
-    $forbidden = ['user', 'pass', 'query', 'fragment'];
-
-    if (!is_array($base) || !is_array($candidate)) {
-        return null;
-    }
-    foreach ([$base, $candidate] as $url) {
-        if (strtolower((string) ($url['scheme'] ?? '')) !== 'https'
-            || (string) ($url['host'] ?? '') === '') {
-            return null;
-        }
-        foreach ($forbidden as $part) {
-            if (array_key_exists($part, $url)) {
-                return null;
-            }
-        }
-    }
-
-    if (strcasecmp((string) $base['host'], (string) $candidate['host']) !== 0
-        || ($base['port'] ?? null) !== ($candidate['port'] ?? null)) {
-        return null;
-    }
-
-    $basePath = rtrim('/' . ltrim((string) ($base['path'] ?? ''), '/'), '/');
-    $candidatePath = '/' . ltrim((string) ($candidate['path'] ?? ''), '/');
-    $relative = substr($candidatePath, strlen($basePath) + 1);
-    if ($basePath === '' || !str_starts_with($candidatePath, $basePath . '/')
-        || $relative === '' || str_contains($relative, '/')
-        || strtolower(pathinfo($relative, PATHINFO_EXTENSION)) !== 'apk') {
-        return null;
-    }
-
-    $file = rtrim($updateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $relative;
-    return is_file($file) && !is_link($file) ? $file : null;
-}
+require_once __DIR__ . '/admin_update_validation.php';
 
 /**
  * Refuse an unauthorized machine-to-machine call — or, while the credential is
