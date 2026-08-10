@@ -17,10 +17,10 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { env, NODE_URL } from '../contract/helpers.mjs';
 
-const require = createRequire('/var/www/am2/staging/current/server/');
+const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
 
-const WS_URL = NODE_URL.replace(/^http/, 'ws');
+const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const TIMEOUT = 8000;
 const CHANNEL = 'ct_channel_a';
 
@@ -156,6 +156,61 @@ describe('a permission change reaches a socket that is already connected', () =>
                   VALUES ('CT_A1', ${row}, true, 'FULL DUPLEX')
                   ON CONFLICT (user_id, channel_id) DO UPDATE SET permission = 'FULL DUPLEX'`);
         }
+    });
+
+    test('losing membership entirely also refuses channel video', async () => {
+        const row = psql(`SELECT uc.channel_id FROM public.user_channels uc
+                          JOIN public.channels c ON c.id = uc.channel_id
+                          WHERE uc.user_id = 'CT_A1' AND c.name = '${CHANNEL}'`);
+        psql(`DELETE FROM public.user_channels WHERE user_id = 'CT_A1' AND channel_id = ${row}`);
+        try {
+            unit.inbox.length = 0;
+            listener.inbox.length = 0;
+            send(unit, 'ptt_video_start');
+            const err = await waitFor(unit, 'ptt_error');
+            assert.match(String(err.data?.message ?? ''), /member/i,
+                'video was allowed after channel membership was deleted');
+            await settle(500);
+            assert.equal(listener.inbox.some((m) => m.type === 'video_stream_status'), false,
+                'a non-member was announced as a video streamer');
+        } finally {
+            psql(`INSERT INTO public.user_channels (user_id, channel_id, is_default, permission)
+                  VALUES ('CT_A1', ${row}, true, 'FULL DUPLEX')
+                  ON CONFLICT (user_id, channel_id) DO UPDATE SET permission = 'FULL DUPLEX'`);
+        }
+    });
+
+    test('a unit demoted to RX cannot start channel video', async () => {
+        psql(`UPDATE public.user_channels uc SET permission = 'RX'
+              FROM public.channels c WHERE c.id = uc.channel_id
+                AND uc.user_id = 'CT_A1' AND c.name = '${CHANNEL}'`);
+
+        unit.inbox.length = 0;
+        listener.inbox.length = 0;
+        send(unit, 'ptt_video_start');
+        const err = await waitFor(unit, 'ptt_error');
+        assert.match(String(err.data?.message ?? ''), /receive-only/i,
+            'RX permission still allowed channel video');
+        await settle(500);
+        assert.equal(listener.inbox.some((m) =>
+            m.type === 'video_stream_status'
+            && m.data?.streamers?.includes('Contract Unit A1')), false,
+        'RX unit was announced as a channel video streamer');
+    });
+
+    test('restoring FULL DUPLEX lets channel video start again', async () => {
+        psql(`UPDATE public.user_channels uc SET permission = 'FULL DUPLEX'
+              FROM public.channels c WHERE c.id = uc.channel_id
+                AND uc.user_id = 'CT_A1' AND c.name = '${CHANNEL}'`);
+
+        unit.inbox.length = 0;
+        listener.inbox.length = 0;
+        send(unit, 'ptt_video_start');
+        await waitFor(listener, 'video_stream_status');
+        assert.equal(unit.inbox.some((m) => m.type === 'ptt_error'), false,
+            'video stayed refused after permission restoration');
+        send(unit, 'ptt_video_end');
+        await settle(300);
     });
 });
 
