@@ -11,10 +11,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { env, NODE_URL } from '../contract/helpers.mjs';
 
-const require = createRequire('/var/www/am2/staging/current/server/');
+const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
 
-const WS_URL = NODE_URL.replace(/^http/, 'ws');
+const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const TIMEOUT = 8000;
 const CHANNEL = 'ct_channel_a';
 
