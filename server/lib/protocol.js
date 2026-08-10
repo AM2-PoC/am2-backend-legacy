@@ -459,7 +459,7 @@ function attachProtocol(server) {
                     const inviter = String(data.target_id ?? '');
                     const invite = ws.ptpInviteFrom;
                     if (!invite || invite.id !== inviter || Date.now() - invite.at > PTP_INVITE_TTL) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Undangan panggilan tidak ditemukan' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'No pending call invitation' } }));
                         return;
                     }
                     ws.ptpInviteFrom = null;
@@ -496,7 +496,7 @@ function attachProtocol(server) {
                     const inviterVid = String(data.target_id ?? '');
                     const inviteVid = ws.ptpInviteFrom;
                     if (!inviteVid || inviteVid.id !== inviterVid || Date.now() - inviteVid.at > PTP_INVITE_TTL) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Undangan panggilan tidak ditemukan' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'No pending call invitation' } }));
                         return;
                     }
                     ws.ptpInviteFrom = null;

@@ -73,20 +73,27 @@ async function signIn(ws, username) {
 let victim, attacker, witness;
 let victimId, attackerId;
 
+/*
+ * The three roles are chosen so the two outcomes are distinguishable.
+ *
+ * CT_A1 and CT_A2 are the only fixture units in ct_channel_a, so the witness
+ * has to be CT_A2 and the attacker has to be someone outside the channel --
+ * otherwise "the attacker received the audio" and "the attacker received the
+ * channel broadcast like any other member" are the same observation.
+ */
+
 before(async () => {
     assert.ok(env.CT_PTT_PASS, 'run infra/scripts/ptt-harness-fixtures.sh first');
     [victim, attacker, witness] = await Promise.all([
         connect('victim'), connect('attacker'), connect('witness'),
     ]);
     victimId = String((await signIn(victim, 'CT_A1')).data.id ?? 'CT_A1');
-    attackerId = String((await signIn(attacker, 'CT_A2')).data.id ?? 'CT_A2');
-    // The witness shares the channel, so it can show whether the victim's audio
-    // still fans out the way it should.
-    await signIn(witness, 'CT_A3').catch(() => null);
+    await signIn(witness, 'CT_A2');
+    attackerId = String((await signIn(attacker, 'CT_A3')).data.id ?? 'CT_A3');
 
-    for (const ws of [victim, attacker, witness]) {
-        if (ws.readyState === WebSocket.OPEN) send(ws, 'join_channel', { channel: CHANNEL });
-    }
+    // Only the two channel members join; the attacker deliberately stays out.
+    send(victim, 'join_channel', { new_channel_slug: CHANNEL });
+    send(witness, 'join_channel', { new_channel_slug: CHANNEL });
     await settle(800);
 });
 
@@ -105,29 +112,44 @@ describe('a private call needs an invitation that exists', () => {
             'the relay accepted an answer to a call that was never placed');
     });
 
-    test("and it does not quietly rewrite the victim's session", async () => {
+    test("and it does not seize a transmission already in flight", async () => {
         /*
-         * This is the assertion that matters. A refusal reply is cheap; what
-         * the exploit actually did was set ptpTargetId on the victim, after
-         * which the victim's binary audio went to the attacker instead of the
-         * channel. So: have the victim transmit, and check where it lands.
+         * The exploit, reproduced in the order that actually reaches it.
+         *
+         * ptt_audio_start calls clearPtpSession() first, so a forged pairing
+         * made *before* the victim keys the mic is torn down by the keying
+         * itself -- which is why a naive version of this test passed against
+         * vulnerable code and taught us nothing. The window that matters is a
+         * transmission already under way: binary frames consult ptpTargetId
+         * before anything else, so writing it mid-transmission reroutes live
+         * audio away from the channel and into the attacker's socket.
          */
         victim.inbox.length = 0;
         attacker.binary.length = 0;
         witness.binary.length = 0;
 
-        send(victim, 'ptt_audio_start', { channel: CHANNEL });
+        send(victim, 'ptt_audio_start');
         await settle(400);
-        victim.send(Buffer.from([1, 2, 3, 4, 5]), { binary: true });
-        await settle(800);
+        victim.send(Buffer.from([1, 0, 0]), { binary: true });
+        await settle(400);
+        assert.ok(witness.binary.length > 0, 'the channel never carried the first frame');
+
+        // Now, mid-transmission, the forged answer.
+        attacker.inbox.length = 0;
+        send(attacker, 'accept_ptp', { target_id: victimId });
+        await settle(700);
+
+        const before = witness.binary.length;
+        attacker.binary.length = 0;
+        victim.send(Buffer.from([1, 7, 7]), { binary: true });
+        await settle(700);
 
         assert.equal(attacker.binary.length, 0,
-            "the victim's audio reached the attacker, so the forged accept rerouted it");
-        if (witness.readyState === WebSocket.OPEN) {
-            assert.ok(witness.binary.length > 0,
-                "the victim's audio did not reach the channel, so the forged accept cut them off");
-        }
-        send(victim, 'ptt_audio_end', { channel: CHANNEL });
+            'a forged answer redirected a live transmission into the attacker\'s socket');
+        assert.ok(witness.binary.length > before,
+            'the channel stopped receiving the victim mid-transmission');
+
+        send(victim, 'ptt_audio_end');
         await settle(300);
     });
 
