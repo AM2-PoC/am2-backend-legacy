@@ -18,6 +18,7 @@ const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 
 const { pool, redisClient, createLog, channelPermission } = require('./db');
+const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
 const {
     activeConnections,
     peerFor,
@@ -353,19 +354,14 @@ function attachProtocol(server) {
                      * old rather than one session old.
                      */
                     {
-                        const now = await channelPermission(ws.sessionUser.id, ws.currentRoom);
-                        if (!now) {
-                            ws.is_rx_only = true;
+                        const authorization = await authorizeChannelTransmit(ws, channelPermission);
+                        if (!authorization.ok) {
+                            if (authorization.error) {
+                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                            }
                             return ws.send(JSON.stringify({
                                 type: 'ptt_error',
-                                data: { message: 'Cannot transmit: no longer a member of this channel.' },
-                            }));
-                        }
-                        ws.is_rx_only = (now.permission === 'RX');
-                        if (ws.is_rx_only) {
-                            return ws.send(JSON.stringify({
-                                type: 'ptt_error',
-                                data: { message: 'Cannot transmit: receive-only on this channel.' },
+                                data: { message: transmitErrorMessage(authorization.reason) },
                             }));
                         }
                     }
@@ -417,13 +413,20 @@ function attachProtocol(server) {
 
                 case 'ptt_video_start':
                     if (!ws.sessionUser || !ws.enable_ptt_video || !ws.currentRoom) return;
-                    // Same re-read as the audio path: video is a transmission
-                    // too, and it never consulted membership at all.
-                    if (!(await channelPermission(ws.sessionUser.id, ws.currentRoom))) {
-                        return ws.send(JSON.stringify({
-                            type: 'ptt_error',
-                            data: { message: 'Cannot transmit: no longer a member of this channel.' },
-                        }));
+                    // Video and audio share the same fresh permission check so
+                    // receive-only units cannot bypass it through another
+                    // media start message.
+                    {
+                        const authorization = await authorizeChannelTransmit(ws, channelPermission);
+                        if (!authorization.ok) {
+                            if (authorization.error) {
+                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                            }
+                            return ws.send(JSON.stringify({
+                                type: 'ptt_error',
+                                data: { message: transmitErrorMessage(authorization.reason) },
+                            }));
+                        }
                     }
                     if (!activeVideoRooms.has(ws.currentRoom)) activeVideoRooms.set(ws.currentRoom, new Set());
                     const videoEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;

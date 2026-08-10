@@ -26,6 +26,17 @@ sudo -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 <<SQL
 BEGIN;
 UPDATE public.users SET password = '$H' WHERE id IN ('CT_A1','CT_A2','CT_A3','CT_B1');
 
+-- Video capability is the conjunction of the per-user switch below and the
+-- owning admin's branch-level capability. Keep both enabled for protocol tests.
+UPDATE public.admin a
+SET can_manage_p2p = true,
+    can_manage_video = true
+WHERE a.id IN (
+    SELECT DISTINCT u.admin_id
+    FROM public.users u
+    WHERE u.id IN ('CT_A1','CT_A2','CT_A3','CT_B1')
+);
+
 INSERT INTO public.user_channels (user_id, channel_id, is_default, permission)
 SELECT v.uid, c.id, true, 'FULL DUPLEX'
 FROM (VALUES ('CT_A1'),('CT_A2')) AS v(uid)
