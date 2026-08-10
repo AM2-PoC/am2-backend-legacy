@@ -57,6 +57,8 @@ jobs:
               node --check "$f" || { echo "SYNTAX: $f"; fail=1; }
           done < <(find server -name '*.js' -not -path '*/node_modules/*')
           exit $fail
+      - name: Run relay authorization unit tests
+        run: node --test tests/unit/*.test.mjs
 
   assets:
     name: built assets match their source
