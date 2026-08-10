@@ -17,7 +17,8 @@
 const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 
-const { pool, redisClient, createLog } = require('./db');
+const { pool, redisClient, createLog, channelPermission } = require('./db');
+const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
 const {
     activeConnections,
     peerFor,
@@ -62,6 +63,10 @@ function attachProtocol(server) {
         ws.enable_p2p = true;
         ws.enable_ptt_video = false;
         ws.duplex_mode = 'HALF DUPLEX';
+        ws.transmitAuthGeneration = 0;
+        ws.channelVideoAuthorized = false;
+        ws.channelTransitioning = false;
+        ws.channelJoinGeneration = 0;
 
         ws.on('pong', () => { ws.isAlive = true; });
 
@@ -89,7 +94,7 @@ function attachProtocol(server) {
                         }
                     }
 
-                    if (binaryType === 2 && !ws.enable_ptt_video) return;
+                    if (binaryType === 2 && (!ws.enable_ptt_video || !ws.channelVideoAuthorized)) return;
 
                     const clients = channelRooms.get(ws.currentRoom);
                     if (clients) {
@@ -243,8 +248,16 @@ function attachProtocol(server) {
 
                 case 'join_channel':
                     if (!ws.sessionUser) return;
+                    const joinGeneration = ws.channelJoinGeneration + 1;
+                    ws.channelJoinGeneration = joinGeneration;
+                    ws.channelTransitioning = true;
+                    ws.transmitAuthGeneration += 1;
+                    ws.is_rx_only = true;
+                    ws.channelVideoAuthorized = false;
                     clearPtpSession(ws);
                     const oldRoom = ws.currentRoom;
+                    ws.currentRoom = null;
+                    ws.currentChannelId = null;
                     if (oldRoom && channelRooms.has(oldRoom)) {
                         channelRooms.get(oldRoom).delete(ws);
 
@@ -263,15 +276,10 @@ function attachProtocol(server) {
                     }
 
                     try {
-                        const check = await pool.query(`
-                            SELECT uc.permission, c.id, c.display_name
-                            FROM public.user_channels uc
-                            JOIN public.channels c ON uc.channel_id = c.id
-                            WHERE uc.user_id = $1 AND c.name = $2
-                        `, [String(ws.sessionUser.id), data.new_channel_slug]);
+                        const channelData = await channelPermission(ws.sessionUser.id, data.new_channel_slug);
+                        if (ws.channelJoinGeneration !== joinGeneration) break;
 
-                        if (check.rows.length > 0) {
-                            const channelData = check.rows[0];
+                        if (channelData) {
                             if (!channelRooms.has(data.new_channel_slug)) channelRooms.set(data.new_channel_slug, new Set());
                             if (!activeSpeakers.has(data.new_channel_slug)) {
                                 activeSpeakers.set(data.new_channel_slug, new Set());
@@ -289,6 +297,15 @@ function attachProtocol(server) {
                             ws.currentRoom = data.new_channel_slug;
                             ws.currentChannelId = channelData.id;
                             ws.is_rx_only = (channelData.permission === 'RX');
+                            // The socket is now authoritative for the new room;
+                            // release the transition gate before the bookkeeping
+                            // below so ordinary starts are not refused by slow
+                            // audit/default-channel writes.
+                            ws.channelTransitioning = false;
+                            // Invalidate any start authorized while this join was
+                            // waiting on I/O; its decision belongs to oldRoom.
+                            ws.transmitAuthGeneration += 1;
+                            ws.channelVideoAuthorized = false;
 
                             // Memulai transaksi DB untuk sinkronisasi is_default dan last_channel_id
                             const client = await pool.connect();
@@ -313,12 +330,70 @@ function attachProtocol(server) {
                             }));
                             broadcastUsersInChannel(data.new_channel_slug);
                             if (oldRoom) broadcastUsersInChannel(oldRoom);
+                        } else {
+                            ws.channelTransitioning = false;
+                            /*
+                             * Say so. This branch did not exist: a unit asking
+                             * for a channel it has no row for got no reply at
+                             * all, and the handset sat waiting on a
+                             * join_channel_success that was never coming. A
+                             * refusal the client can see is the difference
+                             * between "denied" and "the relay is down".
+                             */
+                            ws.send(JSON.stringify({
+                                type: 'join_error',
+                                data: { channel_slug: data.new_channel_slug, message: 'Not a member of this channel' },
+                            }));
                         }
-                    } catch (err) { console.error("❌ Join Error:", err.message); }
+                    } catch (err) {
+                        console.error("❌ Join Error:", err.message);
+                    } finally {
+                        if (ws.channelJoinGeneration === joinGeneration) {
+                            ws.channelTransitioning = false;
+                        }
+                    }
                     break;
 
                 case 'ptt_audio_start':
-                    if (!ws.sessionUser || ws.is_rx_only || !ws.currentRoom) return;
+                    /*
+                     * is_rx_only is deliberately NOT in this guard.
+                     *
+                     * It is a cache, and the re-read below is what refreshes
+                     * it. Short-circuiting on the cached value first meant a
+                     * socket refused once stayed refused for the rest of the
+                     * session even after the permission came back -- the same
+                     * staleness this check exists to remove, pointing the other
+                     * way. Found by the test that restores the permission.
+                     */
+                    if (!ws.sessionUser || !ws.currentRoom) return;
+
+                    /*
+                     * Re-read the permission at the moment of transmitting.
+                     *
+                     * is_rx_only above is a cache written when the socket
+                     * joined, and until now it was the entire authorization for
+                     * every transmission afterwards. A demotion to RX in the
+                     * database reached only sockets that happened to rejoin, or
+                     * that POST /api/admin/set-permission pushed to -- anything
+                     * editing the table directly left the unit transmitting on
+                     * a permission it no longer had, indefinitely.
+                     *
+                     * Once per key-down, not per audio frame: the binary path
+                     * still uses the cache, which by then is at most one press
+                     * old rather than one session old.
+                     */
+                    {
+                        const authorization = await authorizeChannelTransmit(ws, channelPermission);
+                        if (!authorization.ok) {
+                            if (authorization.error) {
+                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                            }
+                            return ws.send(JSON.stringify({
+                                type: 'ptt_error',
+                                data: { message: transmitErrorMessage(authorization.reason) },
+                            }));
+                        }
+                    }
 
                     // --- PENANGANAN HALF DUPLEX (SERVER VALIDATION) ---
                     const speakers = activeSpeakers.get(ws.currentRoom);
@@ -367,6 +442,22 @@ function attachProtocol(server) {
 
                 case 'ptt_video_start':
                     if (!ws.sessionUser || !ws.enable_ptt_video || !ws.currentRoom) return;
+                    // Video and audio share the same fresh permission check so
+                    // receive-only units cannot bypass it through another
+                    // media start message.
+                    {
+                        const authorization = await authorizeChannelTransmit(ws, channelPermission);
+                        if (!authorization.ok) {
+                            if (authorization.error) {
+                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                            }
+                            return ws.send(JSON.stringify({
+                                type: 'ptt_error',
+                                data: { message: transmitErrorMessage(authorization.reason) },
+                            }));
+                        }
+                        ws.channelVideoAuthorized = true;
+                    }
                     if (!activeVideoRooms.has(ws.currentRoom)) activeVideoRooms.set(ws.currentRoom, new Set());
                     const videoEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                     activeVideoRooms.get(ws.currentRoom).add(videoEntry);
@@ -376,6 +467,7 @@ function attachProtocol(server) {
 
                 case 'ptt_video_end':
                     if (ws.sessionUser && ws.currentRoom) {
+                        ws.channelVideoAuthorized = false;
                         const vEndEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                         if (activeVideoRooms.has(ws.currentRoom)) {
                             activeVideoRooms.get(ws.currentRoom).delete(vEndEntry);
@@ -514,10 +606,15 @@ function attachProtocol(server) {
                 case 'ptt_video_start_private':
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video) return;
                     if (!ws.ptpTargetId || ws.ptpSessionKind !== 'video') return;
-                    ptpPeerFor(ws, 'video')?.send(JSON.stringify({
-                        type: 'video_stream_status',
-                        data: { streamers: [ws.sessionUser.name], channel: 'private', is_private: true }
-                    }));
+                    {
+                        const privateVideoPeer = ptpPeerFor(ws, 'video');
+                        if (!privateVideoPeer || !privateVideoPeer.enable_p2p
+                            || !privateVideoPeer.enable_ptt_video) return;
+                        privateVideoPeer.send(JSON.stringify({
+                            type: 'video_stream_status',
+                            data: { streamers: [ws.sessionUser.name], channel: 'private', is_private: true }
+                        }));
+                    }
                     break;
 
                 case 'ptt_video_end_private':
@@ -525,10 +622,15 @@ function attachProtocol(server) {
                     // the file that would act for a socket that never logged in.
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video
                         || !ws.ptpTargetId || ws.ptpSessionKind !== 'video') return;
-                    ptpPeerFor(ws, 'video')?.send(JSON.stringify({
-                        type: 'video_stream_status',
-                        data: { streamers: [], channel: 'private', is_private: true }
-                    }));
+                    {
+                        const privateVideoPeer = ptpPeerFor(ws, 'video');
+                        if (!privateVideoPeer || !privateVideoPeer.enable_p2p
+                            || !privateVideoPeer.enable_ptt_video) return;
+                        privateVideoPeer.send(JSON.stringify({
+                            type: 'video_stream_status',
+                            data: { streamers: [], channel: 'private', is_private: true }
+                        }));
+                    }
                     break;
 
                 case 'cancel_ptp':

@@ -73,9 +73,12 @@ sudo infra/scripts/ptt-harness-fixtures.sh   # once
 ./tests/run-protocol.sh
 ```
 
-The wrapper deliberately uses Node's `--test-concurrency=1`. Protocol files
-share staging users, channels, and one relay; running them concurrently makes
-permission/session mutations race and produces false failures.
+Serially, and that is not optional. The wrapper deliberately uses Node's
+`--test-concurrency=1`: every protocol file signs in as the same fixture units,
+and `app_login` treats a second sign-in for a unit as a new device by terminating
+the first socket. Run in parallel, the files knock each other's clients offline
+and failures land on whichever file lost the race instead of on the behavior
+that broke.
 
 Two WebSocket clients sign in, join a channel, key the mic, relay a real audio
 frame and release it, against the staging relay on 5001. This is the surface

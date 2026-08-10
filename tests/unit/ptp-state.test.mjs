@@ -202,3 +202,19 @@ test('private routing requires reciprocal pairing and the same media kind', () =
     assert.equal(state.ptpPeerFor(caller, 'audio'), peer);
     assert.equal(state.ptpPeerFor(caller, 'video'), null);
 });
+
+test('private routing fails closed after either peer loses feature capability', () => {
+    const caller = socket('A1', 'tenant-a');
+    const peer = socket('A2', 'tenant-a');
+    state.activeConnections.set('A1', caller);
+    state.activeConnections.set('A2', peer);
+    assert.equal(state.createPtpInvite(caller, peer, 'video').ok, true);
+    assert.equal(state.consumePtpInvite(peer, 'A1', 'video').ok, true);
+
+    peer.enable_ptt_video = false;
+    assert.equal(state.ptpPeerFor(caller, 'video'), null);
+
+    peer.enable_ptt_video = true;
+    caller.enable_p2p = false;
+    assert.equal(state.ptpPeerFor(caller, 'video'), null);
+});

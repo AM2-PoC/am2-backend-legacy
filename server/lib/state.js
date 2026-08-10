@@ -63,6 +63,8 @@ const ptpPeerFor = (ws, kind) => {
     const target = peerFor(ws, ws.ptpTargetId);
     if (!target || ws.ptpSessionKind !== kind || target.ptpSessionKind !== kind) return null;
     if (String(target.ptpTargetId ?? '') !== String(ws.sessionUser?.id ?? '')) return null;
+    if (!ws.enable_p2p || !target.enable_p2p) return null;
+    if (kind === 'video' && (!ws.enable_ptt_video || !target.enable_ptt_video)) return null;
     return target;
 };
 
