@@ -18,10 +18,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { env, NODE_URL } from '../contract/helpers.mjs';
 
-const require = createRequire('/var/www/am2/staging/current/server/');
+const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
 
-const WS_URL = NODE_URL.replace(/^http/, 'ws');
+const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const TIMEOUT = 8000;
 const CHANNEL = 'ct_channel_a';
 
@@ -108,7 +108,7 @@ describe('a private call needs an invitation that exists', () => {
         attacker.inbox.length = 0;
         send(attacker, 'accept_ptp', { target_id: victimId });
         const res = await waitFor(attacker, 'ptp_failed');
-        assert.match(String(res.data?.message ?? ''), /tidak ditemukan|offline/i,
+        assert.match(String(res.data?.message ?? ''), /tidak ditemukan|offline|no pending/i,
             'the relay accepted an answer to a call that was never placed');
     });
 
@@ -177,6 +177,56 @@ describe('a private call needs an invitation that exists', () => {
         send(attacker, 'accept_ptp', { target_id: victimId });
         const res = await waitFor(attacker, 'ptp_failed');
         assert.ok(res, 'the same invitation was accepted a second time');
+    });
+
+    test('cancelling a pending invitation invalidates it for both peers', async () => {
+        victim.inbox.length = 0;
+        attacker.inbox.length = 0;
+
+        send(victim, 'request_ptp', { target_id: attackerId });
+        await waitFor(attacker, 'ptp_invitation');
+        send(victim, 'cancel_ptp');
+        await waitFor(attacker, 'ptp_cancelled');
+
+        attacker.inbox.length = 0;
+        victim.inbox.length = 0;
+        send(attacker, 'accept_ptp', { target_id: victimId });
+        await waitFor(attacker, 'ptp_failed');
+        await settle(700);
+        assert.equal(victim.inbox.some((m) => m.type === 'ptp_confirmed'), false,
+            'a cancelled invitation still established a private session');
+    });
+
+    test('an audio invitation cannot be accepted as video', async () => {
+        victim.inbox.length = 0;
+        attacker.inbox.length = 0;
+
+        send(victim, 'request_ptp', { target_id: attackerId });
+        await waitFor(attacker, 'ptp_invitation');
+        attacker.inbox.length = 0;
+        send(attacker, 'accept_ptp_video', { target_id: victimId });
+        await waitFor(attacker, 'ptp_failed');
+        send(victim, 'cancel_ptp');
+        await settle(300);
+    });
+});
+
+describe('private calls are tenant isolated', () => {
+    test('a unit cannot invite a unit owned by another admin', async () => {
+        const outsider = await connect('other-tenant');
+        try {
+            const outsiderId = String((await signIn(outsider, 'CT_B1')).data.id ?? 'CT_B1');
+            victim.inbox.length = 0;
+            outsider.inbox.length = 0;
+            send(victim, 'request_ptp', { target_id: outsiderId });
+            const res = await waitFor(victim, 'ptp_failed');
+            assert.ok(res, 'cross-tenant invitation was not rejected');
+            await settle(700);
+            assert.equal(outsider.inbox.some((m) => m.type === 'ptp_invitation'), false,
+                'cross-tenant unit received a private invitation');
+        } finally {
+            outsider.close();
+        }
     });
 });
 

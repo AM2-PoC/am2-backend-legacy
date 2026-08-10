@@ -70,8 +70,12 @@ it back. Every mutation should be reported as `caught`. Anything reported as
 
 ```bash
 sudo infra/scripts/ptt-harness-fixtures.sh   # once
-node --test tests/protocol/*.test.mjs
+./tests/run-protocol.sh
 ```
+
+The wrapper deliberately uses Node's `--test-concurrency=1`. Protocol files
+share staging users, channels, and one relay; running them concurrently makes
+permission/session mutations race and produces false failures.
 
 Two WebSocket clients sign in, join a channel, key the mic, relay a real audio
 frame and release it, against the staging relay on 5001. This is the surface
