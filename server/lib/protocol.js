@@ -20,6 +20,8 @@ const bcrypt = require('bcryptjs');
 const { pool, redisClient, createLog } = require('./db');
 const {
     activeConnections,
+    peerFor,
+    PTP_INVITE_TTL,
     channelRooms,
     pendingDisconnects,
     DISCONNECT_GRACE_PERIOD,
@@ -377,7 +379,16 @@ function attachProtocol(server) {
 
                 case 'ptt_audio_start_private':
                     if (!ws.sessionUser || !ws.enable_p2p) return;
-                    ws.ptpTargetId = String(data.target_id);
+                    /*
+                     * Only into a call that already exists.
+                     *
+                     * This used to assign ptpTargetId straight from the frame,
+                     * so naming any online unit was enough to start pushing
+                     * audio at them -- no invitation, no answer, no tenant.
+                     * The pairing is established by request/accept and read
+                     * here, never written.
+                     */
+                    if (!ws.ptpTargetId || String(data.target_id ?? ws.ptpTargetId) !== String(ws.ptpTargetId)) return;
 
                     try {
                         await pool.query("UPDATE public.users SET is_speaking = true WHERE id = $1", [String(ws.sessionUser.id)]);
@@ -386,80 +397,135 @@ function attachProtocol(server) {
                         console.error("❌ Private PTT Start DB Error:", err.message);
                     }
 
-                    activeConnections.get(ws.ptpTargetId)?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true } }));
+                    peerFor(ws, ws.ptpTargetId)?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true } }));
                     break;
 
                 case 'ptt_audio_end_private':
-                    if (ws.sessionUser) {
-                        try {
-                            await pool.query("UPDATE public.users SET is_speaking = false WHERE id = $1", [String(ws.sessionUser.id)]);
-                            await createLog(ws.sessionUser.id, ws.currentChannelId, 'RELEASE_PRIVATE');
-                        } catch (err) {
-                            console.error("❌ Private PTT End DB Error:", err.message);
-                        }
+                    /*
+                     * The guard used to wrap only the database write, leaving
+                     * the send below reachable by a socket that had never
+                     * logged in: enumerate a uid and push a "transmission
+                     * ended" into a stranger's client.
+                     */
+                    if (!ws.sessionUser) return;
+                    try {
+                        await pool.query("UPDATE public.users SET is_speaking = false WHERE id = $1", [String(ws.sessionUser.id)]);
+                        await createLog(ws.sessionUser.id, ws.currentChannelId, 'RELEASE_PRIVATE');
+                    } catch (err) {
+                        console.error("❌ Private PTT End DB Error:", err.message);
                     }
-                    const targetId = String(data.target_id || ws.ptpTargetId);
-                    activeConnections.get(targetId)?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true } }));
+                    peerFor(ws, ws.ptpTargetId)?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true } }));
                     break;
 
                 case 'request_ptp':
                     if (!ws.sessionUser || !ws.enable_p2p) return;
-                    const targetPtpWs = activeConnections.get(String(data.target_id));
+                    // Same tenant only: activeConnections is a flat global map,
+                    // so without this any unit could ring any other branch's.
+                    const targetPtpWs = peerFor(ws, data.target_id);
                     if (targetPtpWs && targetPtpWs.readyState === WebSocket.OPEN) {
                         if (targetPtpWs.ptpTargetId) {
                             ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang dalam panggilan lain' } }));
                             return;
                         }
+                        /*
+                         * The invitation is recorded on the socket being rung,
+                         * because that is the only place accept_ptp can check
+                         * it. Without a record, accept_ptp took the caller's
+                         * word for who had invited them -- and writing the
+                         * "peer" onto the named socket is what let one frame
+                         * redirect a stranger's live audio.
+                         */
+                        targetPtpWs.ptpInviteFrom = { id: String(ws.sessionUser.id), at: Date.now() };
                         targetPtpWs.send(JSON.stringify({ type: 'ptp_invitation', data: { sender_id: ws.sessionUser.id, sender_name: ws.sessionUser.name } }));
                     } else {
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang offline' } }));
                     }
                     break;
 
-                case 'accept_ptp':
+                case 'accept_ptp': {
                     if (!ws.sessionUser) return;
-                    ws.ptpTargetId = String(data.target_id);
-                    const initiatorWs = activeConnections.get(ws.ptpTargetId);
-                    if (initiatorWs) {
-                        initiatorWs.ptpTargetId = String(ws.sessionUser.id);
-                        initiatorWs.send(JSON.stringify({ type: 'ptp_confirmed', data: { target_id: ws.sessionUser.id, target_name: ws.sessionUser.name } }));
+                    /*
+                     * Answering is only meaningful for a call that was actually
+                     * made to you.
+                     *
+                     * This handler used to set ptpTargetId on whichever socket
+                     * the frame named, with no check at all -- so any
+                     * authenticated unit could name any other online unit and
+                     * have the server rewrite that unit's session. Once
+                     * ptpTargetId is set, the victim's binary audio is routed
+                     * to the attacker and the victim drops out of the channel
+                     * broadcast. One frame, no consent, across tenants.
+                     */
+                    const inviter = String(data.target_id ?? '');
+                    const invite = ws.ptpInviteFrom;
+                    if (!invite || invite.id !== inviter || Date.now() - invite.at > PTP_INVITE_TTL) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Undangan panggilan tidak ditemukan' } }));
+                        return;
                     }
+                    ws.ptpInviteFrom = null;
+
+                    const initiatorWs = peerFor(ws, inviter);
+                    if (!initiatorWs) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang offline' } }));
+                        return;
+                    }
+                    ws.ptpTargetId = inviter;
+                    initiatorWs.ptpTargetId = String(ws.sessionUser.id);
+                    initiatorWs.send(JSON.stringify({ type: 'ptp_confirmed', data: { target_id: ws.sessionUser.id, target_name: ws.sessionUser.name } }));
                     break;
+                }
 
                 case 'request_ptp_video':
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video) return;
-                    const targetVidWs = activeConnections.get(String(data.target_id));
+                    const targetVidWs = peerFor(ws, data.target_id);
                     if (targetVidWs && targetVidWs.readyState === WebSocket.OPEN) {
                         if (targetVidWs.ptpTargetId) {
                             ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang dalam panggilan lain' } }));
                             return;
                         }
+                        targetVidWs.ptpInviteFrom = { id: String(ws.sessionUser.id), at: Date.now() };
                         targetVidWs.send(JSON.stringify({ type: 'ptp_video_invitation', data: { sender_id: ws.sessionUser.id, sender_name: ws.sessionUser.name } }));
                     } else {
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang offline' } }));
                     }
                     break;
 
-                case 'accept_ptp_video':
+                case 'accept_ptp_video': {
                     if (!ws.sessionUser) return;
-                    ws.ptpTargetId = String(data.target_id);
-                    const initVidWs = activeConnections.get(ws.ptpTargetId);
-                    if (initVidWs) {
-                        initVidWs.ptpTargetId = String(ws.sessionUser.id);
-                        initVidWs.send(JSON.stringify({ type: 'ptp_video_confirmed', data: { target_id: ws.sessionUser.id, target_name: ws.sessionUser.name } }));
+                    // Same rule as accept_ptp, and the same hole before it.
+                    const inviterVid = String(data.target_id ?? '');
+                    const inviteVid = ws.ptpInviteFrom;
+                    if (!inviteVid || inviteVid.id !== inviterVid || Date.now() - inviteVid.at > PTP_INVITE_TTL) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Undangan panggilan tidak ditemukan' } }));
+                        return;
                     }
+                    ws.ptpInviteFrom = null;
+
+                    const initVidWs = peerFor(ws, inviterVid);
+                    if (!initVidWs) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data.target_id, message: 'Personel sedang offline' } }));
+                        return;
+                    }
+                    ws.ptpTargetId = inviterVid;
+                    initVidWs.ptpTargetId = String(ws.sessionUser.id);
+                    initVidWs.send(JSON.stringify({ type: 'ptp_video_confirmed', data: { target_id: ws.sessionUser.id, target_name: ws.sessionUser.name } }));
                     break;
+                }
 
                 case 'ptt_video_start_private':
                     if (!ws.sessionUser || !ws.enable_ptt_video) return;
-                    activeConnections.get(String(data.target_id))?.send(JSON.stringify({
+                    if (!ws.ptpTargetId) return;
+                    peerFor(ws, ws.ptpTargetId)?.send(JSON.stringify({
                         type: 'video_stream_status',
                         data: { streamers: [ws.sessionUser.name], channel: 'private', is_private: true }
                     }));
                     break;
 
                 case 'ptt_video_end_private':
-                    activeConnections.get(String(data.target_id || ws.ptpTargetId))?.send(JSON.stringify({
+                    // Had no session check whatsoever -- the only handler in
+                    // the file that would act for a socket that never logged in.
+                    if (!ws.sessionUser || !ws.ptpTargetId) return;
+                    peerFor(ws, ws.ptpTargetId)?.send(JSON.stringify({
                         type: 'video_stream_status',
                         data: { streamers: [], channel: 'private', is_private: true }
                     }));
