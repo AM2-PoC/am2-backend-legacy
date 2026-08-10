@@ -733,13 +733,6 @@ include 'partials/shell.php';
 </div>
 
 <?php if ($is_super): ?>
-    <!--
-        The release shelf. This card used to be a file input and an
-        Unggah button, which said nothing about what was already on the
-        shelf, what version the app believes is current, or whether the
-        file it is told to download exists. All three are here now, and
-        the QR is how a console hands a build to a phone in the field.
-    -->
     <section id="am2-card-shelf" class="am2-surface mt-4 rounded-card scroll-mt-28" data-reveal>
         <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
             <span class="text-ink-subtle"><?= am2_icon('inbox', 'h-4 w-4') ?></span>
@@ -748,12 +741,6 @@ include 'partials/shell.php';
             </h2>
         </header>
 
-        <!--
-            Both channels, side by side. Admin Native and the field app are
-            served from different directories with different metadata and are
-            told about by different endpoints; showing one and calling the card
-            "Distribusi aplikasi" implied the panel covered both.
-        -->
         <div id="am2-shelf-version" class="grid gap-5 border-b border-edge p-5 lg:grid-cols-2">
             <?php foreach ($channels as $ch): ?>
                 <section class="rounded-control border border-edge p-4">
