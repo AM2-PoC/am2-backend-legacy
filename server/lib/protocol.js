@@ -17,7 +17,7 @@
 const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 
-const { pool, redisClient, createLog } = require('./db');
+const { pool, redisClient, createLog, channelPermission } = require('./db');
 const {
     activeConnections,
     peerFor,
@@ -263,15 +263,9 @@ function attachProtocol(server) {
                     }
 
                     try {
-                        const check = await pool.query(`
-                            SELECT uc.permission, c.id, c.display_name
-                            FROM public.user_channels uc
-                            JOIN public.channels c ON uc.channel_id = c.id
-                            WHERE uc.user_id = $1 AND c.name = $2
-                        `, [String(ws.sessionUser.id), data.new_channel_slug]);
+                        const channelData = await channelPermission(ws.sessionUser.id, data.new_channel_slug);
 
-                        if (check.rows.length > 0) {
-                            const channelData = check.rows[0];
+                        if (channelData) {
                             if (!channelRooms.has(data.new_channel_slug)) channelRooms.set(data.new_channel_slug, new Set());
                             if (!activeSpeakers.has(data.new_channel_slug)) {
                                 activeSpeakers.set(data.new_channel_slug, new Set());
@@ -313,12 +307,58 @@ function attachProtocol(server) {
                             }));
                             broadcastUsersInChannel(data.new_channel_slug);
                             if (oldRoom) broadcastUsersInChannel(oldRoom);
+                        } else {
+                            /*
+                             * Say so. This branch did not exist: a unit asking
+                             * for a channel it has no row for got no reply at
+                             * all, and the handset sat waiting on a
+                             * join_channel_success that was never coming. A
+                             * refusal the client can see is the difference
+                             * between "denied" and "the relay is down".
+                             */
+                            ws.send(JSON.stringify({
+                                type: 'join_error',
+                                data: { channel_slug: data.new_channel_slug, message: 'Not a member of this channel' },
+                            }));
                         }
                     } catch (err) { console.error("❌ Join Error:", err.message); }
                     break;
 
                 case 'ptt_audio_start':
                     if (!ws.sessionUser || ws.is_rx_only || !ws.currentRoom) return;
+
+                    /*
+                     * Re-read the permission at the moment of transmitting.
+                     *
+                     * is_rx_only above is a cache written when the socket
+                     * joined, and until now it was the entire authorization for
+                     * every transmission afterwards. A demotion to RX in the
+                     * database reached only sockets that happened to rejoin, or
+                     * that POST /api/admin/set-permission pushed to -- anything
+                     * editing the table directly left the unit transmitting on
+                     * a permission it no longer had, indefinitely.
+                     *
+                     * Once per key-down, not per audio frame: the binary path
+                     * still uses the cache, which by then is at most one press
+                     * old rather than one session old.
+                     */
+                    {
+                        const now = await channelPermission(ws.sessionUser.id, ws.currentRoom);
+                        if (!now) {
+                            ws.is_rx_only = true;
+                            return ws.send(JSON.stringify({
+                                type: 'ptt_error',
+                                data: { message: 'Cannot transmit: no longer a member of this channel.' },
+                            }));
+                        }
+                        ws.is_rx_only = (now.permission === 'RX');
+                        if (ws.is_rx_only) {
+                            return ws.send(JSON.stringify({
+                                type: 'ptt_error',
+                                data: { message: 'Cannot transmit: receive-only on this channel.' },
+                            }));
+                        }
+                    }
 
                     // --- PENANGANAN HALF DUPLEX (SERVER VALIDATION) ---
                     const speakers = activeSpeakers.get(ws.currentRoom);
@@ -367,6 +407,14 @@ function attachProtocol(server) {
 
                 case 'ptt_video_start':
                     if (!ws.sessionUser || !ws.enable_ptt_video || !ws.currentRoom) return;
+                    // Same re-read as the audio path: video is a transmission
+                    // too, and it never consulted membership at all.
+                    if (!(await channelPermission(ws.sessionUser.id, ws.currentRoom))) {
+                        return ws.send(JSON.stringify({
+                            type: 'ptt_error',
+                            data: { message: 'Cannot transmit: no longer a member of this channel.' },
+                        }));
+                    }
                     if (!activeVideoRooms.has(ws.currentRoom)) activeVideoRooms.set(ws.currentRoom, new Set());
                     const videoEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                     activeVideoRooms.get(ws.currentRoom).add(videoEntry);

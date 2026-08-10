@@ -89,4 +89,28 @@ const createLog = async (userId, channelId, eventType) => {
     }
 };
 
-module.exports = { pool, redisClient, connectRedis, runCleanup, startCleanup, createLog };
+
+/**
+ * What a unit is allowed to do on one channel, right now.
+ *
+ * The relay reads permission once, when a socket joins, and caches it on the
+ * socket as is_rx_only. That cache is the whole authorization for every
+ * transmission afterwards, so a demotion to RX in the database does not reach
+ * a unit that is already connected -- it keeps transmitting until it happens
+ * to rejoin. Only POST /api/admin/set-permission pushed an update live;
+ * anything that edits the table directly left the socket stale indefinitely.
+ *
+ * Returns null when the unit has no row for that channel at all, which is the
+ * same answer as "not a member".
+ */
+async function channelPermission(userId, channelSlug) {
+    const { rows } = await pool.query(`
+        SELECT uc.permission, c.id, c.display_name
+        FROM public.user_channels uc
+        JOIN public.channels c ON uc.channel_id = c.id
+        WHERE uc.user_id = $1 AND c.name = $2
+    `, [String(userId), channelSlug]);
+    return rows[0] ?? null;
+}
+
+module.exports = { pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission };
