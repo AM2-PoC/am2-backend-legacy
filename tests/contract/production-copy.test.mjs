@@ -16,7 +16,7 @@ test('update manifest validation rejects adversarial URLs and paths at runtime',
         encoding: 'utf8',
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /12\/12 passed/);
+    assert.match(result.stdout, /15\/15 passed/);
 });
 
 test('operator-facing settings copy does not expose implementation details', () => {
@@ -49,6 +49,7 @@ test('missing APK warning is operator language, not developer narration', () => 
 
 test('update endpoint never invents a downloadable release', () => {
     const endpoint = read('WebAdmin/api_settings.php').replace(/\/\*[\s\S]*?\*\//g, '');
+    const validation = read('WebAdmin/admin_update_validation.php');
     assert.doesNotMatch(endpoint, /latest_version'\s*=>\s*'1\.0\.0'/,
         'missing metadata still advertises a made-up version');
     assert.doesNotMatch(endpoint, /download_url'\s*=>\s*'https?:\/\//,
@@ -59,6 +60,8 @@ test('update endpoint never invents a downloadable release', () => {
         'published metadata is not checked against the exact APK on disk');
     assert.match(endpoint, /AM2_ADMIN_UPDATE_BASE/,
         'download URL is not bound to the current environment');
+    assert.match(validation, /str_contains\(\$relative, '%'\)/,
+        'encoded URL paths are not rejected before filesystem validation');
 });
 
 test('production and staging publish only their own update origin', () => {
