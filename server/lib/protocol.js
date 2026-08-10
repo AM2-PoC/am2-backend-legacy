@@ -63,6 +63,8 @@ function attachProtocol(server) {
         ws.enable_p2p = true;
         ws.enable_ptt_video = false;
         ws.duplex_mode = 'HALF DUPLEX';
+        ws.transmitAuthGeneration = 0;
+        ws.channelVideoAuthorized = false;
 
         ws.on('pong', () => { ws.isAlive = true; });
 
@@ -90,7 +92,7 @@ function attachProtocol(server) {
                         }
                     }
 
-                    if (binaryType === 2 && !ws.enable_ptt_video) return;
+                    if (binaryType === 2 && (!ws.enable_ptt_video || !ws.channelVideoAuthorized)) return;
 
                     const clients = channelRooms.get(ws.currentRoom);
                     if (clients) {
@@ -244,6 +246,9 @@ function attachProtocol(server) {
 
                 case 'join_channel':
                     if (!ws.sessionUser) return;
+                    ws.transmitAuthGeneration += 1;
+                    ws.is_rx_only = true;
+                    ws.channelVideoAuthorized = false;
                     clearPtpSession(ws);
                     const oldRoom = ws.currentRoom;
                     if (oldRoom && channelRooms.has(oldRoom)) {
@@ -284,6 +289,10 @@ function attachProtocol(server) {
                             ws.currentRoom = data.new_channel_slug;
                             ws.currentChannelId = channelData.id;
                             ws.is_rx_only = (channelData.permission === 'RX');
+                            // Invalidate any start authorized while this join was
+                            // waiting on I/O; its decision belongs to oldRoom.
+                            ws.transmitAuthGeneration += 1;
+                            ws.channelVideoAuthorized = false;
 
                             // Memulai transaksi DB untuk sinkronisasi is_default dan last_channel_id
                             const client = await pool.connect();
@@ -427,6 +436,7 @@ function attachProtocol(server) {
                                 data: { message: transmitErrorMessage(authorization.reason) },
                             }));
                         }
+                        ws.channelVideoAuthorized = true;
                     }
                     if (!activeVideoRooms.has(ws.currentRoom)) activeVideoRooms.set(ws.currentRoom, new Set());
                     const videoEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
@@ -437,6 +447,7 @@ function attachProtocol(server) {
 
                 case 'ptt_video_end':
                     if (ws.sessionUser && ws.currentRoom) {
+                        ws.channelVideoAuthorized = false;
                         const vEndEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                         if (activeVideoRooms.has(ws.currentRoom)) {
                             activeVideoRooms.get(ws.currentRoom).delete(vEndEntry);

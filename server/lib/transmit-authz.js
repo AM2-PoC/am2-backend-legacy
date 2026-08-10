@@ -7,10 +7,18 @@ async function authorizeChannelTransmit(ws, lookup) {
     if (typeof lookup !== 'function') {
         throw new TypeError('authorizeChannelTransmit requires a permission lookup');
     }
+    const room = ws.currentRoom;
+    const generation = (ws.transmitAuthGeneration ?? 0) + 1;
+    ws.transmitAuthGeneration = generation;
+    ws.is_rx_only = true;
+    ws.channelVideoAuthorized = false;
+
     try {
-        const row = await lookup(ws.sessionUser.id, ws.currentRoom);
+        const row = await lookup(ws.sessionUser.id, room);
+        if (ws.transmitAuthGeneration !== generation || ws.currentRoom !== room) {
+            return { ok: false, reason: 'stale' };
+        }
         if (!row) {
-            ws.is_rx_only = true;
             return { ok: false, reason: 'not_member' };
         }
 
@@ -32,6 +40,8 @@ function transmitErrorMessage(reason) {
             return 'Cannot transmit: no longer a member of this channel.';
         case 'receive_only':
             return 'Cannot transmit: receive-only on this channel.';
+        case 'stale':
+            return 'Cannot transmit: request was superseded; please try again.';
         default:
             return 'Cannot transmit: authorization is temporarily unavailable.';
     }

@@ -57,6 +57,11 @@ async function waitFor(ws, type, ms = TIMEOUT) {
     }
 }
 
+async function expectNoBinary(ws, ms = 1000) {
+    await settle(ms);
+    assert.equal(ws.binary.length, 0, `${ws.label}: unexpected binary frame received`);
+}
+
 async function signIn(ws, username) {
     send(ws, 'app_login', {
         username, password: env.CT_PTT_PASS,
@@ -196,6 +201,10 @@ describe('a permission change reaches a socket that is already connected', () =>
             m.type === 'video_stream_status'
             && m.data?.streamers?.includes('Contract Unit A1')), false,
         'RX unit was announced as a channel video streamer');
+
+        listener.binary.length = 0;
+        unit.send(Buffer.from([2, 0x52, 0x58]), { binary: true });
+        await expectNoBinary(listener, 700);
     });
 
     test('restoring FULL DUPLEX lets channel video start again', async () => {
