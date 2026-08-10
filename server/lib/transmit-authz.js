@@ -7,6 +7,11 @@ async function authorizeChannelTransmit(ws, lookup) {
     if (typeof lookup !== 'function') {
         throw new TypeError('authorizeChannelTransmit requires a permission lookup');
     }
+    if (ws.channelTransitioning) {
+        ws.is_rx_only = true;
+        ws.channelVideoAuthorized = false;
+        return { ok: false, reason: 'stale' };
+    }
     const room = ws.currentRoom;
     const generation = (ws.transmitAuthGeneration ?? 0) + 1;
     ws.transmitAuthGeneration = generation;
@@ -27,6 +32,9 @@ async function authorizeChannelTransmit(ws, lookup) {
 
         return { ok: true, permission: row };
     } catch (error) {
+        if (ws.transmitAuthGeneration !== generation || ws.currentRoom !== room) {
+            return { ok: false, reason: 'stale' };
+        }
         // Do not leave a stale FULL DUPLEX cache usable by binary frames after
         // the fresh authorization lookup itself failed.
         ws.is_rx_only = true;

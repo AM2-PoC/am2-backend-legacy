@@ -60,6 +60,38 @@ test('a permission result for the old room is discarded after a channel change',
     assert.equal(ws.is_rx_only, true);
 });
 
+test('transmit authorization is refused while a channel change is in progress', async () => {
+    const ws = socket();
+    ws.channelTransitioning = true;
+    let queried = false;
+
+    const result = await authorizeChannelTransmit(ws, async () => {
+        queried = true;
+        return { permission: 'FULL DUPLEX' };
+    });
+
+    assert.deepEqual(result, { ok: false, reason: 'stale' });
+    assert.equal(queried, false);
+    assert.equal(ws.is_rx_only, true);
+});
+
+test('a stale lookup failure cannot revoke a newer successful decision', async () => {
+    const ws = socket();
+    let rejectFirst;
+    const first = authorizeChannelTransmit(ws,
+        () => new Promise((_resolve, reject) => { rejectFirst = reject; }));
+
+    const current = await authorizeChannelTransmit(ws,
+        async () => ({ permission: 'FULL DUPLEX' }));
+    assert.equal(current.ok, true);
+    assert.equal(ws.is_rx_only, false);
+
+    rejectFirst(new Error('late database failure'));
+    assert.deepEqual(await first, { ok: false, reason: 'stale' });
+    assert.equal(ws.is_rx_only, false,
+        'stale failure clobbered a newer FULL DUPLEX decision');
+});
+
 test('missing membership fails closed and invalidates binary-frame authorization', async () => {
     const ws = socket();
     const result = await authorizeChannelTransmit(ws, async () => null);

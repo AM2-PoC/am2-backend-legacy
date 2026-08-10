@@ -65,6 +65,8 @@ function attachProtocol(server) {
         ws.duplex_mode = 'HALF DUPLEX';
         ws.transmitAuthGeneration = 0;
         ws.channelVideoAuthorized = false;
+        ws.channelTransitioning = false;
+        ws.channelJoinGeneration = 0;
 
         ws.on('pong', () => { ws.isAlive = true; });
 
@@ -246,11 +248,16 @@ function attachProtocol(server) {
 
                 case 'join_channel':
                     if (!ws.sessionUser) return;
+                    const joinGeneration = ws.channelJoinGeneration + 1;
+                    ws.channelJoinGeneration = joinGeneration;
+                    ws.channelTransitioning = true;
                     ws.transmitAuthGeneration += 1;
                     ws.is_rx_only = true;
                     ws.channelVideoAuthorized = false;
                     clearPtpSession(ws);
                     const oldRoom = ws.currentRoom;
+                    ws.currentRoom = null;
+                    ws.currentChannelId = null;
                     if (oldRoom && channelRooms.has(oldRoom)) {
                         channelRooms.get(oldRoom).delete(ws);
 
@@ -270,6 +277,7 @@ function attachProtocol(server) {
 
                     try {
                         const channelData = await channelPermission(ws.sessionUser.id, data.new_channel_slug);
+                        if (ws.channelJoinGeneration !== joinGeneration) break;
 
                         if (channelData) {
                             if (!channelRooms.has(data.new_channel_slug)) channelRooms.set(data.new_channel_slug, new Set());
@@ -289,6 +297,11 @@ function attachProtocol(server) {
                             ws.currentRoom = data.new_channel_slug;
                             ws.currentChannelId = channelData.id;
                             ws.is_rx_only = (channelData.permission === 'RX');
+                            // The socket is now authoritative for the new room;
+                            // release the transition gate before the bookkeeping
+                            // below so ordinary starts are not refused by slow
+                            // audit/default-channel writes.
+                            ws.channelTransitioning = false;
                             // Invalidate any start authorized while this join was
                             // waiting on I/O; its decision belongs to oldRoom.
                             ws.transmitAuthGeneration += 1;
@@ -318,6 +331,7 @@ function attachProtocol(server) {
                             broadcastUsersInChannel(data.new_channel_slug);
                             if (oldRoom) broadcastUsersInChannel(oldRoom);
                         } else {
+                            ws.channelTransitioning = false;
                             /*
                              * Say so. This branch did not exist: a unit asking
                              * for a channel it has no row for got no reply at
@@ -331,7 +345,13 @@ function attachProtocol(server) {
                                 data: { channel_slug: data.new_channel_slug, message: 'Not a member of this channel' },
                             }));
                         }
-                    } catch (err) { console.error("❌ Join Error:", err.message); }
+                    } catch (err) {
+                        console.error("❌ Join Error:", err.message);
+                    } finally {
+                        if (ws.channelJoinGeneration === joinGeneration) {
+                            ws.channelTransitioning = false;
+                        }
+                    }
                     break;
 
                 case 'ptt_audio_start':
@@ -586,10 +606,15 @@ function attachProtocol(server) {
                 case 'ptt_video_start_private':
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video) return;
                     if (!ws.ptpTargetId || ws.ptpSessionKind !== 'video') return;
-                    ptpPeerFor(ws, 'video')?.send(JSON.stringify({
-                        type: 'video_stream_status',
-                        data: { streamers: [ws.sessionUser.name], channel: 'private', is_private: true }
-                    }));
+                    {
+                        const privateVideoPeer = ptpPeerFor(ws, 'video');
+                        if (!privateVideoPeer || !privateVideoPeer.enable_p2p
+                            || !privateVideoPeer.enable_ptt_video) return;
+                        privateVideoPeer.send(JSON.stringify({
+                            type: 'video_stream_status',
+                            data: { streamers: [ws.sessionUser.name], channel: 'private', is_private: true }
+                        }));
+                    }
                     break;
 
                 case 'ptt_video_end_private':
@@ -597,10 +622,15 @@ function attachProtocol(server) {
                     // the file that would act for a socket that never logged in.
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video
                         || !ws.ptpTargetId || ws.ptpSessionKind !== 'video') return;
-                    ptpPeerFor(ws, 'video')?.send(JSON.stringify({
-                        type: 'video_stream_status',
-                        data: { streamers: [], channel: 'private', is_private: true }
-                    }));
+                    {
+                        const privateVideoPeer = ptpPeerFor(ws, 'video');
+                        if (!privateVideoPeer || !privateVideoPeer.enable_p2p
+                            || !privateVideoPeer.enable_ptt_video) return;
+                        privateVideoPeer.send(JSON.stringify({
+                            type: 'video_stream_status',
+                            data: { streamers: [], channel: 'private', is_private: true }
+                        }));
+                    }
                     break;
 
                 case 'cancel_ptp':
