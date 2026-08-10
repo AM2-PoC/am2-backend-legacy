@@ -325,7 +325,17 @@ function attachProtocol(server) {
                     break;
 
                 case 'ptt_audio_start':
-                    if (!ws.sessionUser || ws.is_rx_only || !ws.currentRoom) return;
+                    /*
+                     * is_rx_only is deliberately NOT in this guard.
+                     *
+                     * It is a cache, and the re-read below is what refreshes
+                     * it. Short-circuiting on the cached value first meant a
+                     * socket refused once stayed refused for the rest of the
+                     * session even after the permission came back -- the same
+                     * staleness this check exists to remove, pointing the other
+                     * way. Found by the test that restores the permission.
+                     */
+                    if (!ws.sessionUser || !ws.currentRoom) return;
 
                     /*
                      * Re-read the permission at the moment of transmitting.
