@@ -236,6 +236,15 @@ describe('joining a channel you do not belong to says so', () => {
         const res = await waitFor(unit, 'join_error', 5000);
         assert.match(String(res.data?.message ?? ''), /member/i);
 
+        listener.inbox.length = 0;
+        listener.binary.length = 0;
+        send(unit, 'ptt_audio_start');
+        unit.send(Buffer.from([1, 0x4e, 0x4f]), { binary: true });
+        await expectNoBinary(listener, 700);
+        assert.equal(listener.inbox.some((m) => m.type === 'ptt_active_status'
+            && m.data?.speakers?.includes('Contract Unit A1')), false,
+        'rejected join left the unit able to transmit in its previous room');
+
         // Put the unit back where the other tests expect it.
         send(unit, 'join_channel', { new_channel_slug: CHANNEL });
         await waitFor(unit, 'join_channel_success');
