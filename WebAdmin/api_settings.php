@@ -18,22 +18,46 @@ am2_api_auth();
  * visible at the point it applies.
  */
 if (($_GET['action'] ?? '') === 'check_update') {
+    $json_path = __DIR__ . '/update/admin_version.json';
+    $data = is_file($json_path)
+        ? json_decode((string) file_get_contents($json_path), true)
+        : null;
+    $version = is_array($data) ? trim((string) ($data['version_name'] ?? '')) : '';
+    $download_url = is_array($data) ? trim((string) ($data['download_url'] ?? '')) : '';
+    $changelog = is_array($data) ? (string) ($data['changelog'] ?? '') : '';
+    $download_parts = parse_url($download_url);
+    $download_path = is_array($download_parts) ? ($download_parts['path'] ?? null) : null;
+    $download_name = is_string($download_path) ? basename($download_path) : '';
+    $download_file = __DIR__ . '/update/' . $download_name;
+    $expected_parts = parse_url(AM2_ADMIN_UPDATE_BASE);
+    $url_matches_environment = is_array($download_parts) && is_array($expected_parts)
+        && strtolower((string) ($download_parts['scheme'] ?? '')) === 'https'
+        && strcasecmp((string) ($download_parts['host'] ?? ''), (string) ($expected_parts['host'] ?? '')) === 0
+        && ($download_parts['port'] ?? null) === ($expected_parts['port'] ?? null)
+        && str_starts_with(
+            '/' . ltrim((string) ($download_parts['path'] ?? ''), '/'),
+            rtrim('/' . ltrim((string) ($expected_parts['path'] ?? ''), '/'), '/') . '/'
+        )
+        && !isset($download_parts['user'], $download_parts['pass'], $download_parts['query'], $download_parts['fragment']);
 
-    $json_path = 'update/admin_version.json';
-    if (file_exists($json_path)) {
-        $data = json_decode(file_get_contents($json_path), true);
+    if ($version === '' || filter_var($download_url, FILTER_VALIDATE_URL) === false
+        || !$url_matches_environment
+        || $download_name === '' || $download_name === '.' || $download_name === '..'
+        || !is_file($download_file)) {
+        http_response_code(404);
         echo json_encode([
-            'latest_version' => $data['version_name'],
-            'download_url' => $data['download_url'],
-            'changelog' => $data['changelog']
+            'latest_version' => null,
+            'download_url' => null,
+            'changelog' => ''
         ]);
-    } else {
-        echo json_encode([
-            'latest_version' => '1.0.0',
-            'download_url' => 'https://am2-poc.com/update/admin.apk',
-            'changelog' => 'Versi awal.'
-        ]);
+        exit;
     }
+
+    echo json_encode([
+        'latest_version' => $version,
+        'download_url' => $download_url,
+        'changelog' => $changelog
+    ]);
     exit;
 }
 

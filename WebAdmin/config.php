@@ -50,6 +50,10 @@ if ($password === '') {
 // Base URL of the node relay. A constant, so the notify helpers defined inside
 // the panel pages can reach it without importing a global.
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
+define('AM2_ADMIN_UPDATE_BASE', rtrim(
+    getenv('AM2_ADMIN_UPDATE_BASE_URL') ?: 'https://webadmin.am2-poc.com/update',
+    '/'
+));
 
 /**
  * Refuse an unauthorized machine-to-machine call — or, while the credential is
