@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '../..');
 const watchdog = resolve(root, 'infra/scripts/check-relay-health.sh');
@@ -16,6 +16,7 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
   const current = join(dir, 'current');
   const release = join(dir, 'release');
   const calls = join(dir, 'calls');
+  const deployLock = join(dir, 'deploy.lock');
   mkdirSync(bin);
   mkdirSync(state);
   if (previousRestarts !== null) writeFileSync(join(state, 'am2-api.restarts'), `${previousRestarts}\n`);
@@ -60,6 +61,7 @@ printf 'webhook %s\\n' "$*" >> '${calls}'
       AM2_WATCHDOG_URL: 'http://127.0.0.1:5000/',
       AM2_WATCHDOG_CURRENT: current,
       AM2_WATCHDOG_STATE_DIR: state,
+      AM2_DEPLOY_LOCK: deployLock,
 
       AM2_ALERT_COMMAND: join(bin, 'webhook'),
       AM2_ALERT_DEDUP_SECONDS: '600',
@@ -71,13 +73,34 @@ function run(script, env, args = []) {
   return spawnSync('bash', [script, ...args], { encoding: 'utf8', env });
 }
 
-test('watchdog passes only when service, HTTP body, restart count, and PID identity agree', () => {
+test('watchdog is silent when service, HTTP body, restart count, and PID identity agree', () => {
   const f = fixture();
   try {
     const result = run(watchdog, f.env);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /healthy/i);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
   } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('watchdog skips checks silently while the deployment lock is held', () => {
+  const f = fixture({ active: 'failed', status: '502', body: 'Bad Gateway', cwdMatches: false });
+  const ready = join(f.dir, 'lock-ready');
+  const lockProc = spawn('bash', ['-c', 'exec 9>"$1"; flock -x 9; : >"$2"; sleep 3', 'bash', f.env.AM2_DEPLOY_LOCK, ready], {
+    stdio: 'ignore',
+  });
+  try {
+    const deadline = Date.now() + 1000;
+    while (Date.now() < deadline && !existsSync(ready)) {}
+    assert.ok(existsSync(ready), 'deployment lock holder did not become ready');
+    const result = run(watchdog, f.env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
+  } finally {
+    lockProc.kill('SIGTERM');
+    rmSync(f.dir, { recursive: true, force: true });
+  }
 });
 
 for (const [name, options, reason] of [
@@ -130,6 +153,10 @@ test('watchdog units execute every minute and route failures to alert service', 
   const alertUnit = readFileSync(resolve(root, 'infra/systemd/am2-relay-alert@.service'), 'utf8');
   assert.match(service, /^OnFailure=am2-relay-alert@%n\.service$/m);
   assert.match(service, /^ExecStart=\/usr\/local\/libexec\/am2\/check-relay-health\.sh$/m);
+  assert.match(service, /^StandardOutput=null$/m);
+  assert.match(service, /^StandardError=journal$/m);
+  assert.match(service, /^SyslogLevel=err$/m);
+  assert.match(service, /^LogLevelMax=warning$/m);
   assert.match(timer, /^OnUnitActiveSec=60s$/m);
   assert.match(timer, /^Persistent=true$/m);
   assert.match(alertUnit, /send-relay-alert\.sh/);
