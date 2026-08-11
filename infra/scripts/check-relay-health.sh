@@ -5,6 +5,14 @@ service=${AM2_WATCHDOG_SERVICE:-am2-api}
 url=${AM2_WATCHDOG_URL:-http://127.0.0.1:5000/}
 current=${AM2_WATCHDOG_CURRENT:-/var/www/am2/current}
 state_dir=${AM2_WATCHDOG_STATE_DIR:-/var/lib/am2-relay-watchdog}
+deploy_lock=${AM2_DEPLOY_LOCK:-/var/lib/am2-relay-watchdog/deploy.lock}
+
+# Deployment owns an exclusive lock while it swaps /current and restarts the
+# relay. A health sample in that intentional transition window is invalid, so
+# skip it without alerting. The next timer tick verifies the resulting state.
+mkdir -p "$(dirname "$deploy_lock")"
+exec 9>"$deploy_lock"
+flock -n -s 9 || exit 0
 
 fail() {
     echo "relay unhealthy: $*" >&2
@@ -39,5 +47,3 @@ body=${http_result%$'\n'*}
 [[ $body == *"PTT Server"* ]] || fail "HTTP body missing PTT Server marker"
 
 printf '%s\n' "$restarts" > "$restart_file"
-
-printf 'relay healthy: service=%s pid=%s release=%s restarts=%s\n' "$service" "$pid" "$current_real" "$restarts"
