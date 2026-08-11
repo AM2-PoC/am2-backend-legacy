@@ -45,6 +45,10 @@ sudo install -D -m 0644 infra/nginx/am2-webadmin.conf \
   /etc/nginx/sites-available/am2-webadmin.conf
 sudo install -D -m 0644 infra/nginx/am2-webadmin-staging.conf \
   /etc/nginx/sites-available/am2-webadmin-staging.conf
+sudo ln -sfn /etc/nginx/sites-available/am2-webadmin.conf \
+  /etc/nginx/sites-enabled/am2-webadmin.conf
+sudo ln -sfn /etc/nginx/sites-available/am2-webadmin-staging.conf \
+  /etc/nginx/sites-enabled/am2-webadmin-staging.conf
 sudo install -D -m 0644 infra/apache/am2-webadmin-internal.conf \
   /etc/apache2/sites-available/am2-webadmin-internal.conf
 sudo install -D -m 0644 infra/apache/am2-webadmin-staging.conf \
@@ -206,7 +210,7 @@ test "$BEFORE_PID" = "$AFTER_PID"
 When relay-related files changed, require the approved quiet window and verify established session count is at the agreed drain threshold. Then:
 
 ```bash
-exec 9>/var/lib/am2-relay-watchdog/deploy.lock
+exec 9</var/lib/am2-relay-watchdog/deploy.lock
 flock -x 9
 sudo install -m 0644 "$REL/infra/systemd/am2-api.service" \
   /etc/systemd/system/am2-api.service

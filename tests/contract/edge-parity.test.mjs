@@ -18,6 +18,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,9 +68,22 @@ test('repository and development artifacts are denied by every edge vhost', () =
     }
     assert.match(snippet, /return 404/,
         'development artifacts disclose their existence instead of returning 404');
+    assert.match(snippet, /\^\/\(\?:WebAdmin\/\)\?/,
+        'manifest/node_modules deny misses the actual document-root URL');
     for (const f of VHOSTS) {
         assert.match(read(f), /include\s+snippets\/am2-webadmin-dev-deny\.conf;/,
             `${f} does not load the development-artifact deny rules`);
+    }
+});
+
+test('development deny precedes generic edge regex locations', () => {
+    for (const f of VHOSTS) {
+        const text = read(f);
+        assert.ok(
+            text.indexOf('include snippets/am2-webadmin-dev-deny.conf;')
+                < text.indexOf('include snippets/am2-webadmin-security.conf;'),
+            `${f} lets the generic dotfile regex preempt development 404s`,
+        );
     }
 });
 
@@ -78,8 +92,10 @@ test('every Apache WebAdmin vhost strips rendered implementation commentary', ()
     assert.match(filter, /ob_start/);
     assert.match(filter, /preg_replace/);
     assert.match(filter, /<!--/);
-    assert.match(filter, /doctype|<html/i,
-        'the output filter is not scoped to HTML and can modify JSON/download responses');
+    assert.match(filter, /headers_list\(\)/,
+        'the output filter does not use the response Content-Type');
+    assert.doesNotMatch(filter, /doctype|<html/i,
+        'the output filter infers MIME type from arbitrary response bytes');
     for (const f of APACHE_VHOSTS) {
         assert.match(read(f),
             /php_value\s+auto_prepend_file\s+\/etc\/am2\/php\/webadmin-output-filter\.php/,
@@ -87,11 +103,31 @@ test('every Apache WebAdmin vhost strips rendered implementation commentary', ()
     }
 });
 
+test('output filter changes HTML comments but preserves explicit non-HTML bytes', () => {
+    const filter = join(ROOT, 'infra/php/webadmin-output-filter.php');
+    const run = (contentType, body) => execFileSync('php', [
+        '-r',
+        `putenv('AM2_OUTPUT_FILTER_CONTENT_TYPE=' . $argv[1]); require $argv[2]; echo $argv[3];`,
+        contentType,
+        filter,
+        body,
+    ], { encoding: 'utf8' });
+
+    assert.equal(
+        run('text/html; charset=UTF-8', '<html><!-- private -->visible</html>'),
+        '<html>visible</html>',
+    );
+    const json = '{"fragment":"<html><!-- keep --></html>"}';
+    assert.equal(run('application/json', json), json);
+});
+
 test('the Apache origin returns 404 for repository and development artifacts', () => {
     for (const f of APACHE_VHOSTS) {
         const vhost = read(f);
         assert.match(vhost, /RedirectMatch\s+404[^\n]*(?:docs|infra|tests)/,
             `${f} exposes internal directories when nginx is bypassed`);
+        assert.match(vhost, /RedirectMatch\s+404[^\n]*\(WebAdmin\/\)\?[^\n]*node_modules/,
+            `${f} does not block node_modules at the actual document-root URL`);
         assert.match(vhost, /RedirectMatch\s+404[^\n]*(?:package|composer|README|CHANGELOG)/,
             `${f} exposes repository manifests when nginx is bypassed`);
     }
