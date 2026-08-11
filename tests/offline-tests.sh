@@ -24,6 +24,16 @@ set -euo pipefail
 
 DIR="${OFFLINE_TEST_DIR:-$(cd "$(dirname "$0")/contract" && pwd)}"
 
+# Restart-closure contracts are explicit CI invariants. Keeping these names in
+# the selector also makes their absence visible to the integration contract.
+RESTART_SAFETY_TESTS=(
+    needrestart-policy.test.mjs
+    release-runtime.test.mjs
+    release-smoke.test.mjs
+    relay-watchdog.test.mjs
+    systemd-relay-safety.test.mjs
+)
+
 for f in "$DIR"/*.test.mjs; do
     # Credential-bound: pulls in the helper that reads the protected env file.
     grep -qE "^[[:space:]]*import .*['\"]\./helpers\.mjs" "$f" && continue

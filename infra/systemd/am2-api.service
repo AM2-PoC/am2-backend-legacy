@@ -3,6 +3,8 @@ Description=AM2 Node API and WebSocket service
 After=network-online.target postgresql.service redis-server.service
 Wants=network-online.target
 Requires=postgresql.service redis-server.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -10,6 +12,7 @@ User=am2deploy
 Group=www-data
 WorkingDirectory=/var/www/am2/current/server
 EnvironmentFile=/etc/am2/api.env
+ExecStartPre=/var/www/am2/current/infra/scripts/verify-current-release.sh /var/www/am2/current
 ExecStart=/usr/bin/node /var/www/am2/current/server/server.js
 Restart=on-failure
 RestartSec=5
