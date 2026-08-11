@@ -24,7 +24,6 @@ if [[ -f $stamp_file ]]; then
         exit 0
     fi
 fi
-printf '%s\n' "$now" > "$stamp_file"
 
 logger --tag am2-relay-alert --priority daemon.crit -- "$message"
 
@@ -36,4 +35,7 @@ if [[ -n ${AM2_ALERT_COMMAND:-} ]]; then
     "$AM2_ALERT_COMMAND" "$message"
 else
     echo "relay alert logged locally; external AM2_ALERT_COMMAND is not configured" >&2
+    exit 1
 fi
+
+printf '%s\n' "$now" > "$stamp_file"

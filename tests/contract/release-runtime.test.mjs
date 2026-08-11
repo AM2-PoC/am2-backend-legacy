@@ -25,7 +25,8 @@ test('release builder rejects a destination that already exists', () => {
     const destination = join(base, 'candidate');
     const make = spawnSync('mkdir', [destination]);
     assert.equal(make.status, 0);
-    const run = spawnSync('bash', [build, '--repo', root, '--sha', 'HEAD', '--dest', destination], { encoding: 'utf8' });
+    const sha = git('rev-parse', 'HEAD');
+    const run = spawnSync('bash', [build, '--repo', root, '--sha', sha, '--dest', destination], { encoding: 'utf8' });
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /already exists/i);
   } finally {
@@ -42,6 +43,18 @@ test('release builder rejects a non-commit SHA before creating destination', () 
     assert.match(run.stderr, /commit|SHA/i);
     const exists = spawnSync('test', ['-e', destination]);
     assert.notEqual(exists.status, 0);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('release builder rejects a moving symbolic ref', () => {
+  const base = tempDir('am2-release-symbolic-');
+  try {
+    const destination = join(base, 'candidate');
+    const run = spawnSync('bash', [build, '--repo', root, '--sha', 'HEAD', '--dest', destination], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /40-character|exact SHA/i);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

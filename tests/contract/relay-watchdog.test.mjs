@@ -110,6 +110,20 @@ test('alert path logs locally, calls configured operator notifier, and deduplica
   } finally { rmSync(f.dir, { recursive: true, force: true }); }
 });
 
+test('alert path fails closed and does not deduplicate when external delivery is missing', () => {
+  const f = fixture();
+  try {
+    const env = { ...f.env };
+    delete env.AM2_ALERT_COMMAND;
+    const first = run(alert, env, ['relay down']);
+    const second = run(alert, env, ['relay down']);
+    assert.notEqual(first.status, 0);
+    assert.notEqual(second.status, 0);
+    assert.match(first.stderr, /not configured/i);
+    assert.doesNotMatch(second.stdout, /deduplicated/i);
+  } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
 test('watchdog units execute every minute and route failures to alert service', () => {
   const service = readFileSync(resolve(root, 'infra/systemd/am2-relay-watchdog.service'), 'utf8');
   const timer = readFileSync(resolve(root, 'infra/systemd/am2-relay-watchdog.timer'), 'utf8');
