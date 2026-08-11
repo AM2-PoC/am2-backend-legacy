@@ -114,6 +114,7 @@ fi
 
 "$temporary/infra/scripts/verify-release-runtime.sh" "$temporary" "$sha"
 
+chmod 0750 "$temporary"
 mv -T -- "$temporary" "$destination"
 temporary=
 printf 'release built: %s -> %s\n' "$sha" "$destination"
