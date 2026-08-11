@@ -37,13 +37,34 @@ sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.timer \
   /etc/systemd/system/am2-relay-watchdog.timer
 sudo install -D -m 0644 infra/systemd/am2-relay-alert@.service \
   /etc/systemd/system/am2-relay-alert@.service
+sudo install -D -m 0644 infra/nginx/am2-webadmin-dev-deny.conf \
+  /etc/nginx/snippets/am2-webadmin-dev-deny.conf
+sudo install -D -m 0644 infra/php/webadmin-output-filter.php \
+  /etc/am2/php/webadmin-output-filter.php
+sudo install -D -m 0644 infra/nginx/am2-webadmin.conf \
+  /etc/nginx/sites-available/am2-webadmin.conf
+sudo install -D -m 0644 infra/nginx/am2-webadmin-staging.conf \
+  /etc/nginx/sites-available/am2-webadmin-staging.conf
+sudo install -D -m 0644 infra/apache/am2-webadmin-internal.conf \
+  /etc/apache2/sites-available/am2-webadmin-internal.conf
+sudo install -D -m 0644 infra/apache/am2-webadmin-staging.conf \
+  /etc/apache2/sites-available/am2-webadmin-staging.conf
+sudo ln -sfn ../sites-available/am2-webadmin-internal.conf \
+  /etc/apache2/sites-enabled/am2-webadmin-internal.conf
+sudo ln -sfn ../sites-available/am2-webadmin-staging.conf \
+  /etc/apache2/sites-enabled/am2-webadmin-staging.conf
 sudo systemctl daemon-reload
 sudo systemctl enable --now am2-relay-watchdog.timer
+sudo nginx -t
+sudo apache2ctl configtest
+sudo systemctl reload nginx apache2
 ```
 
 Configure an absolute executable `AM2_ALERT_COMMAND` in `/etc/am2/relay-watchdog.env`. The command receives one message argument and must notify the on-call operator. Without it, the fallback is local journald only and the two-minute operator-notification acceptance criterion is not met.
 
 The needrestart override defers only the exact `am2-api.service` and `am2-api-staging.service` names. A controlled maintenance window must later restart them when required by package updates.
+
+The edge deny snippet returns `404` for repository metadata, internal docs/tests, manifests, lockfiles, schema snapshots, and dependency trees on both production and staging. The Apache `auto_prepend_file` strips ordinary implementation comments from rendered WebAdmin HTML. Probe forbidden URLs at both edge and loopback origin and confirm representative public pages still return `200` after every configuration rollout.
 
 ## Pre-deploy evidence
 
@@ -185,6 +206,8 @@ test "$BEFORE_PID" = "$AFTER_PID"
 When relay-related files changed, require the approved quiet window and verify established session count is at the agreed drain threshold. Then:
 
 ```bash
+exec 9>/var/lib/am2-relay-watchdog/deploy.lock
+flock -x 9
 sudo install -m 0644 "$REL/infra/systemd/am2-api.service" \
   /etc/systemd/system/am2-api.service
 sudo systemctl daemon-reload
@@ -192,6 +215,18 @@ sudo ln -sfn "$REL" /var/www/am2/current
 sudo systemctl reload apache2
 sudo systemctl reset-failed am2-api
 sudo systemctl restart am2-api
+```
+
+Keep file descriptor 9 open through the complete swap, restart, immediate verification, and any rollback. The watchdog takes a non-blocking shared lock and silently skips samples while this exclusive deployment lock is held; it never restarts the relay itself. Verify service, HTTP, and runtime identity directly before releasing the lock, then run one watchdog sample after release:
+
+```bash
+systemctl is-active --quiet am2-api
+curl -fsS http://127.0.0.1:5000/ | grep -F 'PTT Server'
+NEW_PID=$(systemctl show am2-api -p MainPID --value)
+test "$(sudo readlink -f "/proc/$NEW_PID/cwd")" = "$(readlink -f /var/www/am2/current)/server"
+flock -u 9
+exec 9>&-
+sudo /usr/local/libexec/am2/check-relay-health.sh
 ```
 
 The service preflight validates the exact `/current` release before Node executes. The unit permits no more than three failed starts in five minutes.
