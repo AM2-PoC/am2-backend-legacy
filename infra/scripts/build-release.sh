@@ -52,6 +52,10 @@ if [[ $repo != /* || $destination != /* ]]; then
     echo "repository and destination must be absolute paths" >&2
     exit 64
 fi
+if [[ ! $requested_sha =~ ^[0-9a-f]{40}$ ]]; then
+    echo "requested commit must be an exact lowercase 40-character Git SHA" >&2
+    exit 64
+fi
 for shared in "$webadmin_update" "$server_update"; do
     if [[ -n $shared && $shared != /* ]]; then
         echo "runtime update paths must be absolute" >&2
