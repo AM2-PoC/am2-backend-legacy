@@ -68,6 +68,11 @@ BEGIN
         v_name := NEW.name;
     END IF;
 
+    IF (v_admin IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM public.admin WHERE id = v_admin)) THEN
+        v_admin := NULL;
+    END IF;
+
     IF (TG_OP = 'INSERT') THEN
         INSERT INTO public.admin_activity_logs
             (admin_id, aksi, tabel_target, data_id, event_code, event_params)
