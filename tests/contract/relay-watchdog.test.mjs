@@ -155,6 +155,7 @@ test('watchdog units execute every minute and route failures to alert service', 
   assert.match(service, /^ExecStart=\/usr\/local\/libexec\/am2\/check-relay-health\.sh$/m);
   assert.match(service, /^StandardOutput=null$/m);
   assert.match(service, /^StandardError=journal$/m);
+  assert.match(service, /^SyslogLevel=err$/m);
   assert.match(service, /^LogLevelMax=warning$/m);
   assert.match(timer, /^OnUnitActiveSec=60s$/m);
   assert.match(timer, /^Persistent=true$/m);
