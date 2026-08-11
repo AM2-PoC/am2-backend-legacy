@@ -42,6 +42,7 @@ BEGIN
  IF(TG_OP='DELETE')THEN v_id:=OLD.created_by;IF(v_id IS NULL AND TG_TABLE_NAME='users')THEN v_id:=OLD.admin_id;END IF;v_nm:=OLD.name;
  ELSE v_id:=NEW.created_by;IF(v_id IS NULL AND TG_TABLE_NAME='users')THEN v_id:=NEW.admin_id;END IF;v_nm:=NEW.name;
  END IF;
+ IF(v_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.admin WHERE id=v_id))THEN v_id:=NULL;END IF;
  IF(TG_OP='INSERT')THEN INSERT INTO public.admin_activity_logs(admin_id,aksi,tabel_target,data_id,keterangan)VALUES(v_id,'CREATE',TG_TABLE_NAME,NEW.id::text,'Tambah '||TG_TABLE_NAME||': '||COALESCE(v_nm,''));
  ELSIF(TG_OP='UPDATE')THEN IF(OLD.name<>NEW.name)THEN INSERT INTO public.admin_activity_logs(admin_id,aksi,tabel_target,data_id,keterangan)VALUES(v_id,'UPDATE',TG_TABLE_NAME,NEW.id::text,'Ubah '||OLD.name||' ke '||NEW.name);END IF;
  ELSIF(TG_OP='DELETE')THEN INSERT INTO public.admin_activity_logs(admin_id,aksi,tabel_target,data_id,keterangan)VALUES(v_id,'DELETE',TG_TABLE_NAME,OLD.id::text,'Hapus '||TG_TABLE_NAME||': '||COALESCE(v_nm,''));
