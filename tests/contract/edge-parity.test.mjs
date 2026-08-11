@@ -25,7 +25,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const SHARED = 'infra/nginx/am2-webadmin-security.conf';
+const DEV_DENY = 'infra/nginx/am2-webadmin-dev-deny.conf';
 const VHOSTS = ['infra/nginx/am2-webadmin.conf', 'infra/nginx/am2-webadmin-staging.conf'];
+const APACHE_VHOSTS = [
+    'infra/apache/am2-webadmin-internal.conf',
+    'infra/apache/am2-webadmin-staging.conf',
+];
 
 test('the shared edge rules cover everything that used to differ', () => {
     const snippet = read(SHARED);
@@ -49,6 +54,46 @@ test('every WebAdmin vhost includes them', () => {
     for (const f of VHOSTS) {
         assert.match(read(f), /include\s+snippets\/am2-webadmin-security\.conf;/,
             `${f} does not include the shared security rules, so it is defended on its own again`);
+    }
+});
+
+test('repository and development artifacts are denied by every edge vhost', () => {
+    const snippet = read(DEV_DENY);
+    for (const marker of ['docs', 'infra', 'tests', '.github', '.git',
+                          'package', 'composer', 'README', 'CHANGELOG',
+                          'node_modules', 'struktur_am2']) {
+        assert.match(snippet, new RegExp(marker.replace('.', '\\.')),
+            `${DEV_DENY} no longer blocks ${marker}`);
+    }
+    assert.match(snippet, /return 404/,
+        'development artifacts disclose their existence instead of returning 404');
+    for (const f of VHOSTS) {
+        assert.match(read(f), /include\s+snippets\/am2-webadmin-dev-deny\.conf;/,
+            `${f} does not load the development-artifact deny rules`);
+    }
+});
+
+test('every Apache WebAdmin vhost strips rendered implementation commentary', () => {
+    const filter = read('infra/php/webadmin-output-filter.php');
+    assert.match(filter, /ob_start/);
+    assert.match(filter, /preg_replace/);
+    assert.match(filter, /<!--/);
+    assert.match(filter, /doctype|<html/i,
+        'the output filter is not scoped to HTML and can modify JSON/download responses');
+    for (const f of APACHE_VHOSTS) {
+        assert.match(read(f),
+            /php_value\s+auto_prepend_file\s+\/etc\/am2\/php\/webadmin-output-filter\.php/,
+            `${f} can emit private HTML comments`);
+    }
+});
+
+test('the Apache origin returns 404 for repository and development artifacts', () => {
+    for (const f of APACHE_VHOSTS) {
+        const vhost = read(f);
+        assert.match(vhost, /RedirectMatch\s+404[^\n]*(?:docs|infra|tests)/,
+            `${f} exposes internal directories when nginx is bypassed`);
+        assert.match(vhost, /RedirectMatch\s+404[^\n]*(?:package|composer|README|CHANGELOG)/,
+            `${f} exposes repository manifests when nginx is bypassed`);
     }
 });
 
