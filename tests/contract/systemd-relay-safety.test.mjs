@@ -23,10 +23,9 @@ for (const [name, unitPath, runtimeRoot] of [
 
   test(`${name} relay unit validates its exact runtime before start`, () => {
     const unit = read(unitPath);
-    const escapedRoot = runtimeRoot.replaceAll('/', '\\/');
     assert.match(
       unit,
-      new RegExp(`^ExecStartPre=${escapedRoot}\\/infra\\/scripts\\/verify-current-release\\.sh ${escapedRoot}$`, 'm'),
+      new RegExp(`^ExecStartPre=\\/usr\\/local\\/libexec\\/am2\\/verify-current-release\\.sh ${runtimeRoot.replaceAll('/', '\\/')}$`, 'm'),
     );
   });
 }

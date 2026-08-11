@@ -103,6 +103,13 @@ If staging shared paths differ, inspect existing links and pass those exact abso
 
 ## Preflight, smoke, migration
 
+Install the host-owned preflight helper before loading either relay unit. Keeping `ExecStartPre` outside the release means a pre-P0 rollback target can still be started and validated:
+
+```bash
+sudo install -d -m 0755 /usr/local/libexec/am2
+sudo install -m 0755 infra/scripts/verify-current-release.sh /usr/local/libexec/am2/verify-current-release.sh
+```
+
 Validate candidate and rollback target:
 
 ```bash
