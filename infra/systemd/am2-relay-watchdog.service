@@ -11,6 +11,9 @@ EnvironmentFile=-/etc/am2/relay-watchdog.env
 ExecStart=/usr/local/libexec/am2/check-relay-health.sh
 StandardOutput=null
 StandardError=journal
+# Preserve health-check diagnostics as errors while suppressing routine
+# systemd start/finish info records from this per-minute oneshot.
+SyslogLevel=err
 LogLevelMax=warning
 NoNewPrivileges=true
 PrivateTmp=true
