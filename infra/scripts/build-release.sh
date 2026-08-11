@@ -2,12 +2,14 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 --repo /absolute/repository --sha COMMIT --dest /absolute/new-release" >&2
+    echo "Usage: $0 --repo /absolute/repository --sha COMMIT --dest /absolute/new-release [--webadmin-update /absolute/shared-dir --server-update /absolute/shared-dir]" >&2
 }
 
 repo=
 requested_sha=
 destination=
+webadmin_update=
+server_update=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
@@ -25,6 +27,16 @@ while [[ $# -gt 0 ]]; do
             destination=$2
             shift 2
             ;;
+        --webadmin-update)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            webadmin_update=$2
+            shift 2
+            ;;
+        --server-update)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            server_update=$2
+            shift 2
+            ;;
         *)
             usage
             exit 64
@@ -40,6 +52,16 @@ if [[ $repo != /* || $destination != /* ]]; then
     echo "repository and destination must be absolute paths" >&2
     exit 64
 fi
+for shared in "$webadmin_update" "$server_update"; do
+    if [[ -n $shared && $shared != /* ]]; then
+        echo "runtime update paths must be absolute" >&2
+        exit 64
+    fi
+    if [[ -n $shared && ! -d $shared ]]; then
+        echo "runtime update directory is missing: $shared" >&2
+        exit 1
+    fi
+done
 if [[ ! -d $repo/.git ]]; then
     echo "Git repository is missing: $repo" >&2
     exit 1
@@ -72,6 +94,14 @@ trap cleanup EXIT INT TERM HUP
 git -C "$repo" archive "$sha" | tar -x -C "$temporary"
 printf '%s\n' "$sha" > "$temporary/.release-sha"
 mkdir -p "$temporary/WebAdmin/update" "$temporary/server/update"
+if [[ -n $webadmin_update ]]; then
+    rmdir "$temporary/WebAdmin/update"
+    ln -s "$webadmin_update" "$temporary/WebAdmin/update"
+fi
+if [[ -n $server_update ]]; then
+    rmdir "$temporary/server/update"
+    ln -s "$server_update" "$temporary/server/update"
+fi
 
 (
     cd "$temporary/server"

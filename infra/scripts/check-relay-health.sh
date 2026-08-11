@@ -31,12 +31,13 @@ if [[ -f $restart_file ]]; then
     [[ $previous =~ ^[0-9]+$ ]] || previous=$restarts
     (( restarts <= previous )) || fail "restart counter grew: $previous -> $restarts"
 fi
-printf '%s\n' "$restarts" > "$restart_file"
 
 http_result=$(curl --silent --show-error --max-time 5 --write-out $'\n%{http_code}' "$url" 2>/dev/null || true)
 status=${http_result##*$'\n'}
 body=${http_result%$'\n'*}
 [[ $status == 200 ]] || fail "HTTP status is $status"
 [[ $body == *"PTT Server"* ]] || fail "HTTP body missing PTT Server marker"
+
+printf '%s\n' "$restarts" > "$restart_file"
 
 printf 'relay healthy: service=%s pid=%s release=%s restarts=%s\n' "$service" "$pid" "$current_real" "$restarts"

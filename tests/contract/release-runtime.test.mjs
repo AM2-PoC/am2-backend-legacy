@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -89,7 +89,33 @@ test('release builder creates an exact immutable runnable artifact', { timeout: 
     assert.equal(preflight.status, 0, `${preflight.stdout}\n${preflight.stderr}`);
 
     const tracked = git('ls-tree', '-r', '--name-only', sha);
-    assert.equal(tracked.includes('docs/incidents/2026-08-11-relay-restart-closure.md'), true);
+    assert.ok(tracked.length > 0);
+    assert.equal(readFileSync(join(destination, '.release-sha'), 'utf8').trim(), sha);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('release builder seals runtime update links before final publication', { timeout: 120_000 }, () => {
+  const base = tempDir('am2-release-links-');
+  const destination = join(base, 'candidate');
+  const webadminUpdate = join(base, 'shared-webadmin-update');
+  const serverUpdate = join(base, 'shared-server-update');
+  const sha = git('rev-parse', 'HEAD');
+  mkdirSync(webadminUpdate);
+  mkdirSync(serverUpdate);
+  try {
+    const run = spawnSync('bash', [
+      build,
+      '--repo', root,
+      '--sha', sha,
+      '--dest', destination,
+      '--webadmin-update', webadminUpdate,
+      '--server-update', serverUpdate,
+    ], { encoding: 'utf8', timeout: 110_000 });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    assert.equal(readlinkSync(join(destination, 'WebAdmin/update')), webadminUpdate);
+    assert.equal(readlinkSync(join(destination, 'server/update')), serverUpdate);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

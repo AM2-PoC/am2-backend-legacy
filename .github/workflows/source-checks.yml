@@ -108,6 +108,36 @@ jobs:
           printf 'running %d files\n' "${#files[@]}"
           node --test "${files[@]/#/tests/contract/}"
 
+  restart-safety:
+    name: restart-safe release artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Run restart-safety contracts
+        run: |
+          node --test \
+            tests/contract/needrestart-policy.test.mjs \
+            tests/contract/release-runtime.test.mjs \
+            tests/contract/release-smoke.test.mjs \
+            tests/contract/relay-watchdog.test.mjs \
+            tests/contract/systemd-relay-safety.test.mjs
+      - name: Build and verify exact candidate commit
+        run: |
+          sha=$(git rev-parse HEAD)
+          destination="$RUNNER_TEMP/am2-$sha"
+          infra/scripts/build-release.sh \
+            --repo "$GITHUB_WORKSPACE" \
+            --sha "$sha" \
+            --dest "$destination"
+          infra/scripts/verify-release-runtime.sh "$destination" "$sha"
+
   compose:
     name: docker compose config
     runs-on: ubuntu-latest

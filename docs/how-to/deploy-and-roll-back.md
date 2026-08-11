@@ -1,143 +1,230 @@
-# Deploy a release, and roll it back
+# Deploy a restart-safe release, and roll it back
 
-Production runs from a symlink, so a release is a directory swap and a rollback is the same swap in
-reverse. Nothing is edited in place.
+Production is an immutable release directory selected by `/var/www/am2/current`. Apache and `am2-api` both resolve that symlink, so every selected release must be runnable by both services even when a change appears PHP-only. Never edit a release in place.
 
-```
+```text
 /var/www/am2/
-├── current -> releases/<stamp>     the symlink Apache and systemd follow
-├── releases/<stamp>/               one directory per release, never modified after creation
-├── shared/                         runtime data that survives releases (upload targets)
-└── staging/                        the staging tree, independent of all of the above
+├── current -> releases/<stamp>-<sha12>
+├── releases/<stamp>-<sha12>/
+├── shared/
+└── staging/
 ```
 
-## Before you start
+## Non-negotiable invariants
 
-Take a database dump. The backup timer runs at 02:30 daily, which is not close enough to a deploy.
+- Build from an exact 40-character commit SHA, never an implicit moving branch.
+- Do not move `/current` until dependency preflight and isolated cold start pass on the exact candidate.
+- Validate the rollback release before cutover.
+- A healthy old PID is not candidate evidence: compare `/proc/<pid>/cwd` with `/current/server`.
+- Restarting the relay drops every WebSocket. Require a quiet window or explicit session-drain approval.
+- Invalid candidates stay outside `/current`; failed builds are discarded, not repaired in place.
+- Runtime secrets stay in protected `/etc/am2/*.env` files and are represented in documentation as `[REDACTED]`.
+
+## One-time host containment
+
+Install source-controlled policy and health artifacts. This does not restart `am2-api`:
+
+```bash
+sudo install -D -m 0644 infra/needrestart/am2-realtime.conf \
+  /etc/needrestart/conf.d/am2-realtime.conf
+sudo install -D -m 0755 infra/scripts/check-relay-health.sh \
+  /usr/local/libexec/am2/check-relay-health.sh
+sudo install -D -m 0755 infra/scripts/send-relay-alert.sh \
+  /usr/local/libexec/am2/send-relay-alert.sh
+sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.service \
+  /etc/systemd/system/am2-relay-watchdog.service
+sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.timer \
+  /etc/systemd/system/am2-relay-watchdog.timer
+sudo install -D -m 0644 infra/systemd/am2-relay-alert@.service \
+  /etc/systemd/system/am2-relay-alert@.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now am2-relay-watchdog.timer
+```
+
+Configure an absolute executable `AM2_ALERT_COMMAND` in `/etc/am2/relay-watchdog.env`. The command receives one message argument and must notify the on-call operator. Without it, the fallback is local journald only and the two-minute operator-notification acceptance criterion is not met.
+
+The needrestart override defers only the exact `am2-api.service` and `am2-api-staging.service` names. A controlled maintenance window must later restart them when required by package updates.
+
+## Pre-deploy evidence
+
+Take and validate a database dump:
 
 ```bash
 sudo systemctl start am2-backup.service
-ls -lh /var/backups/am2/postgres/ | tail -3
+DUMP=$(ls -1t /var/backups/am2/postgres/*.dump | head -1)
+sudo -u postgres pg_restore -l "$DUMP" | grep -c 'TABLE DATA'
 ```
 
-Confirm the newest dump actually restores, rather than assuming it does:
+Record live identity and sessions before cutover:
 
 ```bash
-sudo -u postgres pg_restore -l /var/backups/am2/postgres/<newest>.dump | grep -c 'TABLE DATA'
+OLD_REL=$(readlink -f /var/www/am2/current)
+OLD_PID=$(systemctl show am2-api -p MainPID --value)
+OLD_RESTARTS=$(systemctl show am2-api -p NRestarts --value)
+sudo readlink -f "/proc/$OLD_PID/cwd"
+sudo ss -Htn state established 'sport = :5000' | wc -l
 ```
 
-A healthy dump lists 10 tables with data. A file that exists but lists nothing is the failure mode
-that went unnoticed for three months before it was fixed — check the number, not the file size.
+If PID cwd differs from `$OLD_REL/server`, record the hybrid state. Do not use that old PID as evidence that `$OLD_REL` or a new candidate can cold-start.
 
-## Deploy
+## Build exact immutable candidates
+
+Fetch, pin, and build production with runtime links already sealed into the candidate:
 
 ```bash
+sudo -u am2deploy git -C /home/am2deploy/am2-main fetch origin
+SHA=$(git -C /home/am2deploy/am2-main rev-parse origin/main^{commit})
 STAMP=$(date +%Y%m%d%H%M%S)
-REL=/var/www/am2/releases/$STAMP
+REL=/var/www/am2/releases/${STAMP}-${SHA:0:12}
 
-sudo -u am2deploy git -C /home/am2deploy/am2-main fetch --all
-sudo install -d -o am2deploy -g www-data -m 750 "$REL"
-sudo -u am2deploy bash -c "git -C /home/am2deploy/am2-main archive main | tar -x -C $REL"
-
-# Runtime symlinks live outside the release and are recreated each time.
-sudo -u am2deploy ln -sfn /var/www/am2/shared/webadmin-update "$REL/WebAdmin/update"
-sudo -u am2deploy ln -sfn /var/www/am2/shared/server-update   "$REL/server/update"
-
-sudo -u am2deploy bash -c "cd $REL/server && npm ci --omit=dev"
-
-# Syntax-check before anything is swapped.
-for f in "$REL"/WebAdmin/*.php; do php -l "$f" >/dev/null || echo "SYNTAX: $f"; done
-node --check "$REL/server/server.js"
+sudo -u am2deploy /home/am2deploy/am2-main/infra/scripts/build-release.sh \
+  --repo /home/am2deploy/am2-main \
+  --sha "$SHA" \
+  --dest "$REL" \
+  --webadmin-update /var/www/am2/shared/webadmin-update \
+  --server-update /var/www/am2/shared/server-update
 ```
 
-## Migrate
+The builder uses `git archive`, writes `.release-sha`, runs `npm ci --omit=dev`, validates JavaScript syntax and every declared production dependency, then atomically publishes the directory. It refuses an existing destination and removes failed temporary output.
 
-Before the swap, never after. Migrations that run afterwards leave a window — however short — where
-the new code is live against the old schema, and on this application that window is a broken
-Activity Log: `fetch_logs.php` selects `event_code`, and `am2_log()` swallows its own write failures
-by design, so the trail goes quietly empty rather than erroring.
+Build staging separately from the same SHA:
 
 ```bash
-# What would run, without running it.
-"$REL"/infra/scripts/apply-migrations.sh --db am2 --dry-run
-
-# Apply.
-"$REL"/infra/scripts/apply-migrations.sh --db am2
+STAGING_REL=/var/www/am2/staging/releases/${STAMP}-${SHA:0:12}
+sudo -u am2deploy /home/am2deploy/am2-main/infra/scripts/build-release.sh \
+  --repo /home/am2deploy/am2-main \
+  --sha "$SHA" \
+  --dest "$STAGING_REL" \
+  --webadmin-update /var/www/am2/staging/shared/webadmin-update \
+  --server-update /var/www/am2/staging/shared/server-update
 ```
 
-`applied 0, already present N` is the normal result and means there was nothing to do. The runner
-records each file with its checksum in `public.schema_migrations` and refuses to continue if a file
-that was already applied has since been edited — write a new migration rather than changing an old
-one.
+If staging shared paths differ, inspect existing links and pass those exact absolute directories. Do not guess or reuse production data.
 
-Rehearse on staging first, against a database restored from the same dump production will be running
-on:
+## Preflight, smoke, migration
+
+Validate candidate and rollback target:
 
 ```bash
-sudo -u am2deploy /var/www/am2/staging/current/infra/scripts/apply-migrations.sh --db am2_staging
+"$REL/infra/scripts/verify-release-runtime.sh" "$REL" "$SHA"
+OLD_SHA=$(tr -d '\r\n' < "$OLD_REL/.release-sha")
+"$OLD_REL/infra/scripts/verify-release-runtime.sh" "$OLD_REL" "$OLD_SHA"
 ```
 
-**Rolling back:** the migrations here only add — a column, an index, a function — so the previous
-release runs unchanged against the migrated schema, and a code rollback needs no schema rollback.
-That is a property of these migrations, not a rule; a future migration that drops or renames
-anything breaks it, and the way to keep a rollback possible is to write the destructive half as a
-separate migration shipped a release later.
-
-Swap, then restart only what needs it:
+Cold-start the exact candidates using protected environment files and random loopback ports:
 
 ```bash
+"$REL/infra/scripts/smoke-release.sh" "$REL" "$SHA" /etc/am2/api.env
+"$STAGING_REL/infra/scripts/smoke-release.sh" \
+  "$STAGING_REL" "$SHA" /etc/am2/api.staging.env
+```
+
+Smoke must return `isolated release smoke OK`. It traps and removes its child relay. It never prints protected environment values.
+
+Dry-run migrations first, apply to staging, then production before code swap:
+
+```bash
+"$REL/infra/scripts/apply-migrations.sh" --db am2 --dry-run
+"$STAGING_REL/infra/scripts/apply-migrations.sh" --db am2_staging
+"$REL/infra/scripts/apply-migrations.sh" --db am2
+```
+
+Current migrations are additive. A future destructive migration requires a separate database rollback plan and cannot rely on symlink rollback.
+
+## Required staging restart and rollback rehearsal
+
+```bash
+STAGING_OLD=$(readlink -f /var/www/am2/staging/current)
+sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
+sudo systemctl reset-failed am2-api-staging
+sudo systemctl restart am2-api-staging
+curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
+systemctl show am2-api-staging -p ActiveState -p NRestarts -p MainPID
+```
+
+Rehearse rollback, then re-promote candidate:
+
+```bash
+sudo ln -sfn "$STAGING_OLD" /var/www/am2/staging/current
+sudo systemctl restart am2-api-staging
+curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
+
+sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
+sudo systemctl restart am2-api-staging
+curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
+```
+
+Run staging contract/protocol tests after the final candidate restart. Do not proceed if any restart, dependency, protocol, or HTTP check fails.
+
+## Production cutover
+
+First determine whether `server/`, systemd, or relay scripts changed:
+
+```bash
+git -C /home/am2deploy/am2-main diff --quiet "$OLD_SHA" "$SHA" -- \
+  server infra/systemd infra/scripts infra/needrestart
+```
+
+For a WebAdmin-only change, swap and reload Apache; verify the relay PID is unchanged:
+
+```bash
+BEFORE_PID=$(systemctl show am2-api -p MainPID --value)
 sudo ln -sfn "$REL" /var/www/am2/current
-sudo systemctl reload apache2      # PHP picks up the new path immediately
-sudo systemctl restart am2-api     # only if server/ changed
-```
-
-`reload apache2` is enough for PHP-only changes and drops no connections. Restarting `am2-api` drops
-every live WebSocket session; the field apps reconnect within about ten seconds, but do it in a quiet
-window rather than mid-shift.
-
-## Verify
-
-```bash
-curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/login.php -H 'Host: webadmin.am2-poc.com'
-curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/         -H 'Host: apiapi.am2-poc.com'
-systemctl is-active nginx apache2 postgresql redis-server am2-api
-```
-
-Then log in and exercise one read path and one write path. A 200 on the login page only proves PHP
-parsed.
-
-## Roll back
-
-The previous release directory is untouched, so rollback is one symlink and one reload:
-
-```bash
-ls -1dt /var/www/am2/releases/*/ | head -3      # pick the one you were on before
-sudo ln -sfn /var/www/am2/releases/<previous> /var/www/am2/current
 sudo systemctl reload apache2
-sudo systemctl restart am2-api                  # only if you restarted it on the way in
+AFTER_PID=$(systemctl show am2-api -p MainPID --value)
+test "$BEFORE_PID" = "$AFTER_PID"
 ```
 
-This restores code only. **A schema migration is not rolled back by the symlink** — if the release
-included one, restore the pre-deploy dump as well, and expect to drop the database to do it:
+When relay-related files changed, require the approved quiet window and verify established session count is at the agreed drain threshold. Then:
 
 ```bash
-sudo systemctl stop am2-api apache2
-sudo -u postgres dropdb am2
-sudo -u postgres createdb -O admin --template=template0 --encoding=UTF8 \
-     --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8 am2
-sudo -u postgres pg_restore -d am2 /var/backups/am2/postgres/<pre-deploy>.dump
-sudo systemctl start apache2 am2-api
+sudo install -m 0644 "$REL/infra/systemd/am2-api.service" \
+  /etc/systemd/system/am2-api.service
+sudo systemctl daemon-reload
+sudo ln -sfn "$REL" /var/www/am2/current
+sudo systemctl reload apache2
+sudo systemctl reset-failed am2-api
+sudo systemctl restart am2-api
 ```
 
-The `--lc-collate` flag is not optional. A cluster created without it defaults to `C.UTF-8`, and
-every text `ORDER BY` then sorts differently from production with no error anywhere.
+The service preflight validates the exact `/current` release before Node executes. The unit permits no more than three failed starts in five minutes.
 
-Restore as the `postgres` superuser and **without** `--no-owner --role=admin`. The dump already
-carries `OWNER TO admin`; passing `--role` makes two `ALTER DEFAULT PRIVILEGES` statements fail and
-turns a good restore into a non-zero exit.
+## Verify and automatic rollback decision
 
-## Housekeeping
+Within 60 seconds:
 
-Keep at least the last three releases. Note that the Android sources under `APK AM2/` and
-`APK Admin_Native/` exist only inside the May 2026 release directory and are not in the repository —
-do not delete that release until they are archived somewhere else.
+```bash
+systemctl is-active am2-api nginx apache2 postgresql redis-server
+curl -fsS http://127.0.0.1:5000/ | grep -F 'PTT Server'
+sudo /usr/local/libexec/am2/check-relay-health.sh
+NEW_PID=$(systemctl show am2-api -p MainPID --value)
+sudo readlink -f "/proc/$NEW_PID/cwd"
+readlink -f /var/www/am2/current
+systemctl show am2-api -p NRestarts
+```
+
+Also verify public login/API probes, one authenticated read, one safe write, WebSocket login, channel join, heartbeat, and one PTT transmit/release path.
+
+Rollback immediately if health is not green within 60 seconds, startup fatals appear, restart count grows, PID cwd differs from `/current/server`, or client protocol checks fail. Target rollback completion is five minutes:
+
+```bash
+sudo ln -sfn "$OLD_REL" /var/www/am2/current
+sudo systemctl reload apache2
+sudo systemctl reset-failed am2-api
+sudo systemctl restart am2-api
+sudo /usr/local/libexec/am2/check-relay-health.sh
+```
+
+## Soak and evidence retention
+
+For at least 15 minutes after cutover, record:
+
+```bash
+systemctl show am2-api -p NRestarts -p MainPID -p ActiveEnterTimestamp
+sudo journalctl -u am2-api --since '<cutover timestamp>' --no-pager
+sudo journalctl -u am2-relay-watchdog --since '<cutover timestamp>' --no-pager
+```
+
+Confirm zero new dependency errors, startup fatals, restart growth, watchdog failures, and HTTP 502 responses. Preserve candidate SHA, release path, rollback path, dump path, session count, PID/cwd, test output, and cutover/rollback timestamps in the deployment record.
+
+Keep at least the last three validated runnable releases. Never delete the last known-good rollback target while production restart closure is unproven.
