@@ -27,6 +27,12 @@ test('deploy runbook permits promotion only through exact-SHA safety scripts', (
   assert.match(runbook, /verify-release-runtime\.sh/);
   assert.match(runbook, /smoke-release\.sh/);
   assert.match(runbook, /check-relay-health\.sh/);
+  assert.match(runbook, /exec 9<\/var\/lib\/am2-relay-watchdog\/deploy\.lock/,
+    'deployment lock is opened for writing even though the deploy user cannot write it');
+  assert.match(runbook, /sites-enabled\/am2-webadmin\.conf/,
+    'production nginx vhost is installed but never enabled');
+  assert.match(runbook, /sites-enabled\/am2-webadmin-staging\.conf/,
+    'staging nginx vhost is installed but never enabled');
   assert.match(runbook, /needrestart\/conf\.d\/am2-realtime\.conf/);
   assert.match(runbook, /session|quiet window/i);
   assert.match(runbook, /rollback/i);
