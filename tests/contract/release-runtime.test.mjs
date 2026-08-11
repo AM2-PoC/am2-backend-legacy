@@ -96,6 +96,7 @@ test('release builder creates an exact immutable runnable artifact', { timeout: 
     });
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
     assert.equal(readFileSync(join(destination, '.release-sha'), 'utf8').trim(), sha);
+    assert.equal(statSync(destination).mode & 0o777, 0o750);
     assert.ok(statSync(join(destination, 'server/node_modules')).isDirectory());
 
     const preflight = spawnSync('bash', [verify, destination, sha], { encoding: 'utf8' });
