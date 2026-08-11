@@ -1,6 +1,8 @@
 [Unit]
 Description=AM2 Node API (staging)
 After=network.target postgresql.service redis-server.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -8,6 +10,7 @@ User=am2deploy
 Group=www-data
 WorkingDirectory=/var/www/am2/staging/current/server
 EnvironmentFile=/etc/am2/api.staging.env
+ExecStartPre=/var/www/am2/staging/current/infra/scripts/verify-current-release.sh /var/www/am2/staging/current
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
