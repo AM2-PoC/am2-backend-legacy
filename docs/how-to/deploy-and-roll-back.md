@@ -37,13 +37,34 @@ sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.timer \
   /etc/systemd/system/am2-relay-watchdog.timer
 sudo install -D -m 0644 infra/systemd/am2-relay-alert@.service \
   /etc/systemd/system/am2-relay-alert@.service
+sudo install -D -m 0644 infra/nginx/am2-webadmin-dev-deny.conf \
+  /etc/nginx/snippets/am2-webadmin-dev-deny.conf
+sudo install -D -m 0644 infra/php/webadmin-output-filter.php \
+  /etc/am2/php/webadmin-output-filter.php
+sudo install -D -m 0644 infra/nginx/am2-webadmin.conf \
+  /etc/nginx/sites-available/am2-webadmin.conf
+sudo install -D -m 0644 infra/nginx/am2-webadmin-staging.conf \
+  /etc/nginx/sites-available/am2-webadmin-staging.conf
+sudo install -D -m 0644 infra/apache/am2-webadmin-internal.conf \
+  /etc/apache2/sites-available/am2-webadmin-internal.conf
+sudo install -D -m 0644 infra/apache/am2-webadmin-staging.conf \
+  /etc/apache2/sites-available/am2-webadmin-staging.conf
+sudo ln -sfn ../sites-available/am2-webadmin-internal.conf \
+  /etc/apache2/sites-enabled/am2-webadmin-internal.conf
+sudo ln -sfn ../sites-available/am2-webadmin-staging.conf \
+  /etc/apache2/sites-enabled/am2-webadmin-staging.conf
 sudo systemctl daemon-reload
 sudo systemctl enable --now am2-relay-watchdog.timer
+sudo nginx -t
+sudo apache2ctl configtest
+sudo systemctl reload nginx apache2
 ```
 
 Configure an absolute executable `AM2_ALERT_COMMAND` in `/etc/am2/relay-watchdog.env`. The command receives one message argument and must notify the on-call operator. Without it, the fallback is local journald only and the two-minute operator-notification acceptance criterion is not met.
 
 The needrestart override defers only the exact `am2-api.service` and `am2-api-staging.service` names. A controlled maintenance window must later restart them when required by package updates.
+
+The edge deny snippet returns `404` for repository metadata, internal docs/tests, manifests, lockfiles, schema snapshots, and dependency trees on both production and staging. The Apache `auto_prepend_file` strips ordinary implementation comments from rendered WebAdmin HTML. Probe forbidden URLs at both edge and loopback origin and confirm representative public pages still return `200` after every configuration rollout.
 
 ## Pre-deploy evidence
 
