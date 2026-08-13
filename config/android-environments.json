@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "apps": {
+    "client": {
+      "dev": {
+        "application_id": "com.am2.tik.dev",
+        "min_api": 16,
+        "label_suffix": " DEV",
+        "endpoints": {
+          "websocket_url": "wss://dev-api.am2-poc.com",
+          "update_manifest_url": "https://dev-api.am2-poc.com/update/version.json"
+        }
+      },
+      "staging": {
+        "application_id": "com.am2.tik.staging",
+        "min_api": 16,
+        "label_suffix": " STAGING",
+        "endpoints": {
+          "websocket_url": "wss://staging-api.am2-poc.com",
+          "update_manifest_url": "https://staging-api.am2-poc.com/update/version.json"
+        }
+      },
+      "production": {
+        "application_id": "com.am2.tik",
+        "min_api": 16,
+        "label_suffix": "",
+        "endpoints": {
+          "websocket_url": "wss://apiapi.am2-poc.com",
+          "update_manifest_url": "https://apiapi.am2-poc.com/update/version.json"
+        }
+      }
+    },
+    "admin": {
+      "dev": {
+        "application_id": "com.am2.admin.dev",
+        "min_api": 24,
+        "label_suffix": " DEV",
+        "endpoints": {
+          "api_base_url": "https://dev-webadmin.am2-poc.com/",
+          "update_manifest_url": "https://dev-webadmin.am2-poc.com/update/admin_version.json",
+          "update_apk_url": "https://dev-webadmin.am2-poc.com/update/admin.apk"
+        }
+      },
+      "staging": {
+        "application_id": "com.am2.admin.staging",
+        "min_api": 24,
+        "label_suffix": " STAGING",
+        "endpoints": {
+          "api_base_url": "https://staging-webadmin.am2-poc.com/",
+          "update_manifest_url": "https://staging-webadmin.am2-poc.com/update/admin_version.json",
+          "update_apk_url": "https://staging-webadmin.am2-poc.com/update/admin.apk"
+        }
+      },
+      "production": {
+        "application_id": "com.am2.admin",
+        "min_api": 24,
+        "label_suffix": "",
+        "endpoints": {
+          "api_base_url": "https://webadmin.am2-poc.com/",
+          "update_manifest_url": "https://webadmin.am2-poc.com/update/admin_version.json",
+          "update_apk_url": "https://webadmin.am2-poc.com/update/admin.apk"
+        }
+      }
+    }
+  },
+  "production_promotion": {
+    "enabled": false,
+    "required_gates": [
+      "protected_production_signer",
+      "independent_production_approval",
+      "same_digest_staging_acceptance",
+      "physical_device_acceptance",
+      "rollback_rehearsal"
+    ]
+  }
+}
