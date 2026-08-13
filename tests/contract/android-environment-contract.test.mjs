@@ -15,6 +15,18 @@ const expectedPackages = {
     production: ['com.am2.admin', 24],
   },
 };
+const expectedEndpointHosts = {
+  client: {
+    dev: ['dev-api.am2-poc.com', ['update_manifest_url', 'websocket_url']],
+    staging: ['staging-api.am2-poc.com', ['update_manifest_url', 'websocket_url']],
+    production: ['apiapi.am2-poc.com', ['update_manifest_url', 'websocket_url']],
+  },
+  admin: {
+    dev: ['dev-webadmin.am2-poc.com', ['api_base_url', 'update_apk_url', 'update_manifest_url']],
+    staging: ['staging-webadmin.am2-poc.com', ['api_base_url', 'update_apk_url', 'update_manifest_url']],
+    production: ['webadmin.am2-poc.com', ['api_base_url', 'update_apk_url', 'update_manifest_url']],
+  },
+};
 
 async function loadContract() {
   return JSON.parse(await readFile(contractUrl, 'utf8'));
@@ -60,15 +72,14 @@ test('uses distinct secure endpoint sets and keeps non-production away from prod
     const serialized = new Set();
     for (const [environment, record] of Object.entries(environments)) {
       const endpoints = record.endpoints;
-      assert.ok(endpoints && typeof endpoints === 'object', `${app}/${environment} endpoints missing`);
+      const [expectedHost, expectedFields] = expectedEndpointHosts[app][environment];
+      assert.ok(endpoints && typeof endpoints === 'object' && !Array.isArray(endpoints), `${app}/${environment} endpoints missing`);
+      assert.deepEqual(Object.keys(endpoints).sort(), expectedFields, `${app}/${environment} endpoint schema mismatch`);
+
       for (const [field, value] of Object.entries(endpoints)) {
         if (field === 'websocket_url') assertWssOrigin(value, `${app}/${environment}/${field}`);
         else assertHttpsOrigin(value, `${app}/${environment}/${field}`);
-
-        if (environment !== 'production') {
-          assert.match(new URL(value).hostname, new RegExp(`^${environment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-`));
-          assert.doesNotMatch(new URL(value).hostname, /^(apiapi|webadmin)\.am2-poc\.com$/);
-        }
+        assert.equal(new URL(value).hostname, expectedHost, `${app}/${environment}/${field} host mismatch`);
       }
       const identity = JSON.stringify(endpoints);
       assert.equal(serialized.has(identity), false, `${app} endpoint set reused across environments`);
