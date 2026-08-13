@@ -38,6 +38,22 @@ const {
     updateUserLocation,
 } = require('./broadcast');
 
+const pttTraceEnabled = process.env.AM2_PTT_TRACE === '1';
+const PTT_TRACE_SAMPLE_EVERY_FRAMES = 25;
+
+function shouldSamplePttFrame(frameSequence) {
+    return frameSequence <= 3 || frameSequence % PTT_TRACE_SAMPLE_EVERY_FRAMES === 0;
+}
+
+function tracePtt(event, { traceId, frameSequence, frameBytes } = {}) {
+    if (!pttTraceEnabled) return;
+    const fields = [`event=${event}`, `mono_ns=${process.hrtime.bigint()}`];
+    if (traceId) fields.push(`trace_id=${traceId}`);
+    if (frameSequence) fields.push(`frame_seq=${frameSequence}`);
+    if (frameBytes) fields.push(`frame_bytes=${frameBytes}`);
+    console.info(`[PttTrace] ${fields.join(' ')}`);
+}
+
 function attachProtocol(server) {
     const wss = new WebSocket.Server({ server });
 
@@ -67,6 +83,8 @@ function attachProtocol(server) {
         ws.channelVideoAuthorized = false;
         ws.channelTransitioning = false;
         ws.channelJoinGeneration = 0;
+        ws.pttTraceId = 0;
+        ws.pttFrameSequence = 0;
 
         ws.on('pong', () => { ws.isAlive = true; });
 
@@ -74,11 +92,26 @@ function attachProtocol(server) {
             if (isBinary) {
                 if (!ws.sessionUser) return;
                 const binaryType = message[0];
+                if (binaryType === 1) {
+                    ws.pttFrameSequence += 1;
+                    if (shouldSamplePttFrame(ws.pttFrameSequence)) {
+                        tracePtt('frame_received', {
+                            traceId: ws.pttTraceId,
+                            frameSequence: ws.pttFrameSequence,
+                            frameBytes: message.length,
+                        });
+                    }
+                }
 
                 if (ws.ptpTargetId) {
                     const targetWs = ptpPeerFor(ws, ws.ptpSessionKind);
                     if (targetWs && targetWs.readyState === WebSocket.OPEN) {
                         targetWs.send(message, { binary: true });
+                        if (binaryType === 1 && shouldSamplePttFrame(ws.pttFrameSequence)) tracePtt('frame_forwarded', {
+                            traceId: ws.pttTraceId,
+                            frameSequence: ws.pttFrameSequence,
+                            frameBytes: message.length,
+                        });
                     }
                 } else if (ws.currentRoom) {
                     if (binaryType === 1 && ws.is_rx_only) return;
@@ -98,10 +131,17 @@ function attachProtocol(server) {
 
                     const clients = channelRooms.get(ws.currentRoom);
                     if (clients) {
+                        let forwarded = false;
                         clients.forEach(client => {
                             if (client !== ws && client.readyState === WebSocket.OPEN && !client.ptpTargetId) {
                                 client.send(message, { binary: true });
+                                forwarded = true;
                             }
+                        });
+                        if (binaryType === 1 && forwarded && shouldSamplePttFrame(ws.pttFrameSequence)) tracePtt('frame_forwarded', {
+                            traceId: ws.pttTraceId,
+                            frameSequence: ws.pttFrameSequence,
+                            frameBytes: message.length,
                         });
                     }
                 }
@@ -376,7 +416,6 @@ function attachProtocol(server) {
                      * way. Found by the test that restores the permission.
                      */
                     if (!ws.sessionUser || !ws.currentRoom) return;
-
                     /*
                      * Re-read the permission at the moment of transmitting.
                      *
@@ -405,6 +444,12 @@ function attachProtocol(server) {
                         }
                     }
 
+                    ws.pttTraceId = Number.isSafeInteger(data.trace_id) && data.trace_id > 0
+                        ? data.trace_id
+                        : ws.pttTraceId + 1;
+                    ws.pttFrameSequence = 0;
+                    tracePtt('start_received', { traceId: ws.pttTraceId });
+
                     // --- PENANGANAN HALF DUPLEX (SERVER VALIDATION) ---
                     const speakers = activeSpeakers.get(ws.currentRoom);
                     if (ws.duplex_mode === 'HALF DUPLEX' && speakers && speakers.size > 0) {
@@ -428,7 +473,8 @@ function attachProtocol(server) {
                         console.error("❌ PTT Start DB Error:", err.message);
                     }
 
-                    broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom)).map(s => s.split(':')[1]), channel: ws.currentRoom } });
+                    broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom)).map(s => s.split(':')[1]), channel: ws.currentRoom, trace_id: ws.pttTraceId } });
+                    tracePtt('start_forwarded', { traceId: ws.pttTraceId });
                     break;
 
                 case 'ptt_audio_end':
@@ -446,7 +492,8 @@ function attachProtocol(server) {
                             console.error("❌ PTT End DB Error:", err.message);
                         }
 
-                        broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom) || []).map(s => s.split(':')[1]) , channel: ws.currentRoom } });
+                        broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom) || []).map(s => s.split(':')[1]) , channel: ws.currentRoom, trace_id: ws.pttTraceId } });
+                        tracePtt('end_forwarded', { traceId: ws.pttTraceId });
                     }
                     break;
 
@@ -501,6 +548,12 @@ function attachProtocol(server) {
                     if (!ws.ptpTargetId || ws.ptpSessionKind !== 'audio'
                         || String(data.target_id ?? ws.ptpTargetId) !== String(ws.ptpTargetId)) return;
 
+                    ws.pttTraceId = Number.isSafeInteger(data.trace_id) && data.trace_id > 0
+                        ? data.trace_id
+                        : ws.pttTraceId + 1;
+                    ws.pttFrameSequence = 0;
+                    tracePtt('start_received', { traceId: ws.pttTraceId });
+
                     try {
                         await pool.query("UPDATE public.users SET is_speaking = true WHERE id = $1", [String(ws.sessionUser.id)]);
                         await createLog(ws.sessionUser.id, ws.currentChannelId, 'PUSH_PRIVATE');
@@ -508,7 +561,8 @@ function attachProtocol(server) {
                         console.error("❌ Private PTT Start DB Error:", err.message);
                     }
 
-                    ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true } }));
+                    ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
+                    tracePtt('start_forwarded', { traceId: ws.pttTraceId });
                     break;
 
                 case 'ptt_audio_end_private':
@@ -525,7 +579,8 @@ function attachProtocol(server) {
                     } catch (err) {
                         console.error("❌ Private PTT End DB Error:", err.message);
                     }
-                    ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true } }));
+                    ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
+                    tracePtt('end_forwarded', { traceId: ws.pttTraceId });
                     break;
 
                 case 'request_ptp': {
