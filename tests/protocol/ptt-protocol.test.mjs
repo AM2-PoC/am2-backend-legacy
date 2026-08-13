@@ -110,11 +110,12 @@ describe('push-to-talk over the relay', () => {
             'users_online carries a list');
     });
 
-    test('keying the mic is announced to the channel', async () => {
+    test('keying the mic relays its trace ID to the channel', async () => {
         listener.inbox.length = 0;
-        send(speaker, 'ptt_audio_start');
+        send(speaker, 'ptt_audio_start', { trace_id: 42001 });
         const status = await waitFor(listener, 'ptt_active_status');
         assert.ok(status.data !== undefined);
+        assert.equal(status.data.trace_id, 42001);
     });
 
     test('an audio frame reaches the other client', async () => {
