@@ -474,6 +474,14 @@ function attachProtocol(server) {
                     }
 
                     broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom)).map(s => s.split(':')[1]), channel: ws.currentRoom, trace_id: ws.pttTraceId } });
+                    // The client waits for this explicit acknowledgement before
+                    // opening its recorder. A queued binary frame can otherwise
+                    // reach this async handler while authorization is still in
+                    // flight and be discarded.
+                    ws.send(JSON.stringify({
+                        type: 'ptt_audio_start_authorized',
+                        data: { trace_id: ws.pttTraceId },
+                    }));
                     tracePtt('start_forwarded', { traceId: ws.pttTraceId });
                     break;
 
@@ -562,6 +570,10 @@ function attachProtocol(server) {
                     }
 
                     ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
+                    ws.send(JSON.stringify({
+                        type: 'ptt_audio_start_authorized',
+                        data: { trace_id: ws.pttTraceId },
+                    }));
                     tracePtt('start_forwarded', { traceId: ws.pttTraceId });
                     break;
 
