@@ -34,12 +34,26 @@ test('channel PTT relays sender trace IDs across start and end status', () => {
     assert.match(publicEnd, /tracePtt\('end_forwarded'/);
 });
 
+test('channel PTT explicitly acknowledges authorization before the client captures', () => {
+    const broadcast = publicStart.indexOf("broadcastToChannel(ws.currentRoom");
+    const acknowledgement = publicStart.indexOf("type: 'ptt_audio_start_authorized'");
+    assert.ok(broadcast >= 0, 'start must broadcast its active status');
+    assert.ok(acknowledgement > broadcast,
+        'acknowledge only after authorization and active-speaker state are established');
+    assert.match(publicStart.slice(acknowledgement), /trace_id: ws\.pttTraceId/);
+});
+
 test('private PTT uses the same trace boundary', () => {
     assert.match(privateStart, /Number\.isSafeInteger\(data\.trace_id\)/);
     assert.match(privateStart, /trace_id: ws\.pttTraceId/);
     assert.match(privateStart, /tracePtt\('start_received'/);
     assert.match(privateEnd, /trace_id: ws\.pttTraceId/);
     assert.match(privateEnd, /tracePtt\('end_forwarded'/);
+});
+
+test('private PTT acknowledges authorization with the sender trace', () => {
+    assert.match(privateStart, /type: 'ptt_audio_start_authorized'/);
+    assert.match(privateStart, /trace_id: ws\.pttTraceId/);
 });
 
 test('binary audio records received and forwarded frame metadata', () => {
