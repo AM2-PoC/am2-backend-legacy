@@ -241,7 +241,9 @@ function am2_csrf_field(): string
  */
 function am2_csrf_require(): void
 {
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    // Keep this method-based so future JSON PUT/PATCH/DELETE endpoints cannot
+    // silently bypass CSRF just because they do not use PHP form fields.
+    if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
         return;
     }
     if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION['admin_logged_in'])) {

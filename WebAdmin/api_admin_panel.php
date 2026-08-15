@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
+am2_csrf_require();
 
 // SECURITY: this endpoint carries no caller identity, so it cannot distinguish
 // one admin from another. Its only control is the shared key checked by
