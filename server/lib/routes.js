@@ -23,6 +23,33 @@ const {
     broadcastChannelNameChange,
 } = require('./broadcast');
 
+/*
+ * Where this environment serves its client APK from.
+ *
+ * The URL was assembled per request as `http://${req.headers.host}/...`. The
+ * client accepts an update from exactly one URL and refuses everything else, so
+ * that value could never match: the scheme was wrong before the host even
+ * mattered, and the host was whatever the caller put in the header. Self-update
+ * could not work in any environment, and from the device it looked like the app
+ * rejecting its own server.
+ *
+ * Left unset, the endpoint still reports the version and simply offers no URL.
+ * Advertising one the client is certain to refuse reads as a client bug; saying
+ * nothing is honest and shows up in the log.
+ */
+const UPDATE_BASE = (() => {
+    const configured = (process.env.AM2_UPDATE_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (!configured) {
+        console.warn('AM2_UPDATE_BASE_URL is not set; /api/check-update will not advertise a download URL');
+        return '';
+    }
+    if (!configured.startsWith('https://')) {
+        console.error('AM2_UPDATE_BASE_URL must be https; refusing to advertise a download URL');
+        return '';
+    }
+    return configured;
+})();
+
 function registerRoutes(app) {
     app.get('/', (req, res) => {
         res.status(200).send('<h1>PTT Server</h1><p>Status: Active (WIB) - Multimedia Pass-Through Engine Ready (Redis Enabled)</p>');
@@ -45,7 +72,7 @@ function registerRoutes(app) {
                     server_version_name: result.rows[0].version_name,
                     force_update: result.rows[0].force_update,
                     release_notes: result.rows[0].release_notes,
-                    update_url: `http://${req.headers.host}/update/update.apk`
+                    update_url: UPDATE_BASE ? `${UPDATE_BASE}/update/update.apk` : null
                 });
             } else {
                 res.status(404).json({ success: false, message: "No version info found" });
