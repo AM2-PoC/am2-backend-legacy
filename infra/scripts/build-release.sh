@@ -116,5 +116,23 @@ fi
 
 chmod 0750 "$temporary"
 mv -T -- "$temporary" "$destination"
+
+# A release is closed to everyone but its owner and its group, so on a deploy
+# host the group is the web server's only way in. The builder cannot set it: it
+# runs unprivileged and cannot join a group it is not a member of, which is why
+# trying made the build fail on CI instead.
+#
+# The group is carried by the directory releases are published into, via setgid,
+# so a new release inherits it with no privilege at all. That is a property of
+# the host, so all that is checked here is that it held. A release whose group
+# does not match its parent is one Apache may be unable to traverse, and the
+# symptom is a total 403 the moment the symlink moves.
+published_group=$(stat -c '%g' "$destination")
+parent_group=$(stat -c '%g' "$(dirname -- "$destination")")
+if [[ $published_group != "$parent_group" ]]; then
+    printf 'release group %s does not match %s on %s; set the setgid bit on the releases directory\n' \
+        "$published_group" "$parent_group" "$(dirname -- "$destination")" >&2
+    exit 1
+fi
 temporary=
 printf 'release built: %s -> %s\n' "$sha" "$destination"
