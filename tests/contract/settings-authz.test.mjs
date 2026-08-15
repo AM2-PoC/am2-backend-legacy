@@ -31,7 +31,25 @@ const SETTINGS = () => code('api_settings.php');
 
 test('nothing in the backup endpoint runs without a session', () => {
     const src = SETTINGS();
-    assert.match(src, /session_start\(\)/, 'api_settings.php never starts a session');
+    /*
+     * The property is that the endpoint runs inside a started session, not that
+     * this file contains a particular call. Session startup moved into
+     * session_boot.php so every entry point gets the same cookie flags, and
+     * demanding the literal session_start() here would have punished that.
+     *
+     * An indirection is worth only what it does, so the helper is checked too:
+     * booting through one that never starts a session would otherwise satisfy
+     * this test while protecting nothing.
+     */
+    const bootsDirectly = /session_start\(\)/.test(src);
+    const bootsViaHelper = /am2_session_boot\(\)/.test(src);
+    assert.ok(bootsDirectly || bootsViaHelper, 'api_settings.php never starts a session');
+    if (bootsViaHelper) {
+        const boot = code('session_boot.php');
+        assert.match(boot, /session_start\(\)/, 'am2_session_boot() does not start a session');
+        assert.match(boot, /'httponly'\s*=>\s*true/, 'the session cookie is readable by script');
+        assert.match(boot, /'samesite'\s*=>\s*'Lax'/, 'the session cookie rides cross-site requests');
+    }
     const gate = src.search(/admin_logged_in/);
     assert.notEqual(gate, -1, 'api_settings.php does not check that anyone is signed in');
     // Before the first thing that acts, not somewhere further down.
