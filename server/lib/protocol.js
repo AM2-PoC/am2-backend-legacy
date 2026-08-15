@@ -45,6 +45,36 @@ function shouldSamplePttFrame(frameSequence) {
     return frameSequence <= 3 || frameSequence % PTT_TRACE_SAMPLE_EVERY_FRAMES === 0;
 }
 
+/*
+ * How much may already be waiting for one client before video is withheld.
+ *
+ * ws.send() is asynchronous and buffers whatever the socket cannot yet write,
+ * so a listener on a weak downlink accumulates frames inside this process with
+ * no limit. Audio and video reach that listener through the same socket in
+ * arrival order, so a ~20 KB video frame buffered ahead of a ~45-byte Opus
+ * frame delays the speech by however long the video takes to push.
+ *
+ * About one frame, so at most one video frame is ever ahead of audio for a
+ * given client. Anything larger is a queue by another name.
+ */
+const DOWNLINK_VIDEO_BUDGET_BYTES = 24_000;
+
+let videoDropped = 0;
+
+/**
+ * Whether this client should be given this frame right now.
+ *
+ * Audio is always forwarded: it is the product, it is small, and it is what the
+ * delay is measured against. Video yields as soon as the client is behind,
+ * because a late frame carries a picture that is already history.
+ */
+function shouldForwardBinary(client, binaryType) {
+    if (binaryType === 1) return true;
+    if ((client.bufferedAmount || 0) < DOWNLINK_VIDEO_BUDGET_BYTES) return true;
+    videoDropped += 1;
+    return false;
+}
+
 function tracePtt(event, { traceId, frameSequence, frameBytes } = {}) {
     if (!pttTraceEnabled) return;
     const fields = [`event=${event}`, `mono_ns=${process.hrtime.bigint()}`];
@@ -105,7 +135,8 @@ function attachProtocol(server) {
 
                 if (ws.ptpTargetId) {
                     const targetWs = ptpPeerFor(ws, ws.ptpSessionKind);
-                    if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+                    if (targetWs && targetWs.readyState === WebSocket.OPEN
+                        && shouldForwardBinary(targetWs, binaryType)) {
                         targetWs.send(message, { binary: true });
                         if (binaryType === 1 && shouldSamplePttFrame(ws.pttFrameSequence)) tracePtt('frame_forwarded', {
                             traceId: ws.pttTraceId,
@@ -134,6 +165,7 @@ function attachProtocol(server) {
                         let forwarded = false;
                         clients.forEach(client => {
                             if (client !== ws && client.readyState === WebSocket.OPEN && !client.ptpTargetId) {
+                                if (!shouldForwardBinary(client, binaryType)) return;
                                 client.send(message, { binary: true });
                                 forwarded = true;
                             }
