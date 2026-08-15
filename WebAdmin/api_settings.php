@@ -1,8 +1,8 @@
 <?php
-session_start();
 header('Content-Type: application/json');
-require_once 'config.php';
-am2_api_auth();
+require_once __DIR__ . '/session_boot.php';
+am2_session_boot();
+require_once __DIR__ . '/config.php';
 
 /*
  * The one action here that is deliberately public.
@@ -49,6 +49,9 @@ if (($_GET['action'] ?? '') === 'check_update') {
     ]);
     exit;
 }
+
+am2_api_auth();
+am2_csrf_require();
 
 /*
  * Who is allowed in here, decided before anything else runs.

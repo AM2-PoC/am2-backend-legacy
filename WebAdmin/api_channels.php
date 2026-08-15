@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
+am2_csrf_require();
 
 
 // Identity is resolved by the server; see am2_api_identity().
