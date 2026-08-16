@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://am2-poc.com/schema/dev-session-manifest.json",
+  "title": "Development session manifest",
+  "description": "What one development session created and may therefore remove. Cleanup deletes from this record and from nothing else: a resource that is not listed was not created by the session and is not the session's to delete.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_id", "session_root", "created_at", "resources"],
+  "properties": {
+    "session_id": {
+      "description": "Identifies the session that owns every resource below. Cleanup refuses a manifest without one, because ownership is what separates a session's own scratch space from the machine it runs on.",
+      "type": "string",
+      "pattern": "^[a-z0-9]{8,64}$"
+    },
+    "session_root": {
+      "description": "The one directory a session may create paths under. Every path resource must resolve inside it.",
+      "type": "string",
+      "pattern": "^/tmp/am2-session-[a-z0-9]{8,64}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resource" }
+    }
+  },
+  "$defs": {
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "owner_session", "retention"],
+      "properties": {
+        "type": {
+          "description": "Only these are removable. An unknown type is a resource this controller does not understand well enough to delete safely.",
+          "enum": [
+            "temp_dir",
+            "temp_file",
+            "git_worktree",
+            "docker_container",
+            "docker_image",
+            "docker_volume",
+            "docker_network",
+            "process",
+            "emulator_avd",
+            "build_cache"
+          ]
+        },
+        "id": {
+          "description": "An absolute path for path types, or the runtime name/id for the rest.",
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_session": {
+          "description": "Must equal session_id. A resource labelled for another session is that session's to remove.",
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,64}$"
+        },
+        "ownership_proof": {
+          "description": "How the session knows it created this: the label it stamped, or the fact it made the path. Absent proof is a refusal, never a best-effort delete.",
+          "type": "string",
+          "minLength": 1
+        },
+        "retention": {
+          "description": "disposable is the only class cleanup may destroy. release bytes, canonical source, acceptance evidence and anything shared outlive the session that produced them.",
+          "enum": ["disposable", "release", "source", "evidence", "shared"]
+        }
+      }
+    }
+  }
+}
