@@ -59,6 +59,64 @@ function shouldSamplePttFrame(frameSequence) {
  */
 const DOWNLINK_VIDEO_BUDGET_BYTES = 24_000;
 
+/*
+ * Link measurement, from the relay's own vantage point.
+ *
+ * Two numbers were already there to be had and were being thrown away. The
+ * keepalive pings every client and gets a pong back, but the send time was
+ * discarded, so a round trip the relay observes on every interval never became
+ * a number. And audio arrives at a known rate — one frame per 20 ms — so the
+ * spread of arrival spacing at this end IS the jitter the uplink added.
+ *
+ * Neither needs anything from the device. Until now every claim about the
+ * network came from a handset that had to be held, instrumented and read back;
+ * these come from a server that is already running.
+ *
+ * Off by default because this sits on a 50 Hz path.
+ */
+const linkStatsEnabled = process.env.AM2_LINK_STATS === '1';
+const FRAME_INTERVAL_MS = 20;
+const LINK_REPORT_INTERVAL_MS = 15000;
+
+/**
+ * Smoothed inter-arrival jitter, the RFC 3550 estimator.
+ *
+ * A single late frame is not jitter, so the deviation is smoothed by a
+ * sixteenth. That makes the value readable at any moment rather than only
+ * meaningful in aggregate.
+ */
+function observeAudioArrival(ws) {
+    if (!linkStatsEnabled) return;
+    const nowNs = process.hrtime.bigint();
+    const previous = ws.lastAudioArrivalNs;
+    ws.lastAudioArrivalNs = nowNs;
+    if (!previous) return;
+
+    const spacingMs = Number(nowNs - previous) / 1e6;
+    const deviation = Math.abs(spacingMs - FRAME_INTERVAL_MS);
+    ws.uplinkJitterMs = (ws.uplinkJitterMs || 0) + (deviation - (ws.uplinkJitterMs || 0)) / 16;
+    ws.uplinkWorstMs = Math.max(ws.uplinkWorstMs || 0, deviation);
+    ws.uplinkFrames = (ws.uplinkFrames || 0) + 1;
+}
+
+/** One line per client that has been heard from, on an interval. */
+function reportLinkQuality(clients) {
+    if (!linkStatsEnabled) return;
+    clients.forEach((ws) => {
+        if (!ws.sessionUser || !ws.uplinkFrames) return;
+        console.log(
+            `event=link_quality user=${ws.sessionUser.id}`
+            + ` rtt_ms=${ws.rttMs === undefined ? 'na' : ws.rttMs.toFixed(1)}`
+            + ` uplink_jitter_ms=${ws.uplinkJitterMs.toFixed(2)}`
+            + ` uplink_worst_ms=${ws.uplinkWorstMs.toFixed(1)}`
+            + ` frames=${ws.uplinkFrames}`
+            + ` buffered_bytes=${ws.bufferedAmount || 0}`,
+        );
+        ws.uplinkWorstMs = 0;
+        ws.uplinkFrames = 0;
+    });
+}
+
 let videoDropped = 0;
 
 /**
@@ -91,9 +149,13 @@ function attachProtocol(server) {
         wss.clients.forEach((ws) => {
             if (ws.isAlive === false) return ws.terminate();
             ws.isAlive = false;
+            ws.pingSentAt = process.hrtime.bigint();
             ws.ping();
         });
     }, 30000);
+
+    const linkReportInterval = setInterval(() => reportLinkQuality(wss.clients), LINK_REPORT_INTERVAL_MS);
+    if (linkReportInterval.unref) linkReportInterval.unref();
 
     wss.on('connection', (ws) => {
         ws.isAlive = true;
@@ -116,13 +178,21 @@ function attachProtocol(server) {
         ws.pttTraceId = 0;
         ws.pttFrameSequence = 0;
 
-        ws.on('pong', () => { ws.isAlive = true; });
+        ws.on('pong', () => {
+            ws.isAlive = true;
+            // The round trip the keepalive was already paying for.
+            if (ws.pingSentAt) {
+                ws.rttMs = Number(process.hrtime.bigint() - ws.pingSentAt) / 1e6;
+                ws.pingSentAt = null;
+            }
+        });
 
         ws.on('message', async (message, isBinary) => {
             if (isBinary) {
                 if (!ws.sessionUser) return;
                 const binaryType = message[0];
                 if (binaryType === 1) {
+                    observeAudioArrival(ws);
                     ws.pttFrameSequence += 1;
                     if (shouldSamplePttFrame(ws.pttFrameSequence)) {
                         tracePtt('frame_received', {
