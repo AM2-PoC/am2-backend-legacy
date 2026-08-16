@@ -134,3 +134,43 @@ test('release builder seals runtime update links before final publication', { ti
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+test('release builder publishes a directory the web server can traverse', { timeout: 120_000 }, () => {
+  /*
+   * A release is mode 0750, so on a deploy host the group is the web server's
+   * only way in. Apache could not enter a published release and answered 403
+   * for all of WebAdmin:
+   *
+   *   AH00035: access to /api_login.php denied ... search permissions are
+   *   missing on a component of the path
+   *
+   * The group comes from the directory releases are published into, through
+   * setgid, so it is inherited with no privilege. The builder cannot set it
+   * itself — it runs unprivileged and cannot join a group it does not belong
+   * to, and trying failed the build on CI rather than fixing the host.
+   *
+   * So what is pinned is the property that holds everywhere: a published
+   * release carries the group of the directory it was published into. On a
+   * host with setgid that is the web group; here it is the temp directory's
+   * own group, and a builder that reset it would fail this either way.
+   */
+  const base = tempDir('am2-release-group-');
+  const destination = join(base, 'candidate');
+  const sha = git('rev-parse', 'HEAD');
+  try {
+    const run = spawnSync('bash', [build, '--repo', root, '--sha', sha, '--dest', destination], {
+      encoding: 'utf8',
+      timeout: 110_000,
+    });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+
+    assert.equal(statSync(destination).gid, statSync(base).gid,
+      'the release does not carry the group of the directory it was published into');
+    assert.equal(statSync(join(destination, 'WebAdmin')).gid, statSync(base).gid,
+      'WebAdmin does not carry the published group');
+    // The mode stays closed to everyone else; the group is what opens it.
+    assert.equal(statSync(destination).mode & 0o777, 0o750);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});

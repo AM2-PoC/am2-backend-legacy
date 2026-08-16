@@ -22,6 +22,20 @@ Production is an immutable release directory selected by `/var/www/am2/current`.
 
 ## One-time host containment
 
+Make the releases directories setgid, so every release published into them
+inherits the web server's group:
+
+```bash
+sudo chgrp www-data /var/www/am2/releases /var/www/am2/staging/releases
+sudo chmod g+s /var/www/am2/releases /var/www/am2/staging/releases
+```
+
+A release is mode `0750`, so the group is Apache's only way in. The builder runs
+unprivileged and cannot join a group it does not belong to, so it verifies this
+inheritance rather than setting it, and refuses to publish when it did not hold.
+Without the setgid bit a release takes the building user's own group and Apache
+answers `403` for all of WebAdmin the moment the symlink moves.
+
 Install source-controlled policy and health artifacts. This does not restart `am2-api`:
 
 ```bash
