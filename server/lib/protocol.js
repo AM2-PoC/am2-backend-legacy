@@ -79,6 +79,19 @@ const FRAME_INTERVAL_MS = 20;
 const LINK_REPORT_INTERVAL_MS = 15000;
 
 /**
+ * Forget the arrival clock at a transmission boundary.
+ *
+ * Audio arrives every 20 ms *while a key is held*. Between one press and the
+ * next there is silence, and measuring that silence against a 20 ms expectation
+ * turned ordinary radio use into enormous fabricated jitter -- a reported
+ * `uplink_worst_ms` of 174 seconds inside a 15 second window, which was read as
+ * a network problem and was nothing of the kind.
+ */
+function resetAudioArrival(ws) {
+    ws.lastAudioArrivalNs = null;
+}
+
+/**
  * Smoothed inter-arrival jitter, the RFC 3550 estimator.
  *
  * A single late frame is not jitter, so the deviation is smoothed by a
@@ -103,17 +116,27 @@ function observeAudioArrival(ws) {
 function reportLinkQuality(clients) {
     if (!linkStatsEnabled) return;
     clients.forEach((ws) => {
-        if (!ws.sessionUser || !ws.uplinkFrames) return;
-        console.log(
-            `event=link_quality user=${ws.sessionUser.id}`
-            + ` rtt_ms=${ws.rttMs === undefined ? 'na' : ws.rttMs.toFixed(1)}`
-            + ` uplink_jitter_ms=${ws.uplinkJitterMs.toFixed(2)}`
-            + ` uplink_worst_ms=${ws.uplinkWorstMs.toFixed(1)}`
-            + ` frames=${ws.uplinkFrames}`
-            + ` buffered_bytes=${ws.bufferedAmount || 0}`,
-        );
+        if (!ws.sessionUser) return;
+        // The window is cleared for every client, including one that sent
+        // nothing. Clearing it only for clients that reported meant an idle
+        // handset carried its worst sample forward indefinitely, and the next
+        // line it appeared on described a moment minutes in the past.
+        const frames = ws.uplinkFrames || 0;
+        const worstMs = ws.uplinkWorstMs || 0;
         ws.uplinkWorstMs = 0;
         ws.uplinkFrames = 0;
+        if (!frames) return;
+
+        console.log(
+            `event=link_quality user=${ws.sessionUser.id}`
+            + ` client_version=${ws.clientVersionName || 'unknown'}`
+            + ` client_version_code=${ws.clientVersionCode === null ? 'na' : ws.clientVersionCode}`
+            + ` rtt_ms=${ws.rttMs === undefined ? 'na' : ws.rttMs.toFixed(1)}`
+            + ` uplink_jitter_ms=${ws.uplinkJitterMs.toFixed(2)}`
+            + ` uplink_worst_ms=${worstMs.toFixed(1)}`
+            + ` frames=${frames}`
+            + ` buffered_bytes=${ws.bufferedAmount || 0}`,
+        );
     });
 }
 
@@ -177,6 +200,8 @@ function attachProtocol(server) {
         ws.channelJoinGeneration = 0;
         ws.pttTraceId = 0;
         ws.pttFrameSequence = 0;
+        ws.clientVersionCode = null;
+        ws.clientVersionName = null;
 
         ws.on('pong', () => {
             ws.isAlive = true;
@@ -258,6 +283,27 @@ function attachProtocol(server) {
                 case 'app_login':
                     const cleanIdentity = data.username ? data.username.trim() : "";
                     const providedDeviceId = data.current_device_id ? data.current_device_id.trim() : null;
+                    /*
+                     * Which build is on the other end.
+                     *
+                     * The relay recorded a username and nothing about the
+                     * software, so "is that unit running the fix" had no answer
+                     * here -- and was answered instead from an APK signer
+                     * digest, which names a keystore rather than a commit, and
+                     * gave the wrong answer for an entire round of work.
+                     *
+                     * Every handset already in the field predates this field, so
+                     * absence is normal and is recorded as unknown.
+                     */
+                    ws.clientVersionCode = Number.isSafeInteger(data.client_version_code)
+                        && data.client_version_code > 0
+                        ? data.client_version_code
+                        : null;
+                    ws.clientVersionName = typeof data.client_version_name === 'string'
+                        && data.client_version_name.trim().length > 0
+                        && data.client_version_name.length <= 64
+                        ? data.client_version_name.trim()
+                        : null;
                     try {
                         const res = await pool.query(`
                             SELECT u.*, a.status as admin_status, a.expired_at as admin_expired_at,
@@ -351,6 +397,11 @@ function attachProtocol(server) {
 
                             await pool.query("UPDATE public.users SET status = 'online', updated_at = CURRENT_TIMESTAMP, current_device_id = $1, is_speaking = false WHERE id = $2", [providedDeviceId, uid]);
                             await createLog(uid, user.last_channel_id, 'LOGIN');
+                            console.log(
+                                `event=client_login user=${uid}`
+                                + ` client_version=${ws.clientVersionName || 'unknown'}`
+                                + ` client_version_code=${ws.clientVersionCode === null ? 'na' : ws.clientVersionCode}`,
+                            );
 
                             if (data.latitude && data.longitude) await updateUserLocation(uid, data.latitude, data.longitude, data.accuracy, data.address);
 
@@ -551,6 +602,7 @@ function attachProtocol(server) {
                         : ws.pttTraceId + 1;
                     ws.pttFrameSequence = 0;
                     tracePtt('start_received', { traceId: ws.pttTraceId });
+                    resetAudioArrival(ws);
 
                     // --- PENANGANAN HALF DUPLEX (SERVER VALIDATION) ---
                     const speakers = activeSpeakers.get(ws.currentRoom);
@@ -604,6 +656,7 @@ function attachProtocol(server) {
 
                         broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom) || []).map(s => s.split(':')[1]) , channel: ws.currentRoom, trace_id: ws.pttTraceId } });
                         tracePtt('end_forwarded', { traceId: ws.pttTraceId });
+                        resetAudioArrival(ws);
                     }
                     break;
 
@@ -663,6 +716,7 @@ function attachProtocol(server) {
                         : ws.pttTraceId + 1;
                     ws.pttFrameSequence = 0;
                     tracePtt('start_received', { traceId: ws.pttTraceId });
+                    resetAudioArrival(ws);
 
                     try {
                         await pool.query("UPDATE public.users SET is_speaking = true WHERE id = $1", [String(ws.sessionUser.id)]);
@@ -695,6 +749,7 @@ function attachProtocol(server) {
                     }
                     ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
                     tracePtt('end_forwarded', { traceId: ws.pttTraceId });
+                    resetAudioArrival(ws);
                     break;
 
                 case 'request_ptp': {

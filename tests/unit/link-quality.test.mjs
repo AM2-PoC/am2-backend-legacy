@@ -57,3 +57,33 @@ test('measuring costs nothing when it is switched off', () => {
     assert.match(observe.slice(0, 300), /if \(!linkStatsEnabled\) return|linkStatsEnabled/,
         'the hot path does work even when reporting is off');
 });
+
+/**
+ * The numbers this log line reports must be true.
+ *
+ * They were not. `uplink_worst_ms=174780` was reported inside a 15 second
+ * window -- 174 seconds of "jitter" that could not have happened. Two defects
+ * produced it, and both made the metric read high in a way that looked like a
+ * network problem and was not.
+ */
+test('the worst-case sample is cleared even for a client that reported nothing', () => {
+    // The reset lives after an early return taken by every idle client, so the
+    // worst sample was never cleared for anyone who stopped transmitting. It
+    // accumulated across the whole session and was reported as if it were
+    // recent.
+    const body = protocol.slice(protocol.indexOf('function reportLinkQuality')).slice(0, 1600);
+    assert.ok(body.includes('uplinkWorstMs = 0'), 'the worst sample is never cleared');
+    assert.doesNotMatch(
+        body,
+        /!ws\.uplinkFrames\)\s*return/,
+        'an idle client returns before the reset and keeps a stale worst sample forever',
+    );
+});
+
+test('the gap between transmissions is not counted as jitter', () => {
+    // Audio arrives every 20 ms *while a key is down*. The gap between one
+    // transmission and the next is seconds of silence, and measuring it against
+    // a 20 ms expectation turns ordinary radio use into enormous fake jitter.
+    assert.match(protocol, /lastAudioArrivalNs\s*=\s*(null|0n|undefined)/,
+        'the arrival clock is never reset when a transmission ends');
+});
