@@ -195,30 +195,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
     }
 }
 
-if (isset($_POST['upload_apk']) && isset($_FILES['apk_file'])) {
-    if (am2_page_require_super($is_super, 'upload-apk')) {
-        $error = t('set.err_denied');
-    } elseif (($why = am2_upload_error($_FILES['apk_file'])) !== '') {
-        $error = t($why, ['limit' => am2_bytes_human($upload_limit)]);
-    } else {
-        $target_dir = 'update/';
-        if (!is_dir($target_dir)) {
-            mkdir($target_dir, 0755, true);
-        }
-
-        $file_name = basename($_FILES['apk_file']['name']);
-        $target    = $target_dir . $file_name;
-
-        if (strtolower(pathinfo($target, PATHINFO_EXTENSION)) !== 'apk') {
-            $error = t('set.err_apk_type');
-        } elseif (move_uploaded_file($_FILES['apk_file']['tmp_name'], $target)) {
-            $msg = t('set.msg_apk_ok', ['file' => $file_name]);
-        } else {
-            $error = t('set.err_apk_move');
-        }
-    }
-}
-
 /**
  * A branch admin's own rows, as INSERT statements.
  *
@@ -855,82 +831,14 @@ include 'partials/shell.php';
         </div>
 
         <div class="grid gap-5 p-5 lg:grid-cols-2">
-            <form method="POST" enctype="multipart/form-data" id="am2-apk-form"
-                  data-limit="<?= $upload_limit ?>">
-                <?= am2_csrf_field() ?>
-
-                <!--
-                    The input is the control: it is what a keyboard and a
-                    screen reader operate, and it is the fallback where
-                    drag events do not exist. The zone is a second way
-                    in, not a replacement.
-                -->
-                <div id="am2-apk-zone" data-input="apk_file"
-                     class="rounded-control border-2 border-dashed border-edge-strong
-                            bg-card-muted/40 px-4 py-6 text-center transition-colors
-                            duration-[var(--duration-micro)]">
-                    <p class="text-sm text-ink-muted"><?= e('set.drop_apk') ?></p>
-                    <label for="apk_file" class="sr-only"><?= e('set.apk_label') ?></label>
-                    <input id="apk_file" type="file" name="apk_file" accept=".apk" required
-                           class="mx-auto mt-3 block w-full max-w-xs cursor-pointer rounded-control
-                                  border border-edge bg-card text-sm text-ink-muted
-                                  file:me-3 file:cursor-pointer file:border-0 file:bg-card-muted
-                                  file:px-4 file:py-3 file:font-mono file:text-[11px]
-                                  file:uppercase file:tracking-[0.15em] file:text-ink
-                                  hover:border-edge-strong focus:border-brand focus:outline-none
-                                  focus:ring-2 focus:ring-brand/25">
-                    <p class="mt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
-                        <?= e('set.upload_limit', ['limit' => am2_bytes_human($upload_limit)]) ?>
-                    </p>
-                </div>
-
-                <!-- Filled in by the page script once a file is chosen. -->
-                <div id="am2-apk-detail" hidden class="mt-3 space-y-1.5 rounded-control
-                            border border-edge bg-card-muted px-3 py-2.5">
-                    <p class="flex items-baseline justify-between gap-3 text-sm">
-                        <span data-apk-name class="min-w-0 truncate font-mono text-ink"></span>
-                        <span data-apk-size class="shrink-0 font-mono text-xs text-ink-muted"></span>
-                    </p>
-                    <p class="flex items-baseline gap-2 font-mono text-[11px] text-ink-subtle">
-                        <span class="uppercase tracking-[0.15em]"><?= e('set.checksum') ?></span>
-                        <span data-apk-hash class="min-w-0 truncate"><?= e('set.computing') ?></span>
-                    </p>
-                    <p data-apk-warn hidden
-                       class="flex items-start gap-2 text-xs text-bad"></p>
-                </div>
-
-                <!-- The progress of the upload itself. A 24 MB file used
-                     to leave the page apparently idle for half a minute. -->
-                <div id="am2-apk-progress" hidden class="mt-3">
-                    <div class="h-1.5 overflow-hidden rounded-full bg-card-muted">
-                        <div data-bar class="h-full w-0 rounded-full bg-brand
-                                    transition-[width] duration-[var(--duration-micro)]"></div>
-                    </div>
-                    <p data-label class="mt-1.5 text-center font-mono text-[11px]
-                              uppercase tracking-[0.15em] text-ink-subtle"></p>
-                </div>
-
-                <div class="mt-4 flex items-center justify-between gap-3">
-                    <!-- 135x15 on a phone. A link beside a 44px button has
-                         to be reachable by the same thumb. -->
-                    <a href="update/" target="_blank" rel="noopener"
-                       class="inline-flex h-11 items-center font-mono text-[11px]
-                              uppercase tracking-[0.15em] text-ink-subtle!
-                              no-underline! hover:text-brand!
-                              focus-visible:outline-2 focus-visible:outline-offset-2">
-                        <?= e('set.open_folder') ?>
-                    </a>
-                    <button type="submit" name="upload_apk" value="1" id="am2-apk-submit"
-                            class="h-11 rounded-control border border-edge px-5 font-mono
-                                   text-[11px] font-semibold uppercase tracking-[0.15em]
-                                   text-ink transition-colors duration-[var(--duration-micro)]
-                                   hover:border-brand hover:text-brand focus:outline-none
-                                   focus-visible:ring-2 focus-visible:ring-brand/60
-                                   disabled:cursor-not-allowed disabled:opacity-40">
-                        <?= e('set.upload') ?>
-                    </button>
-                </div>
-            </form>
+            <!--
+                Releases are published by the release pipeline from bytes
+                signed on an isolated runner, so the panel has no part in
+                putting a file on the shelf. It shows what is published.
+            -->
+            <div class="self-start rounded-control border border-edge px-4 py-3">
+                <p class="text-sm text-ink-muted"><?= e('set.publish_via_release') ?></p>
+            </div>
 
             <div id="am2-shelf-list" class="self-start rounded-control border border-edge">
             <p class="px-4 pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
@@ -1212,7 +1120,6 @@ include 'partials/shell.php';
     const T = <?= json_encode([
         'copied'     => t('set.copied'),
         'too_big'    => t('set.err_too_big', ['limit' => am2_bytes_human($upload_limit)]),
-        'uploading'  => t('set.uploading'),
         'kind_am2'   => t('set.kind_am2'),
         'kind_dump'  => t('set.kind_dump'),
         'kind_other' => t('set.kind_other'),
@@ -1316,83 +1223,6 @@ include 'partials/shell.php';
             zoom.querySelector('[data-qr-zoom-label]').textContent = btn.dataset.qrLabel;
             zoom.querySelector('[data-qr-zoom-url]').textContent = btn.dataset.qr;
         });
-    });
-
-    const apkDetail = $('am2-apk-detail');
-    const apkSubmit = $('am2-apk-submit');
-    const LIMIT = Number($('am2-apk-form')?.dataset.limit || 0);
-
-    dropzone('am2-apk-zone', async (file) => {
-        if (!file) { apkDetail.hidden = true; return; }
-        apkDetail.hidden = false;
-        apkDetail.querySelector('[data-apk-name]').textContent = file.name;
-        apkDetail.querySelector('[data-apk-size]').textContent = bytes(file.size);
-
-        const warn = apkDetail.querySelector('[data-apk-warn]');
-        const tooBig = LIMIT > 0 && file.size > LIMIT;
-        warn.hidden = !tooBig;
-        warn.textContent = tooBig ? T.too_big : '';
-        // Over post_max_size PHP discards the body entirely, the CSRF check
-        // finds no token and answers "Sesi tidak valid" -- so refusing here is
-        // the only place the real reason can be given.
-        if (apkSubmit) apkSubmit.disabled = tooBig;
-
-        const hash = apkDetail.querySelector('[data-apk-hash]');
-        try {
-            const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-            hash.textContent = [...new Uint8Array(digest)]
-                .map((b) => b.toString(16).padStart(2, '0')).join('');
-        } catch {
-            hash.textContent = '—';
-        }
-    });
-
-    /* ---- Upload with a visible progress -------------------------------
-     * Progressive enhancement: without XMLHttpRequest the form posts itself as
-     * it always did. With it, the same request is sent and the parts of the
-     * page the server re-rendered are swapped in, so the confirmation is not
-     * lost to a reload.
-     */
-    const apkForm = $('am2-apk-form');
-    const progress = $('am2-apk-progress');
-    apkForm?.addEventListener('submit', (e) => {
-        const input = $('apk_file');
-        if (!window.XMLHttpRequest || !input?.files?.length || apkSubmit?.disabled) return;
-        e.preventDefault();
-
-        const body = new FormData(apkForm);
-        body.append('upload_apk', '1');   // a submit button is not in FormData
-
-        const bar = progress.querySelector('[data-bar]');
-        const label = progress.querySelector('[data-label]');
-        progress.hidden = false;
-        apkSubmit.disabled = true;
-
-        const xhr = new XMLHttpRequest();
-        xhr.upload.addEventListener('progress', (ev) => {
-            if (!ev.lengthComputable) return;
-            const pct = Math.round((ev.loaded / ev.total) * 100);
-            bar.style.width = pct + '%';
-            label.textContent = `${T.uploading} ${pct}%`;
-        });
-        xhr.addEventListener('loadend', () => {
-            apkSubmit.disabled = false;
-            progress.hidden = true;
-            bar.style.width = '0%';
-
-            // Parsed, not assigned as markup: the response is this page, and
-            // the three regions the server re-rendered replace their own nodes.
-            const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
-            for (const id of ['am2-page-alert', 'am2-shelf-version', 'am2-shelf-list']) {
-                const fresh = doc.getElementById(id);
-                const here = $(id);
-                if (fresh && here) here.replaceWith(fresh);
-            }
-            $('am2-page-alert')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            window.AM2?.enterOnce('#am2-page-alert [data-kpi]');
-        });
-        xhr.open('POST', window.location.pathname);
-        xhr.send(body);
     });
 
     /* ---- Password rules, as they are met ------------------------------ */
