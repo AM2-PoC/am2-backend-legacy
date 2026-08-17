@@ -163,6 +163,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install the relay's own dependencies for the harness
+        # Before the stack, not after. Compose mounts a named volume at
+        # /app/node_modules, and Docker creates the host-side mount point as
+        # root -- so starting first leaves server/node_modules unwritable and
+        # npm fails with EACCES. The container keeps using its own volume
+        # either way; this copy is only what the harness imports `ws` from.
+        run: npm --prefix server ci --omit=dev
       - name: Start the stack
         run: |
           cp .env.example .env
@@ -175,8 +182,6 @@ jobs:
           count=$(docker compose exec -T db psql -U am2 -d am2 -tAc \
               "SELECT count(*) FROM public.users WHERE id LIKE 'CT\_%'")
           test "$count" -eq 4 || { echo "::error::expected 4 fixture units, found $count"; exit 1; }
-      - name: Install the relay's own dependencies for the harness
-        run: npm --prefix server ci --omit=dev
       - name: Run the protocol suite
         env:
           CT_NODE_URL: http://127.0.0.1:5000
