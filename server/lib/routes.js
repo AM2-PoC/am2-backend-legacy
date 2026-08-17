@@ -21,6 +21,7 @@ const {
     broadcastChannelUpdate,
     broadcastUsersInChannel,
     broadcastChannelNameChange,
+    stopChannelVideo,
 } = require('./broadcast');
 
 /*
@@ -271,6 +272,20 @@ function registerRoutes(app) {
                 targetWs.enable_p2p = (enable_p2p !== false) && (auth.can_manage_p2p !== false);
                 targetWs.enable_ptt_video = (enable_ptt_video === true) && (auth.can_manage_video === true);
                 targetWs.duplex_mode = duplex_mode || 'HALF DUPLEX';
+
+                /*
+                 * Withdrawing video has to stop the stream that is running.
+                 *
+                 * The per-frame gate refuses new frames the moment this flag
+                 * flips, so the picture stops -- but the unit stayed listed as
+                 * streaming, and a list nobody corrects is a list every viewer
+                 * still believes. They held an incoming-video view with nothing
+                 * arriving behind it: revoking the permission produced the black
+                 * screen rather than ending the stream.
+                 */
+                if (!targetWs.enable_ptt_video && targetWs.currentRoom) {
+                    await stopChannelVideo(targetWs, targetWs.currentRoom);
+                }
 
                 targetWs.send(JSON.stringify({
                     type: 'permission_update',
