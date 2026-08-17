@@ -169,12 +169,32 @@ export async function json(res) {
  * into a command line is how a test ends up asserting against a syntax error.
  */
 export function sql(query, db = process.env.CT_DB || 'am2_staging') {
+    const [command, ...prefix] = psqlInvocation(db);
     const out = execFileSync(
-        'sudo',
-        ['-u', 'postgres', 'psql', '-d', db, '-tAF', '|', '--no-align', '-c', query],
+        command,
+        [...prefix, '-tAF', '|', '--no-align', '-c', query],
         { encoding: 'utf8' }
     );
     return out.split('\n').filter((l) => l.trim() !== '').map((l) => l.split('|'));
+}
+
+/**
+ * How to reach the database the relay under test is actually using.
+ *
+ * This was `sudo -u postgres psql -d am2_staging` written out at each call
+ * site. That is right on the deploy host and silently wrong anywhere else: run
+ * the suite against a container and the permission changes a test makes land in
+ * staging while the relay under test reads its own database, so the test asserts
+ * against a change that never reached it. It failed, which was lucky -- the
+ * same shape could just as easily have passed while mutating the wrong data.
+ *
+ * CT_PSQL is a whole invocation, space separated, so a containerised database
+ * can be reached without this file knowing what a container is.
+ */
+export function psqlInvocation(db = process.env.CT_DB || 'am2_staging') {
+    const override = (process.env.CT_PSQL || '').trim();
+    if (override) return override.split(/\s+/);
+    return ['sudo', '-u', 'postgres', 'psql', '-d', db];
 }
 
 /** The single row a query is expected to return, or null. */
