@@ -59,6 +59,44 @@ const runCleanup = async () => {
     }
 };
 
+/**
+ * Nobody is connected to a process that has just started.
+ *
+ * Session state lives in two places. In memory, which a restart clears for
+ * free; and in public.users -- status, current_device_id, is_speaking -- which
+ * it does not. Only the close handler wrote those back, behind a ten second
+ * grace timer, so any termination that is not graceful left them set: a crash,
+ * an OOM kill, or `systemctl restart` during a deploy, which is every deploy
+ * with anyone on the air.
+ *
+ * The roster then lies -- broadcastUsersInChannel selects on status = 'online'
+ * -- and, worse, login can be refused outright: the single-device check reads
+ * current_device_id and, outside a grace period, refuses a different one. The
+ * operator is told they are signed in on another device when no device is
+ * signed in anywhere, and the only recovery is an administrator editing the
+ * row. ANDROID_ID is derived from the signing key, so a handset that installs a
+ * build signed with a different key presents a new device id to a row that
+ * still names the old one.
+ *
+ * Unconditional, because the premise is: this process has no connections yet.
+ * It corrects session state and nothing else.
+ */
+const resetSessions = async () => {
+    try {
+        const res = await pool.query(
+            "UPDATE public.users SET status = 'offline', current_device_id = NULL, is_speaking = false "
+            + "WHERE status <> 'offline' OR current_device_id IS NOT NULL OR is_speaking"
+        );
+        if (res.rowCount) {
+            console.log(`\u{1F9F9} Cleared ${res.rowCount} session(s) left by the previous process.`);
+        }
+    } catch (err) {
+        // A radio that will not start because a cleanup query failed is worse
+        // than one that starts with a stale roster.
+        console.error('\u274C Session reset error:', err.message);
+    }
+};
+
 /** On boot, then once a day. */
 const startCleanup = () => {
     runCleanup();
@@ -113,4 +151,5 @@ async function channelPermission(userId, channelSlug) {
     return rows[0] ?? null;
 }
 
-module.exports = { pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission };
+module.exports = {
+    resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission };

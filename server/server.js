@@ -35,12 +35,15 @@ const {
     clearPtpSession,
 } = require('./lib/state');
 
-const { pool, redisClient, connectRedis, startCleanup, createLog } = require('./lib/db');
+const { pool, redisClient, connectRedis, startCleanup, resetSessions, createLog } = require('./lib/db');
 const { registerRoutes } = require('./lib/routes');
 const { attachProtocol } = require('./lib/protocol');
 
 connectRedis();
 startCleanup();
+// Before any socket is accepted: nobody can be connected to a process that has
+// only just started, so anything the previous one left marked online is wrong.
+resetSessions();
 
 // --- MIDDLEWARE ---
 // Was wildcard. The relay is called by the panel over localhost and by the
