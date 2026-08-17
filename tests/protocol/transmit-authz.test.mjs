@@ -15,7 +15,7 @@ import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { env, NODE_URL } from '../contract/helpers.mjs';
+import { env, NODE_URL, psqlInvocation } from '../contract/helpers.mjs';
 
 const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
@@ -24,9 +24,15 @@ const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const TIMEOUT = 8000;
 const CHANNEL = 'ct_channel_a';
 
-/** Staging only, and named here so the guard in the script is not the only one. */
-const psql = (sql) => execFileSync('sudo', ['-u', 'postgres', 'psql', '-tAd', 'am2_staging', '-c', sql],
-    { encoding: 'utf8' }).trim();
+/**
+ * The database the relay under test is using -- not, as this used to be, the
+ * staging one regardless. A permission change has to land where the relay will
+ * read it.
+ */
+const psql = (query) => {
+    const [command, ...prefix] = psqlInvocation();
+    return execFileSync(command, [...prefix, '-tA', '-c', query], { encoding: 'utf8' }).trim();
+};
 
 function connect(label) {
     const ws = new WebSocket(WS_URL);

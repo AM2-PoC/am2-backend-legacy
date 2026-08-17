@@ -147,3 +147,52 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config > /dev/null
+
+  protocol:
+    # The suite that drives the real wire -- login, join, key the mic, relay a
+    # frame, release -- could only ever run by hand against staging, because the
+    # units it signs in as existed only there. So the one test layer that
+    # exercises the protocol never ran here, and a protocol test that was broken
+    # could reach main and stay there. That happened, and this is the answer:
+    # the same suite, against a relay built from this commit.
+    name: protocol suite (containerised relay)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the relay's own dependencies for the harness
+        # Before the stack, not after. Compose mounts a named volume at
+        # /app/node_modules, and Docker creates the host-side mount point as
+        # root -- so starting first leaves server/node_modules unwritable and
+        # npm fails with EACCES. The container keeps using its own volume
+        # either way; this copy is only what the harness imports `ws` from.
+        run: npm --prefix server ci --omit=dev
+      - name: Start the stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --wait db redis relay
+      - name: The fixture units must be seeded
+        run: |
+          set -euo pipefail
+          # A missing seed would otherwise surface as a login timeout, which
+          # reads as a relay fault rather than a fixture one.
+          count=$(docker compose exec -T db psql -U am2 -d am2 -tAc \
+              "SELECT count(*) FROM public.users WHERE id LIKE 'CT\_%'")
+          test "$count" -eq 4 || { echo "::error::expected 4 fixture units, found $count"; exit 1; }
+      - name: Run the protocol suite
+        env:
+          CT_NODE_URL: http://127.0.0.1:5000
+          CT_SERVER_JS: ${{ github.workspace }}/server/server.js
+          CT_PSQL: docker compose exec -T db psql -U am2 -d am2
+        run: |
+          set -euo pipefail
+          # The password is the one in the seed, which is the source of truth
+          # for a container that exists for the length of this job.
+          printf 'CT_PTT_PASS=devpassword123\nCT_NODE_URL=%s\n' "$CT_NODE_URL" > "$RUNNER_TEMP/ct.env"
+          CT_ENV_FILE="$RUNNER_TEMP/ct.env" bash tests/run-protocol.sh
+      - name: Relay log on failure
+        if: failure()
+        run: docker compose logs --no-color relay | tail -100
