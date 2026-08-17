@@ -78,6 +78,17 @@ const DOWNLINK_VIDEO_BUDGET_BYTES = 24_000;
 const linkStatsEnabled = process.env.AM2_LINK_STATS === '1';
 const FRAME_INTERVAL_MS = 20;
 const LINK_REPORT_INTERVAL_MS = 15000;
+/*
+ * A gap wide enough to be a stall rather than scheduling noise.
+ *
+ * This transport is TCP, which never delivers a hole: it delays, then delivers
+ * a burst. So loss is the wrong question to ask of it and would always answer
+ * zero. What is worth counting is how often arrivals bunch -- and, beside it,
+ * whether video was sharing the socket in the same window, because a JPEG
+ * queued ahead of speech and a descheduled encoder thread look identical from
+ * one gap alone.
+ */
+const UPLINK_STALL_MS = 60;
 
 /**
  * Forget the arrival clock at a transmission boundary.
@@ -111,6 +122,7 @@ function observeAudioArrival(ws) {
     ws.uplinkJitterMs = (ws.uplinkJitterMs || 0) + (deviation - (ws.uplinkJitterMs || 0)) / 16;
     ws.uplinkWorstMs = Math.max(ws.uplinkWorstMs || 0, deviation);
     ws.uplinkFrames = (ws.uplinkFrames || 0) + 1;
+    if (spacingMs >= UPLINK_STALL_MS) ws.uplinkStalls = (ws.uplinkStalls || 0) + 1;
 }
 
 /** One line per client that has been heard from, on an interval. */
@@ -124,8 +136,12 @@ function reportLinkQuality(clients) {
         // line it appeared on described a moment minutes in the past.
         const frames = ws.uplinkFrames || 0;
         const worstMs = ws.uplinkWorstMs || 0;
+        const stalls = ws.uplinkStalls || 0;
+        const videoFrames = ws.uplinkVideoFrames || 0;
         ws.uplinkWorstMs = 0;
         ws.uplinkFrames = 0;
+        ws.uplinkStalls = 0;
+        ws.uplinkVideoFrames = 0;
         if (!frames) return;
 
         console.log(
@@ -136,6 +152,8 @@ function reportLinkQuality(clients) {
             + ` uplink_jitter_ms=${ws.uplinkJitterMs.toFixed(2)}`
             + ` uplink_worst_ms=${worstMs.toFixed(1)}`
             + ` frames=${frames}`
+            + ` stalls=${stalls}`
+            + ` video_frames=${videoFrames}`
             + ` buffered_bytes=${ws.bufferedAmount || 0}`,
         );
     });
@@ -222,6 +240,9 @@ function attachProtocol(server) {
             if (isBinary) {
                 if (!ws.sessionUser) return;
                 const binaryType = message[0];
+                if (binaryType === 2 && linkStatsEnabled) {
+                    ws.uplinkVideoFrames = (ws.uplinkVideoFrames || 0) + 1;
+                }
                 if (binaryType === 1) {
                     observeAudioArrival(ws);
                     ws.pttFrameSequence += 1;
