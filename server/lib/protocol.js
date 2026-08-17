@@ -229,6 +229,35 @@ function attachProtocol(server) {
                 }
 
                 if (ws.ptpTargetId) {
+                    /*
+                     * A private session carries the medium it was accepted for.
+                     *
+                     * The control plane already insists on this --
+                     * `ptt_video_start_private` demands `enable_ptt_video` on
+                     * both ends and a video session, `ptt_audio_start_private`
+                     * demands an audio one -- but this path forwarded whatever
+                     * arrived without reading the frame's type at all, so the
+                     * hardening stopped at the messages and never reached the
+                     * media.
+                     *
+                     * Opening an audio call needs only `enable_p2p`; video
+                     * permission is checked solely by `request_ptp_video`. So a
+                     * unit denied video could open an audio call and push video
+                     * through it, with the per-frame `enable_ptt_video` gate
+                     * that guards the channel path having no counterpart here.
+                     * And the callee answered a voice call: video arriving in it
+                     * is a consent problem whatever the permissions say.
+                     *
+                     * Unknown types are dropped rather than relayed verbatim.
+                     */
+                    if (binaryType === 1) {
+                        if (ws.ptpSessionKind !== 'audio') return;
+                    } else if (binaryType === 2) {
+                        if (ws.ptpSessionKind !== 'video' || !ws.enable_ptt_video) return;
+                    } else {
+                        return;
+                    }
+
                     const targetWs = ptpPeerFor(ws, ws.ptpSessionKind);
                     if (targetWs && targetWs.readyState === WebSocket.OPEN
                         && shouldForwardBinary(targetWs, binaryType)) {
@@ -530,6 +559,31 @@ function attachProtocol(server) {
                             ws.send(JSON.stringify({
                                 type: 'join_channel_success',
                                 data: { channel_name: channelData.display_name, channel_slug: data.new_channel_slug, is_rx_only: ws.is_rx_only, speakers: Array.from(activeSpeakers.get(data.new_channel_slug)).map(s => s.split(':')[1]) }
+                            }));
+                            /*
+                             * And who is on camera right now.
+                             *
+                             * join_channel_success carries the speaker list, so
+                             * a transmission already under way is visible at
+                             * once. Video had no equivalent: the relay restores
+                             * activeVideoRooms from Redis a few lines above, so
+                             * it knows, and simply never said. A unit joining
+                             * while somebody streamed stayed blind until the
+                             * next ptt_video_start -- which on a radio may be
+                             * minutes away, or may never come, because the
+                             * stream it missed is the one already running.
+                             *
+                             * Sent to this socket alone; the rest of the channel
+                             * already has this.
+                             */
+                            ws.send(JSON.stringify({
+                                type: 'video_stream_status',
+                                data: {
+                                    streamers: Array.from(activeVideoRooms.get(data.new_channel_slug) || [])
+                                        .map(s => s.split(':')[1]),
+                                    channel: data.new_channel_slug,
+                                    is_private: false,
+                                },
                             }));
                             broadcastUsersInChannel(data.new_channel_slug);
                             if (oldRoom) broadcastUsersInChannel(oldRoom);
