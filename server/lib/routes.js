@@ -83,23 +83,6 @@ function registerRoutes(app) {
         }
     });
 
-    app.post('/api/admin/set-app-version', async (req, res) => {
-        const { version_code, version_name, force_update, release_notes } = req.body;
-        try {
-            await pool.query(`
-                INSERT INTO public.app_versions (version_code, version_name, force_update, release_notes)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (version_code) DO UPDATE SET
-                    version_name = EXCLUDED.version_name,
-                    force_update = EXCLUDED.force_update,
-                    release_notes = EXCLUDED.release_notes
-            `, [version_code, version_name, force_update || false, release_notes || '']);
-
-            res.json({ success: true, message: `Version ${version_name} registered successfully.` });
-        } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
 
     // --- ADMIN ENDPOINTS ---
 
@@ -178,75 +161,9 @@ function registerRoutes(app) {
         }
     });
 
-    app.post('/api/admin/update-user-profile', async (req, res) => {
-        const { userId, name } = req.body;
-        if (!userId || !name) return res.status(400).json({ error: "userId and name are required" });
 
-        const uid = String(userId);
-        try {
-            await pool.query("UPDATE public.users SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", [name, uid]);
 
-            const ws = activeConnections.get(uid);
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.sessionUser.name = name;
-                ws.send(JSON.stringify({
-                    type: 'user_profile_update',
-                    data: { name: name }
-                }));
 
-                if (ws.currentRoom) broadcastUsersInChannel(ws.currentRoom);
-            }
-
-            res.json({ success: true, message: "User profile updated and synced." });
-        } catch (err) {
-            console.error("❌ Update User Profile Error:", err.message);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    app.post('/api/admin/update-channel', async (req, res) => {
-        const { channelId, display_name } = req.body;
-        try {
-            await pool.query("UPDATE public.channels SET display_name = $1 WHERE id = $2", [display_name, channelId]);
-            await broadcastChannelNameChange(channelId);
-            res.json({ success: true, message: "Channel name updated and synced." });
-        } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    app.post('/api/admin/assign-channel', async (req, res) => {
-        const { userId, channelId, permission } = req.body;
-        const uid = String(userId);
-        try {
-            await pool.query(`
-                INSERT INTO public.user_channels (user_id, channel_id, permission)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, channel_id) DO UPDATE SET permission = EXCLUDED.permission
-            `, [uid, channelId, permission || 'TX']);
-
-            await broadcastChannelUpdate(uid);
-            res.json({ success: true, message: "Channel assigned & synced." });
-        } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    app.post('/api/admin/remove-channel', async (req, res) => {
-        const { userId, channelId } = req.body;
-        const uid = String(userId);
-        try {
-            await pool.query(`
-                DELETE FROM public.user_channels
-                WHERE user_id = $1 AND channel_id = $2
-            `, [uid, channelId]);
-
-            await broadcastChannelUpdate(uid);
-            res.json({ success: true, message: "Channel access removed & synced realtime." });
-        } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
 
     app.post('/api/admin/update-permissions', async (req, res) => {
         const { userId, enable_maps, enable_p2p, enable_ptt_video, duplex_mode } = req.body;
@@ -306,22 +223,6 @@ function registerRoutes(app) {
         }
     });
 
-    app.post('/api/admin/set-permission', async (req, res) => {
-        const { userId, channelId, permission } = req.body;
-        const uid = String(userId);
-        try {
-            await pool.query(`
-                UPDATE public.user_channels SET permission = $1
-                WHERE user_id = $2 AND channel_id = $3
-            `, [permission, uid, channelId]);
-
-            await broadcastChannelUpdate(uid);
-
-            res.json({ success: true, message: "Permission updated successfully." });
-        } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
 
     app.post('/api/admin/force-logout', async (req, res) => {
         const { userId } = req.body;

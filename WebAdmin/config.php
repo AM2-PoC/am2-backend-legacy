@@ -72,7 +72,7 @@ function am2_api_authz_denied(string $reason): bool
         $reason
     ));
 
-    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'log')) !== 'enforce') {
+    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'enforce')) !== 'enforce') {
         return false;
     }
 
@@ -113,7 +113,11 @@ function am2_api_auth(): void
     }
 
     $expected = (string) (getenv('AM2_API_KEY') ?: '');
-    $sent = $_SERVER['HTTP_X_AM2_API_KEY'] ?? ($_GET['api_key'] ?? ($_POST['api_key'] ?? ''));
+    // The header, and only the header. A query string is copied into the access
+    // log of every proxy in front of this, into browser history, and into the
+    // Referer of the next request; a form field is copied into anything that
+    // logs request bodies. The callers that matter already send the header.
+    $sent = $_SERVER['HTTP_X_AM2_API_KEY'] ?? '';
     $ok = $expected !== '' && is_string($sent) && $sent !== '' && hash_equals($expected, $sent);
 
     if ($ok) {
@@ -129,7 +133,7 @@ function am2_api_auth(): void
         $sent === '' ? 'absent' : 'wrong'
     ));
 
-    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'log')) === 'enforce') {
+    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'enforce')) === 'enforce') {
         http_response_code(401);
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => 'Unauthorized']);

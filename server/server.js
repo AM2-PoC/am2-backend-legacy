@@ -85,10 +85,28 @@ function sameKey(sent, real) {
     const b = Buffer.from(String(real));
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-const API_AUTH_MODE = (process.env.AM2_API_AUTH_MODE || 'log').toLowerCase();
+/*
+ * Fail closed when nobody configures it.
+ *
+ * This defaulted to 'log', which records an unauthenticated admin call and then
+ * runs it. That was right while the callers were being migrated onto a key; it
+ * is wrong now that they are, because the safe state has to be the one you get
+ * by doing nothing. A control whose default is "allow" is a control waiting to
+ * be forgotten on the next host somebody builds.
+ */
+const API_AUTH_MODE = (process.env.AM2_API_AUTH_MODE || 'enforce').toLowerCase();
 
 app.use('/api/admin', (req, res, next) => {
-    const sent = req.get('X-AM2-Api-Key') || req.query.api_key || '';
+    /*
+     * The header, and only the header.
+     *
+     * A query string is not a private place: it lands in the access log of
+     * every proxy in front of this, in browser history, and in the Referer of
+     * the next request. A credential that travels there has been written down
+     * in several places nobody is guarding. The only caller -- the panel, via
+     * node_client.php -- already sends the header.
+     */
+    const sent = req.get('X-AM2-Api-Key') || '';
     if (API_KEY && sent && sameKey(sent, API_KEY)) return next();
 
     console.warn('[api-auth] REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
@@ -137,7 +155,45 @@ registerRoutes(app);
 // against the endpoints in lib/routes.js that arrive and answer.
 attachProtocol(server);
 
-server.listen(PORT, () => {
+/*
+ * Where the relay offers itself.
+ *
+ * nginx reaches it on 127.0.0.1 and so does the panel, so listening on every
+ * interface bought nothing and put the admin surface one firewall rule away
+ * from the internet. Firewall rules are edited by people in a hurry.
+ *
+ * Configurable because the local compose stack reaches the relay by container
+ * name, where loopback would be wrong; the deployed hosts set 127.0.0.1.
+ */
+const BIND_ADDRESS = (process.env.AM2_BIND_ADDRESS || '').trim();
+
+/*
+ * Say so loudly rather than failing quietly.
+ *
+ * Defaulting the mode to enforce is right -- the safe state should be the one
+ * you get by doing nothing -- but on a host where nobody set a key it turns
+ * every admin call into a 401, including the panel's own, with nothing in the
+ * output explaining why. This is the third state: configured wrong, and said
+ * out loud. The relay still starts, because handsets do not need the key and a
+ * radio that will not boot is worse than one with a broken admin path.
+ */
+
+if (API_AUTH_MODE === 'enforce' && API_KEY === '') {
+    console.error(
+        '[api-auth] AM2_API_AUTH_MODE=enforce with no AM2_API_KEY: every /api/admin '
+        + 'call will be refused, including the panel\'s own.'
+    );
+}
+
+/*
+ * Unset means listen the way Node does by default -- `::` with dual-stack, so
+ * both families reach it. Passing '0.0.0.0' as a default instead looked
+ * equivalent and was not: it binds IPv4 only, and the container healthcheck
+ * asks for `localhost`, which resolves to ::1 first. The stack came up and was
+ * declared unhealthy, which is a deployment broken by a hardening default.
+ */
+const listenArgs = BIND_ADDRESS ? [PORT, BIND_ADDRESS] : [PORT];
+server.listen(...listenArgs, () => {
     console.log(`\n--------------------------------------------`);
     console.log(`🚀 PTT SERVER VERSION: 1.1 (RESILIENT CONNECT)`);
     console.log(`🕒 Timezone  : Asia/Jakarta`);
