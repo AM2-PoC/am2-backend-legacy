@@ -35,6 +35,7 @@ const {
 const {
     broadcastToChannel,
     broadcastUsersInChannel,
+    stopChannelVideo,
     updateUserLocation,
 } = require('./broadcast');
 
@@ -488,13 +489,14 @@ function attachProtocol(server) {
                         const speakerVal = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                         await redisClient.sRem(speakerKey, speakerVal);
 
-                        const videoKey = `video:${oldRoom}`;
-                        await redisClient.sRem(videoKey, speakerVal);
-
                         if (activeSpeakers.has(oldRoom)) activeSpeakers.get(oldRoom).delete(speakerVal);
-                        if (activeVideoRooms.has(oldRoom)) activeVideoRooms.get(oldRoom).delete(speakerVal);
-
                         broadcastToChannel(oldRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(oldRoom) || []).map(s => s.split(':')[1]), channel: oldRoom } });
+
+                        // The room being left has to be told about the camera as
+                        // well as the microphone. A rejoin is how every reconnect
+                        // arrives, so a stream interrupted by a network flap used
+                        // to end with the room still watching a dead one.
+                        await stopChannelVideo(ws, oldRoom);
                     }
 
                     try {
@@ -740,15 +742,11 @@ function attachProtocol(server) {
                     break;
 
                 case 'ptt_video_end':
-                    if (ws.sessionUser && ws.currentRoom) {
-                        ws.channelVideoAuthorized = false;
-                        const vEndEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
-                        if (activeVideoRooms.has(ws.currentRoom)) {
-                            activeVideoRooms.get(ws.currentRoom).delete(vEndEntry);
-                        }
-                        await redisClient.sRem(`video:${ws.currentRoom}`, vEndEntry);
-                        broadcastToChannel(ws.currentRoom, { type: 'video_stream_status', data: { streamers: Array.from(activeVideoRooms.get(ws.currentRoom) || []).map(s => s.split(':')[1]), channel: ws.currentRoom, is_private: false } });
-                    }
+                    // The one caller that always did every step. It is worth
+                    // routing through the shared one anyway: this is the copy
+                    // the others were meant to be, and leaving it separate is
+                    // what let them drift.
+                    await stopChannelVideo(ws, ws.currentRoom);
                     break;
 
                 case 'ptt_audio_start_private':
@@ -956,20 +954,7 @@ function attachProtocol(server) {
                  * from, so one crash made every later announcement in that
                  * channel wrong.
                  */
-                if (room && activeVideoRooms.has(room)) {
-                    const videoRoom = activeVideoRooms.get(room);
-                    if (videoRoom.delete(exitEntry)) {
-                        await redisClient.sRem(`video:${room}`, exitEntry);
-                        broadcastToChannel(room, {
-                            type: 'video_stream_status',
-                            data: {
-                                streamers: Array.from(videoRoom).map(s => s.split(':')[1]),
-                                channel: room,
-                                is_private: false,
-                            },
-                        });
-                    }
-                }
+                await stopChannelVideo(ws, room);
 
                 // 2. Tunda pembersihan koneksi & status online (Debounce)
                 const timeoutIdx = setTimeout(async () => {

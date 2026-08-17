@@ -12,8 +12,8 @@
  */
 const WebSocket = require('ws');
 
-const { pool } = require('./db');
-const { activeConnections, channelRooms } = require('./state');
+const { pool, redisClient } = require('./db');
+const { activeConnections, channelRooms, activeVideoRooms } = require('./state');
 
 const broadcastChannelUpdate = async (userId) => {
     const uid = String(userId);
@@ -67,6 +67,49 @@ const broadcastToChannel = (channelSlug, payload, excludeWs = null) => {
             }
         });
     }
+};
+
+/**
+ * This socket is no longer streaming video here; tell the room.
+ *
+ * It exists because the operation did not. Ending a stream is four steps --
+ * drop the in-memory entry, drop the mirrored Redis entry, withdraw the
+ * per-transmission grant, announce the new list -- and every caller open-coded
+ * whichever subset it happened to think of. The announcement was the step that
+ * kept getting missed, and missing it is invisible on this end and fatal on the
+ * other: viewers keep the incoming-video view up with nothing arriving behind
+ * it, which is a black screen no client-side change can clear.
+ *
+ * It was missed on disconnect, on rejoin, and on an administrator withdrawing
+ * video permission mid-stream. Each was found separately, as its own bug, when
+ * all three were one absent function.
+ *
+ * Returns whether the socket was in fact streaming, so a caller can stay quiet
+ * about a unit that was not.
+ */
+const stopChannelVideo = async (ws, channelSlug) => {
+    if (!ws?.sessionUser || !channelSlug) return false;
+
+    const entry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
+    const streamers = activeVideoRooms.get(channelSlug);
+    const wasStreaming = streamers ? streamers.delete(entry) : false;
+
+    // Unconditionally, because the mirror can outlive the memory: a relay
+    // restart repopulates activeVideoRooms from Redis, so a stale key there
+    // resurrects a streamer that no longer exists.
+    await redisClient.sRem(`video:${channelSlug}`, entry);
+    ws.channelVideoAuthorized = false;
+
+    if (!wasStreaming) return false;
+    broadcastToChannel(channelSlug, {
+        type: 'video_stream_status',
+        data: {
+            streamers: Array.from(streamers).map(s => s.split(':')[1]),
+            channel: channelSlug,
+            is_private: false,
+        },
+    });
+    return true;
 };
 
 const broadcastUsersInChannel = async (channelSlug) => {
@@ -125,6 +168,7 @@ const broadcastChannelNameChange = async (channelId) => {
 module.exports = {
     broadcastChannelUpdate,
     broadcastToChannel,
+    stopChannelVideo,
     broadcastUsersInChannel,
     updateUserLocation,
     broadcastChannelNameChange,
