@@ -880,11 +880,41 @@ function attachProtocol(server) {
                 const uid = String(user.id);
 
                 // 1. Hentikan status bicara seketika (mencegah audio nyangkut)
+                const exitEntry = `${user.id}:${user.name}`;
                 if (room && activeSpeakers.has(room)) {
-                    const exitEntry = `${user.id}:${user.name}`;
                     activeSpeakers.get(room).delete(exitEntry);
                     await redisClient.sRem(`speakers:${room}`, exitEntry);
                     broadcastToChannel(room, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(room) || []).map(s => s.split(':')[1]), channel: room } });
+                }
+
+                /*
+                 * The same for video, which this handler used to forget.
+                 *
+                 * A handset sends no ptt_video_end when it is killed, loses
+                 * power or drives into a tunnel, and nothing else removed it, so
+                 * it stayed listed as streaming forever. Every other client kept
+                 * the incoming-video view up with no frames behind it -- a black
+                 * screen the client cannot clear, because the relay is still
+                 * saying someone is on camera.
+                 *
+                 * The entry is mirrored into Redis, so it outlived the process
+                 * as well: activeVideoRooms is what every announcement is built
+                 * from, so one crash made every later announcement in that
+                 * channel wrong.
+                 */
+                if (room && activeVideoRooms.has(room)) {
+                    const videoRoom = activeVideoRooms.get(room);
+                    if (videoRoom.delete(exitEntry)) {
+                        await redisClient.sRem(`video:${room}`, exitEntry);
+                        broadcastToChannel(room, {
+                            type: 'video_stream_status',
+                            data: {
+                                streamers: Array.from(videoRoom).map(s => s.split(':')[1]),
+                                channel: room,
+                                is_private: false,
+                            },
+                        });
+                    }
                 }
 
                 // 2. Tunda pembersihan koneksi & status online (Debounce)
