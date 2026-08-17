@@ -70,6 +70,10 @@ before(async () => {
     send(streamer, 'join_channel', { new_channel_slug: CHANNEL });
     await waitFor(streamer, 'join_channel_success');
 
+    // The join itself now answers with the current streamer list, so that
+    // message is already in the inbox and would be mistaken for the
+    // announcement below.
+    streamer.inbox.length = 0;
     send(streamer, 'ptt_video_start', { channel_slug: CHANNEL });
     // The streamer is told about its own stream, which is where the display
     // name comes from; the relay announces names, not ids.
