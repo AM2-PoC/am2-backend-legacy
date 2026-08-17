@@ -104,13 +104,27 @@ before(async () => {
     await waitFor(caller, 'ptp_confirmed');
 });
 
-after(() => {
-    for (const ws of [caller, callee]) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            send(ws, 'cancel_ptp', { target_id: 'CT_A1' });
-            ws.close();
-        }
-    }
+after(async () => {
+    /*
+     * Leave nothing paired, and nothing half-closed.
+     *
+     * A private session outlives the file that made it: the next file signs the
+     * same units in again, and a socket the relay still believes is paired --
+     * or still believes is online, because the disconnect grace period has not
+     * elapsed -- refuses that login. Cancelling with the wrong peer id and
+     * closing in the same tick left exactly that, and it showed up as the next
+     * file failing rather than this one.
+     */
+    if (caller?.readyState === WebSocket.OPEN) send(caller, 'cancel_ptp', { target_id: 'CT_A2' });
+    if (callee?.readyState === WebSocket.OPEN) send(callee, 'cancel_ptp', { target_id: 'CT_A1' });
+    await new Promise((r) => setTimeout(r, 200));
+
+    await Promise.all([caller, callee].map((ws) => new Promise((resolve) => {
+        if (!ws || ws.readyState === WebSocket.CLOSED) return resolve();
+        ws.once('close', resolve);
+        ws.close();
+        setTimeout(resolve, 1000);
+    })));
 });
 
 describe('a private audio session', () => {
