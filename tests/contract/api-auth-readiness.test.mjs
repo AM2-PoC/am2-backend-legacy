@@ -28,20 +28,38 @@ const PHP = read('WebAdmin/config.php');
 const NODE = read('server/server.js');
 const REPORT = 'infra/scripts/api-auth-report.sh';
 
-test('both halves default to recording, not refusing', () => {
+test('both halves default to refusing, not recording', () => {
     /*
-     * The default lives in code and applies to any host whose env file does not
-     * say otherwise -- including a fresh one. `enforce` as a default would mean
-     * a new environment refuses the field before anyone has looked at what it
-     * would refuse.
+     * This asserted the opposite while the callers were being migrated, and the
+     * reason was sound: enforcing by default would have refused callers nobody
+     * had measured yet.
+     *
+     * They have been measured. Across seven days and 101,361 production log
+     * lines exactly one request would have been refused, and it was for a route
+     * nginx already denied. The six routes with no caller are deleted, and the
+     * one real consumer -- the panel, through node_client.php -- sends the
+     * header. So the migration is over, and a credential control whose default
+     * is "allow" is a default waiting to be forgotten on the next host somebody
+     * builds.
+     *
+     * The concern that motivated the old assertion is answered by a boot-time
+     * error instead of by failing open: see the enforce-without-a-key warning
+     * in server.js, which makes a misconfigured host loud rather than either
+     * silently insecure or silently broken.
      */
     for (const [name, src] of [['WebAdmin/config.php', PHP], ['server/server.js', NODE]]) {
         const fallback = src.match(/AM2_API_AUTH_MODE'?\)?\s*(?:\|\||\?:)\s*'([a-z]+)'/);
         assert.ok(fallback, `${name} no longer has a default auth mode`);
-        assert.equal(fallback[1], 'log',
-            `${name} defaults to "${fallback[1]}"; enforcing by default refuses callers `
-            + 'that were never measured');
+        assert.equal(fallback[1], 'enforce',
+            `${name} defaults to "${fallback[1]}"; an unconfigured host must not `
+            + 'let unauthenticated admin calls through');
     }
+});
+
+test('a host that enforces without a key is told so at boot', () => {
+    // The failure mode the old default existed to avoid, handled directly.
+    assert.match(NODE, /AM2_API_AUTH_MODE=enforce with no AM2_API_KEY/,
+        'a misconfigured host refuses its own panel with nothing explaining why');
 });
 
 test('both halves read the same variable, so one cannot be flipped alone', () => {

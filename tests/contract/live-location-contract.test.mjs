@@ -5,7 +5,12 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
 test('every accepted location write stamps the dedicated sample time', () => {
-    for (const file of ['server/lib/broadcast.js', 'WebAdmin/update_location.php']) {
+    // WebAdmin/update_location.php was the second writer and is gone: it took a
+    // user_id from the request and placed that unit anywhere, for any caller
+    // holding a panel session, with no check that they owned it. Nothing called
+    // it -- the handset reports position over the WebSocket -- so the relay is
+    // now the only path a coordinate can arrive by.
+    for (const file of ['server/lib/broadcast.js']) {
         const src = read(file);
         assert.match(src, /location_updated_at\s*=\s*(?:CURRENT_TIMESTAMP|NOW\(\))/i,
             `${file} stores coordinates without a location timestamp`);
