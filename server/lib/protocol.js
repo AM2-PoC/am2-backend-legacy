@@ -195,7 +195,12 @@ function attachProtocol(server) {
         ws.enable_p2p = true;
         ws.enable_ptt_video = false;
         ws.duplex_mode = 'HALF DUPLEX';
+        // The room's epoch: bumped on every channel change so any authorization
+        // still waiting on the database is discarded. Each medium keeps its own
+        // sequence beside it, so audio and video no longer invalidate each other.
         ws.transmitAuthGeneration = 0;
+        ws.audioAuthGeneration = 0;
+        ws.videoAuthGeneration = 0;
         ws.channelVideoAuthorized = false;
         ws.channelTransitioning = false;
         ws.channelJoinGeneration = 0;
@@ -722,7 +727,7 @@ function attachProtocol(server) {
                     // receive-only units cannot bypass it through another
                     // media start message.
                     {
-                        const authorization = await authorizeChannelTransmit(ws, channelPermission);
+                        const authorization = await authorizeChannelTransmit(ws, channelPermission, 'video');
                         if (!authorization.ok) {
                             if (authorization.error) {
                                 console.error('❌ Transmit Authorization Error:', authorization.error.message);
