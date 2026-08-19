@@ -54,6 +54,26 @@ define('AM2_ADMIN_UPDATE_BASE', rtrim(
     getenv('AM2_ADMIN_UPDATE_BASE_URL') ?: 'https://webadmin.am2-poc.com/update',
     '/'
 ));
+
+// Which application the published update is allowed to be. An update set that
+// names a different package is not this app's update, whatever else it says.
+define('AM2_ADMIN_UPDATE_PACKAGE', getenv('AM2_ADMIN_UPDATE_PACKAGE') ?: 'com.am2.admin');
+
+// Signer fingerprints that may never be advertised, lowercase hex, no colons.
+//
+// The Android debug signer is denied by default and not by configuration: an
+// APK built on a developer's machine is the single most likely thing to reach
+// this directory by accident, and a deployment that forgets to set the
+// variable should still refuse it. The environment adds to that floor rather
+// than replacing it.
+define('AM2_ADMIN_UPDATE_DENIED_SIGNERS', array_values(array_unique(array_filter(array_map(
+    static fn (string $v): string => strtolower(str_replace(':', '', trim($v))),
+    array_merge(
+        ['478c0cb4aa0a3374f152fa4cf90608c42520423c70a561e868a432a5efdcb9a3'],
+        explode(',', (string) (getenv('AM2_ADMIN_UPDATE_DENIED_SIGNERS') ?: ''))
+    )
+), static fn (string $v): bool => $v !== ''))));
+
 require_once __DIR__ . '/admin_update_validation.php';
 
 /**

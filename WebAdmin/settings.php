@@ -385,8 +385,14 @@ $shelf = $is_super ? am2_update_state() : ['exists' => false, 'files' => [], 've
 // The file Admin Native is told to fetch, and whether it is actually there.
 $shelf_target = '';
 $shelf_present = true;
-if (!empty($shelf['version']['download_url'])) {
-    $shelf_target = basename((string) parse_url($shelf['version']['download_url'], PHP_URL_PATH));
+// `update_url` is the published field; `download_url` was its name before the
+// manifest carried a digest and a signer, and manifests in that older shape
+// are still on disk. Read both so the shelf keeps rendering during the change
+// -- api_settings.php validates the set separately and will not advertise an
+// old one, which is the decision that actually matters.
+$shelf_url = (string) ($shelf['version']['update_url'] ?? $shelf['version']['download_url'] ?? '');
+if ($shelf_url !== '') {
+    $shelf_target = basename((string) parse_url($shelf_url, PHP_URL_PATH));
     $shelf_present = in_array($shelf_target, array_column($shelf['files'], 'name'), true);
 }
 
@@ -410,7 +416,7 @@ if ($is_super) {
         'note'      => t('set.channel_admin_note'),
         'version'   => $shelf['version']['version_name'] ?? null,
         'changelog' => (string) ($shelf['version']['changelog'] ?? ''),
-        'url'       => (string) ($shelf['version']['download_url'] ?? ''),
+        'url'       => $shelf_url,
         'files'     => $shelf['files'],
         'target'    => $shelf_target,
         'present'   => $shelf_present,

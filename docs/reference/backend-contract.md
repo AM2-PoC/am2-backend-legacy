@@ -221,16 +221,166 @@ echo json_encode($results);
 
 **GET `action=export_db`** (`:7-31`) — params `admin_id:int`, `role`. Not JSON: streams a `pg_dump` via `passthru()` with `Content-Type: application/octet-stream` and an attachment filename. Superadmin gets `-n public`. The non-superadmin branch is unreachable — `am2_api_require_super('export-db')` refuses first — and is left for the dead-code pass. `settings.php` no longer has it at all: a branch admin's export is built in PHP from that account's own rows, because `-t public.users` dumped every branch's. Uses `$host/$port/$user/$dbname/$password` globals from `config.php`.
 
-**GET `action=check_update`** (`:38-55`) — reads `update/admin_version.json` (symlink → `/var/www/am2/shared/webadmin-update`).
+**GET `action=check_update`** — reads `update/admin_version.json` (symlink → `/var/www/am2/shared/webadmin-update`). Public: evaluated before `am2_api_auth()`, because a handset has no session and the APK it names is served publicly anyway.
+
+The manifest is validated by `am2_validate_signed_update_set()` before anything is advertised. The key set must be exact — extra or missing keys are a rejection, not something to work around:
+
+```json
+{
+  "package": "com.am2.admin",
+  "version_code": 3,
+  "version_name": "1.2.0",
+  "update_url": "https://webadmin.am2-poc.com/update/admin.apk",
+  "sha256": "<sha256 of the APK on disk>",
+  "signer_sha256": "<APK signing certificate sha256>",
+  "source_commit": "<40 hex>",
+  "rollout": 0,
+  "changelog": "free text, outside the validated set"
+}
+```
+
+Rejected if: the package differs, `update_url` is not the approved download URL, `version_code` does not advance, `signer_sha256` is on the denied list (`AM2_ADMIN_UPDATE_DENIED_SIGNERS`, which always contains the Android debug signer), `sha256` does not match the bytes on disk, or the download path is a symlink.
+
+Valid ⇒ **200**. `latest_version`/`download_url` are the names the panel and older builds read; the rest is what `UpdateInfo.kt` declares non-null.
 ```php
-// api_settings.php:42-46
 echo json_encode([
-    'latest_version' => $data['version_name'],
-    'download_url'   => $data['download_url'],
-    'changelog'      => $data['changelog']
+    'latest_version' => $advertised['version_name'],
+    'download_url'   => $advertised['update_url'],
+    'changelog'      => $changelog,
+    'version_code'   => $advertised['version_code'],
+    'version_name'   => $advertised['version_name'],
+    'update_url'     => $advertised['update_url'],
+    'sha256'         => $advertised['sha256'],
+    'signer_sha256'  => $advertised['signer_sha256']
 ]);
 ```
-Fallback when the file is absent (`:48-52`): `{"latest_version":"1.0.0","download_url":"https://am2-poc.com/update/admin.apk","changelog":"Versi awal."}`.
+
+Invalid or absent ⇒ **404** + `{"latest_version":null,"download_url":null,"changelog":""}`. There is no hardcoded fallback version; one existed and was removed, and `tests/contract/production-copy.test.mjs` asserts it stays gone.
+
+The server passes `0` as the installed version code: it does not know what any handset has, and a version code arriving in the request is one the requester chose. The client enforces monotonicity against its own build, and `UpdateVerifier.verify()` re-checks the digest, the package, the version and the actual APK signature before installing — that check, not this one, is what protects a device.
+
+**GET (no action)** — role-scoped channel list. Bare array; element = all `channels` columns plus `creator_name:string|null`, `ownership_type:'OWNER'|'DELEGATED'`, `online_count:int-as-string`, `total_access:int-as-string`. Error: `http_response_code(500)` + `{"error":...}` (`:57-60`).
+
+**POST `action=add`** — `display_name:string`. `name` is derived: `strtolower(str_replace(' ','_',$display_name))` (`:67`), `category` hard-coded `'public'`. ⇒ `{"success":true}` (`:73`) / `{"success":false,"message":...}` (`:75`).
+
+**POST `action=delete`** — `id:int`. Ownership guard for non-superadmin:
+```php
+// api_channels.php:87
+echo json_encode(['success' => false, 'message' => 'Hanya pemilik (Owner) atau Superadmin yang dapat menghapus channel ini.']);
+```
+Cascade at `:99-103` clears `users.current_channel`, deletes from `ptt_logs`, `admin_managed_channels`, `user_channels`, then `channels`. ⇒ `{"success":true}` (`:106`), `{"success":false,"message":"Channel tidak ditemukan"}` (`:108`), or `{"success":false,"message":<pdo msg>}` (`:112`). Always **200**.
+
+**POST `action=save_access`** — `channel_id:int`, `users` = **JSON-encoded string** of an id array (`json_decode($_POST['users'] ?? '[]', true)`, `:117`). Inserts with hard-coded `is_default='false'`, `permission='FULL DUPLEX'` (`:126`). After commit, fires `syncUserChannels($uid)` per user (`:130`). ⇒ `{"success":true}` / `{"success":false,"message":...}`.
+
+---
+
+### 1.3 `api_dashboard_chart.php`
+
+**Any method.** Params `admin_id`, `role` (GET or POST, `:5-6`). Sets `SET TIME ZONE 'Asia/Jakarta'` (`:9`).
+
+```php
+// api_dashboard_chart.php:47-52
+echo json_encode([
+    'labels' => $labels,
+    'values' => $values,
+    'status' => 'success',
+    'timestamp' => date('Y-m-d H:i:s')
+]);
+```
+`labels: string[]` (`"HH:00"`), `values: int[]`. 24 buckets via `generate_series`.
+Error: `{"error":...}` at **200** (`:54-56`) — no 500, and **no `status` key**, so a client keying off `status` sees `undefined`.
+
+---
+
+### 1.4 `api_dashboard_stats.php`
+
+**GET.** Params `admin_id`, `role`.
+```php
+// api_dashboard_stats.php:32-36
+echo json_encode([
+    'total_user' => (int)$total_user,
+    'user_online' => (int)$user_online,
+    'total_channel' => (int)$total_channel
+]);
+```
+Error: `{"error":...}` at **200** (`:38`).
+
+---
+
+### 1.5 `api_get_users.php`
+
+**GET.** Params `admin_id`, `role`. Returns only `status='online'` users. `Content-Type` header is emitted *after* the body is built (`:63`).
+
+```php
+// api_get_users.php:49-60
+$results[] = [
+    'id'           => $user['id'],
+    'name'         => htmlspecialchars($user['name']),
+    'lat'          => (float)$user['latitude'],
+    'lng'          => (float)$user['longitude'],
+    'accuracy'     => (float)$user['accuracy'],
+    'is_online'    => 1,
+    'is_speaking'  => (int)$user['is_speaking'],
+    'is_stale'     => $is_stale,
+    'channel_name' => $user['channel_name'] ?? 'Standby',
+    'updated_at'   => $user['updated_at']
+];
+```
+`is_stale` = `updated_at` older than 60 s (`:48`). `is_speaking` = last `ptt_logs` row is `PUSH`/`PUSH_PRIVATE` within 7 s (`:22-25`).
+Error: **500** + `{"error":...}` (`:66-68`).
+
+⚠️ `name` is HTML-escaped **inside JSON** — a redesign that renders it as text will show `&amp;` literals.
+
+---
+
+### 1.6 `api_login.php`
+
+**POST only.** Params `username:string`, `password:string`.
+
+```php
+// api_login.php:18-24
+echo json_encode([
+    'success' => true,
+    'message' => 'Login Berhasil',
+    'admin_id' => (int)$user['id'],
+    'username' => $user['username'],
+    'role' => $user['role']
+]);
+```
+Failures, all **HTTP 200**:
+- `{"success":false,"message":"Akun Anda sedang dinonaktifkan."}` (`:16`)
+- `{"success":false,"message":"Username atau Password salah."}` (`:27`)
+- `{"success":false,"message":"Kesalahan sistem: <pdo msg>"}` (`:30`)
+- non-POST ⇒ `{"success":false,"message":"Method not allowed"}` (`:33`) — **status 200, not 405.**
+
+No session is created. The mobile admin app is expected to carry `admin_id`/`role` in every subsequent request.
+
+---
+
+### 1.7 `api_logs.php`
+
+**GET.** Param `category:'ALL'|'PTT'|'ADM'` (default `'ALL'`). LIMIT 50 per source; `ALL` merges and re-slices to 50 (`:45-50`).
+
+Bare array; element shape (note **Indonesian keys**):
+`id:string, jam:"HH:MM:SS", tanggal:"DD/MM/YYYY", raw_time:string, pelaksana:string, pelaksana_id:string, target:string, aksi:string, kategori:'PTT'|'ADM'`.
+
+```php
+// api_logs.php:52
+echo json_encode($results);
+// api_logs.php:54-57
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => $e->getMessage()]);
+}
+```
+
+---
+
+### 1.8 `api_settings.php`
+
+**GET `action=export_db`** (`:7-31`) — params `admin_id:int`, `role`. Not JSON: streams a `pg_dump` via `passthru()` with `Content-Type: application/octet-stream` and an attachment filename. Superadmin gets `-n public`. The non-superadmin branch is unreachable — `am2_api_require_super('export-db')` refuses first — and is left for the dead-code pass. `settings.php` no longer has it at all: a branch admin's export is built in PHP from that account's own rows, because `-t public.users` dumped every branch's. Uses `$host/$port/$user/$dbname/$password` globals from `config.php`.
+
+**GET `action=check_update`** — see section 1.8 above, which is the current description. This heading is a duplicate: `### 1.3` through `### 1.8` each appear twice in this file, and the copies had already drifted apart before this edit. Do not add a second spec here; the endpoint validates the published set and the earlier section carries the manifest shape.
 
 **GET (no action)** — params `admin_id:int`, `role`. Returns a single object: `username, role, user_quota, channel_quota, expired_at, can_manage_maps:bool, can_manage_p2p:bool, can_manage_video:bool, total_admins:int, total_users:int, total_channels:int` (`:78-85`). Not found ⇒ `{"error":"Settings not found"}` at **200** (`:87`). PDO error ⇒ **500** + `{"error":...}` (`:90-91`).
 
