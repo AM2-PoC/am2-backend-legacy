@@ -34,6 +34,18 @@ RESTART_SAFETY_TESTS=(
     systemd-relay-safety.test.mjs
 )
 
+# PHP contract tests, selected the same way and for the same reason. They were
+# left out when this selector was written, which meant neither of them had ever
+# run: one was calling a function that was never implemented, and the suite
+# stayed green throughout. The disqualifiers differ by language -- a bare
+# "https://" in PHP here is fixture data for URL validation, not a request --
+# so the network markers below match calls, not strings.
+for f in "$DIR"/*.test.php; do
+    [ -e "$f" ] || continue
+    grep -qE "file_get_contents\([[:space:]]*['\"]https?:|curl_[a-z_]+\(|fsockopen\(|fopen\([[:space:]]*['\"]https?:|getenv\(" "$f" && continue
+    basename "$f"
+done
+
 for f in "$DIR"/*.test.mjs; do
     # Credential-bound: pulls in the helper that reads the protected env file.
     grep -qE "^[[:space:]]*import .*['\"]\./helpers\.mjs" "$f" && continue

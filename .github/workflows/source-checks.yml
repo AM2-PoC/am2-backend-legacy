@@ -106,7 +106,24 @@ jobs:
               exit 1
           fi
           printf 'running %d files\n' "${#files[@]}"
-          node --test "${files[@]/#/tests/contract/}"
+          # Split by extension: the selector now emits PHP contract tests too,
+          # and `node --test` on a .php file fails in a way that reads like a
+          # broken test rather than a wrong runner.
+          mjs=(); php=()
+          for f in "${files[@]}"; do
+              case "$f" in
+                  *.test.mjs) mjs+=("tests/contract/$f") ;;
+                  *.test.php) php+=("tests/contract/$f") ;;
+                  *) echo "::error::no runner for $f"; exit 1 ;;
+              esac
+          done
+          if [ ${#mjs[@]} -gt 0 ]; then
+              node --test "${mjs[@]}"
+          fi
+          for f in "${php[@]}"; do
+              echo "--- $f"
+              php "$f"
+          done
 
   restart-safety:
     name: restart-safe release artifact
