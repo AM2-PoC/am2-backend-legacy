@@ -22,17 +22,51 @@ if (($_GET['action'] ?? '') === 'check_update') {
     $data = is_file($json_path)
         ? json_decode((string) file_get_contents($json_path), true)
         : null;
-    $version = is_array($data) ? trim((string) ($data['version_name'] ?? '')) : '';
-    $download_url = is_array($data) ? trim((string) ($data['download_url'] ?? '')) : '';
-    $changelog = is_array($data) ? (string) ($data['changelog'] ?? '') : '';
+    $manifest = is_array($data) ? $data : [];
+    $changelog = (string) ($manifest['changelog'] ?? '');
+
+    /*
+     * The published set is validated before it is advertised, not after.
+     *
+     * This endpoint used to echo whatever admin_version.json contained: a
+     * version string, a URL and a changelog. Nothing checked that the file the
+     * URL named actually had the advertised digest, that the APK was signed by
+     * the approved key, or that the version advanced -- and the manifest is a
+     * plain file on disk, so anything that can write it could point every
+     * handset in the field at a different APK.
+     *
+     * The handset verifies the signer itself before installing, and that check
+     * is the one that protects a device; nothing decided here can be trusted by
+     * a client. This is the publishing side of the same rule: refuse to
+     * advertise a set the handset would reject anyway.
+     *
+     * `changelog` is carried outside the validated set because it is free text
+     * that no decision depends on. Everything else must be exact.
+     */
+    $advertised = $manifest;
+    unset($advertised['changelog']);
     $download_file = am2_admin_update_file(
         AM2_ADMIN_UPDATE_BASE,
-        $download_url,
+        (string) ($manifest['update_url'] ?? ''),
         __DIR__ . '/update'
     );
 
-    if ($version === '' || filter_var($download_url, FILTER_VALIDATE_URL) === false
-        || $download_file === null) {
+    // Zero, not the caller's word for it: the server does not know what any
+    // handset has installed, and a version code that arrives in the request is
+    // a version code the requester chose. The client enforces monotonicity
+    // against its own installed build, where the answer is actually known.
+    $validation = $download_file === null
+        ? ['valid' => false, 'reason' => 'download path does not resolve']
+        : am2_validate_signed_update_set(
+            $advertised,
+            $download_file,
+            AM2_ADMIN_UPDATE_PACKAGE,
+            rtrim(AM2_ADMIN_UPDATE_BASE, '/') . '/admin.apk',
+            0,
+            AM2_ADMIN_UPDATE_DENIED_SIGNERS
+        );
+
+    if ($validation['valid'] !== true) {
         http_response_code(404);
         echo json_encode([
             'latest_version' => null,
@@ -42,10 +76,21 @@ if (($_GET['action'] ?? '') === 'check_update') {
         exit;
     }
 
+    /*
+     * Two names for the same two values. `latest_version` and `download_url`
+     * are what the panel and any build already in the field read; the rest is
+     * what UpdateInfo.kt declares non-null and cannot construct
+     * UpdateMetadata without. Dropping either half breaks a real caller.
+     */
     echo json_encode([
-        'latest_version' => $version,
-        'download_url' => $download_url,
-        'changelog' => $changelog
+        'latest_version' => $advertised['version_name'],
+        'download_url' => $advertised['update_url'],
+        'changelog' => $changelog,
+        'version_code' => $advertised['version_code'],
+        'version_name' => $advertised['version_name'],
+        'update_url' => $advertised['update_url'],
+        'sha256' => $advertised['sha256'],
+        'signer_sha256' => $advertised['signer_sha256']
     ]);
     exit;
 }
