@@ -58,6 +58,49 @@ const peerFor = (ws, targetId) => {
     return target;
 };
 
+/**
+ * Why a target cannot be called, separated from whether it can.
+ *
+ * peerFor answers null for two unrelated conditions -- no socket at all, and a
+ * socket belonging to another tenant -- and both used to surface as "Personel
+ * sedang offline". That sent operators after a network fault when the unit was
+ * plainly connected: on production one unit sat under `superadmin` while the
+ * three it shared a channel with sat under `ODIE COMM`, so every private call
+ * between them was refused and blamed on the network.
+ *
+ * `offline` is a true statement about an absent or closed socket and is kept.
+ * `unavailable` covers a peer that exists but is not callable, and says nothing
+ * about why -- the caller has no business learning another tenant's shape.
+ *
+ * @returns {{peer: object|null, reason: 'ok'|'offline'|'unavailable'}}
+ */
+const resolvePeer = (ws, targetId) => {
+    const target = activeConnections.get(String(targetId));
+    if (!target || target.readyState !== WebSocket.OPEN) {
+        return { peer: null, reason: 'offline' };
+    }
+    const allowed = peerFor(ws, targetId);
+    if (!allowed) return { peer: null, reason: 'unavailable' };
+    return { peer: allowed, reason: 'ok' };
+};
+
+/**
+ * Whether `ws` could open a private call to `targetId` right now.
+ *
+ * Asked per roster entry so the handset can stop offering a call that the
+ * relay will refuse. A button that always fails is worse than no button: the
+ * operator reads the failure as a fault in the radio.
+ *
+ * Deliberately not a promise about the next moment -- the peer may be invited
+ * by someone else before the tap lands, and request_ptp checks again.
+ */
+const canPrivateCall = (ws, targetId) => {
+    if (String(targetId) === String(ws?.sessionUser?.id ?? '')) return false;
+    const { peer, reason } = resolvePeer(ws, targetId);
+    if (reason !== 'ok' || !peer) return false;
+    return Boolean(ws.enable_p2p && peer.enable_p2p);
+};
+
 /** Resolve only a reciprocal, same-kind private session. */
 const ptpPeerFor = (ws, kind) => {
     const target = peerFor(ws, ws.ptpTargetId);
@@ -172,6 +215,8 @@ const clearPtpSession = clearPtpState;
 module.exports = {
     activeConnections,
     peerFor,
+    resolvePeer,
+    canPrivateCall,
     ptpPeerFor,
     createPtpInvite,
     consumePtpInvite,
