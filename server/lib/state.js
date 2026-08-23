@@ -33,6 +33,17 @@ const activeVideoRooms = new Map();
  */
 const PTP_INVITE_TTL = 60000; // 60 detik
 
+/*
+ * WebSocket.OPEN, without requiring `ws` here.
+ *
+ * This module is deliberately dependency-free -- it is the shared state every
+ * other module imports, and the unit suite loads it with nothing installed.
+ * Writing `WebSocket.OPEN` passed locally on Node 22, which exposes a global
+ * WebSocket, and threw on the Node 20 the CI runs. The constant is fixed by
+ * the protocol, so name it rather than reach for a global that may not exist.
+ */
+const SOCKET_OPEN = 1;
+
 /**
  * The socket for `targetId`, but only if it belongs to the same tenant as `ws`.
  *
@@ -76,7 +87,7 @@ const peerFor = (ws, targetId) => {
  */
 const resolvePeer = (ws, targetId) => {
     const target = activeConnections.get(String(targetId));
-    if (!target || target.readyState !== WebSocket.OPEN) {
+    if (!target || target.readyState !== SOCKET_OPEN) {
         return { peer: null, reason: 'offline' };
     }
     const allowed = peerFor(ws, targetId);
@@ -99,6 +110,47 @@ const canPrivateCall = (ws, targetId) => {
     const { peer, reason } = resolvePeer(ws, targetId);
     if (reason !== 'ok' || !peer) return false;
     return Boolean(ws.enable_p2p && peer.enable_p2p);
+};
+
+/**
+ * One channel roster, as one recipient should see it.
+ *
+ * Channel access is granted per unit, so two tenants can legitimately share a
+ * channel and hear each other. Private calling is scoped to a tenant. Both
+ * rules are deliberate; the interface was the only place they disagreed, and it
+ * disagreed silently -- the roster offered a call button for a peer the relay
+ * would refuse, and the refusal claimed the peer was offline.
+ *
+ * Filtering the roster by tenant was the tempting repair and the wrong one.
+ * Those units really are in the channel and really are audible; dropping them
+ * would make the member list disagree with what the operator can hear, and
+ * would take the name off inbound audio. So the list keeps everyone and marks
+ * what is actually possible.
+ *
+ * `admin_id` is read here and never forwarded: which tenant a unit belongs to
+ * is not something another unit needs to learn.
+ *
+ * Lives beside the other tenant rules rather than in broadcast.js, which pulls
+ * in `ws` and the database pool -- neither of which the unit suite installs.
+ */
+const rosterFor = (rows, recipient) => {
+    const mine = recipient?.sessionUser?.admin_id;
+    const myId = String(recipient?.sessionUser?.id ?? '');
+    const callerEnabled = Boolean(recipient?.enable_p2p);
+
+    return rows.map((row) => {
+        const { admin_id: theirs, ...visible } = row;
+        const sameTenant = mine !== null && mine !== undefined
+            && theirs !== null && theirs !== undefined
+            && String(mine) === String(theirs);
+
+        return {
+            ...visible,
+            can_ptp: Boolean(
+                sameTenant && callerEnabled && row.enable_p2p && String(row.id) !== myId,
+            ),
+        };
+    });
 };
 
 /** Resolve only a reciprocal, same-kind private session. */
@@ -217,6 +269,7 @@ module.exports = {
     peerFor,
     resolvePeer,
     canPrivateCall,
+    rosterFor,
     ptpPeerFor,
     createPtpInvite,
     consumePtpInvite,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { rosterFor } = require('../../server/lib/broadcast');
+const { rosterFor } = require('../../server/lib/state');
 
 /*
  * The roster is scoped to a channel, and channel access is granted per unit --

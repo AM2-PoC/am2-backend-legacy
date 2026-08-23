@@ -13,7 +13,7 @@
 const WebSocket = require('ws');
 
 const { pool, redisClient } = require('./db');
-const { activeConnections, channelRooms, activeVideoRooms } = require('./state');
+const { activeConnections, channelRooms, activeVideoRooms, rosterFor } = require('./state');
 
 const broadcastChannelUpdate = async (userId) => {
     const uid = String(userId);
@@ -112,44 +112,6 @@ const stopChannelVideo = async (ws, channelSlug) => {
     return true;
 };
 
-/**
- * One channel roster, as one recipient should see it.
- *
- * Channel access is granted per unit, so two tenants can legitimately share a
- * channel and hear each other. Private calling is scoped to a tenant. Both
- * rules are deliberate; the interface was the only place they disagreed, and it
- * disagreed silently -- the roster offered a call button for a peer the relay
- * would refuse, and the refusal claimed the peer was offline.
- *
- * Filtering the roster by tenant was the tempting repair and the wrong one.
- * Those units really are in the channel and really are audible; dropping them
- * would make the member list disagree with what the operator can hear, and
- * would take the name off inbound audio. So the list keeps everyone and marks
- * what is actually possible.
- *
- * `admin_id` is read here and never forwarded: which tenant a unit belongs to
- * is not something another unit needs to learn.
- */
-const rosterFor = (rows, recipient) => {
-    const mine = recipient?.sessionUser?.admin_id;
-    const myId = String(recipient?.sessionUser?.id ?? '');
-    const callerEnabled = Boolean(recipient?.enable_p2p);
-
-    return rows.map((row) => {
-        const { admin_id: theirs, ...visible } = row;
-        const sameTenant = mine !== null && mine !== undefined
-            && theirs !== null && theirs !== undefined
-            && String(mine) === String(theirs);
-
-        return {
-            ...visible,
-            can_ptp: Boolean(
-                sameTenant && callerEnabled && row.enable_p2p && String(row.id) !== myId,
-            ),
-        };
-    });
-};
-
 const broadcastUsersInChannel = async (channelSlug) => {
     if (!channelSlug) return;
     try {
@@ -218,7 +180,6 @@ const broadcastChannelNameChange = async (channelId) => {
 };
 
 module.exports = {
-    rosterFor,
     broadcastChannelUpdate,
     broadcastToChannel,
     stopChannelVideo,
