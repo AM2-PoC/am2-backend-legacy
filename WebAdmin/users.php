@@ -41,78 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
     }
 }
 
-if (isset($_GET['get_user_channels'])) {
-    header('Content-Type: application/json');
-    $stmt = $pdo->prepare("SELECT channel_id FROM public.user_channels WHERE user_id = ?");
-    $stmt->execute([$_GET['u_id']]);
-    echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
-    exit;
-}
-
-if (isset($_POST['save_user_channels'])) {
-    header('Content-Type: application/json');
-    $u_id = $_POST['u_id'];
-    if (!am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $u_id)) {
-        echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
-        exit;
-    }
-    $channels = json_decode($_POST['channels'], true) ?: [];
-    try {
-        $foreign = am2_first_foreign_channel($pdo, $current_admin_id, $admin_role, $channels);
-        if ($foreign !== null) {
-            echo json_encode(['success' => false, 'msg' => 'Akses ditolak']);
-            exit;
-        }
-        $pdo->beginTransaction();
-
-        $stmtName = $pdo->prepare('SELECT name FROM public.users WHERE id = ?');
-        $stmtName->execute([$u_id]);
-        $targetName = (string) ($stmtName->fetchColumn() ?: $u_id);
-
-        // This page sends a membership list and nothing else, so the
-        // permission on each surviving channel and the unit's default both
-        // stand. It used to recreate every row as FULL DUPLEX, which handed
-        // transmit rights to receive-only units, and moved the default to
-        // whichever channel happened to come first in the JSON.
-        $result = am2_set_user_channels($pdo, (string) $u_id, $channels);
-
-        /*
-         * Who a unit can talk to is exactly the kind of change the activity log
-         * exists for, and this path wrote none: the same edit made from the
-         * channel-access page was recorded, and made from the row dialogue here
-         * it was not. Same event codes, so both read as one thing in the log.
-         */
-        if ($channels) {
-            $stmtCh = $pdo->prepare('SELECT display_name FROM public.channels WHERE id = ?');
-            $logChannels = [];
-            foreach ($channels as $chId) {
-                $stmtCh->execute([$chId]);
-                $logChannels[] = [
-                    'name'    => (string) $stmtCh->fetchColumn(),
-                    'default' => ((string) $chId === (string) $result['default']),
-                    'perm'    => $result['permissions'][(string) $chId] ?? 'FULL DUPLEX',
-                ];
-            }
-            $logCode   = 'access.update';
-            $logParams = ['name' => $targetName, 'channels' => $logChannels];
-        } else {
-            $logCode   = 'access.revoke';
-            $logParams = ['name' => $targetName];
-        }
-        am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
-                'users', (string) $u_id);
-
-        am2_audit_complete();
-        $pdo->commit();
-        syncUserChannels($u_id);
-        echo json_encode(['success' => true]);
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-        echo json_encode(['success' => false, 'msg' => am2_safe_error($e, 'users')]);
-    }
-    exit;
-}
-
 if (isset($_POST['update_feature'])) {
     header('Content-Type: application/json');
     if (!am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['u_id'] ?? '')) {
@@ -402,8 +330,6 @@ $tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
 // first -- which channels, which mode, which feature, are you sure -- so none
 // of them can be declared as a single fixed request on a button.
 $bulkActions = [
-    ['verb' => 'channels', 'key' => 'usr.bulk_channels', 'toolbar_key' => 'usr.bulk_channels_label', 'icon' => 'radio',
-     'data' => ['hs-overlay' => '#am2-channels']],
     ['verb' => 'duplex',   'key' => 'usr.bulk_duplex',   'toolbar_key' => 'usr.bulk_duplex_label', 'icon' => 'swap',
      'data' => ['hs-overlay' => '#am2-bulk-duplex']],
     ['verb' => 'feature',  'key' => 'usr.bulk_feature',  'toolbar_key' => 'usr.bulk_feature_label', 'icon' => 'sliders',
@@ -655,12 +581,26 @@ include 'partials/shell.php';
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
                                 <?php $actCls = 'am2-chip inline-flex items-center border-edge text-ink-muted'; ?>
-                                <button type="button" data-row-channels
-                                        data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
-                                        data-name="<?= htmlspecialchars((string) $u['name'], ENT_QUOTES, 'UTF-8') ?>"
-                                        class="<?= $actCls ?> hover:text-brand">
+                                <?php
+                                /*
+                                 * A link, not a dialogue. The dialogue that
+                                 * used to open here sent the ticked boxes as
+                                 * the unit's complete channel set, and it
+                                 * opened with every box cleared -- so granting
+                                 * one channel revoked the others. Channel
+                                 * access is decided on one screen, which paints
+                                 * what the unit already holds before anyone
+                                 * changes it.
+                                 *
+                                 * `search` rather than a new parameter: that
+                                 * page already filters on it, and an id matches
+                                 * exactly one unit.
+                                 */
+                                ?>
+                                <a href="user_access.php?search=<?= urlencode($uid) ?>"
+                                   class="<?= $actCls ?> hover:text-brand">
                                     <?= e('usr.channels') ?>
-                                </button>
+                                </a>
 
                                 <button type="button" data-row-edit
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
@@ -811,40 +751,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
 <!-- Channels. One dialogue for a single row and for a selection; the heading
      says which, so the two can never be confused. -->
-<div id="am2-channels" role="dialog" tabindex="-1" aria-labelledby="am2-channels-label" class="<?= $ovl ?>">
-    <div data-am2-panel class="<?= $card ?>">
-        <header class="border-b border-edge px-5 py-4">
-            <h2 id="am2-channels-label" class="text-base font-semibold text-ink"><?= e('usr.channels_title') ?></h2>
-            <p data-channels-scope class="mt-0.5 font-mono text-[11px] uppercase tracking-[0.15em] text-brand"></p>
-        </header>
-        <div class="max-h-[50vh] overflow-y-auto p-5">
-            <?php if (!$all_channels): ?>
-                <p class="text-sm text-ink-muted"><?= e('usr.no_channels_available') ?></p>
-            <?php else: ?>
-                <ul class="space-y-1">
-                    <?php foreach ($all_channels as $c): ?>
-                        <li>
-                            <label class="flex h-11 cursor-pointer items-center gap-3 rounded-control px-2
-                                          transition-colors duration-[var(--duration-micro)] hover:bg-card-muted">
-                                <input type="checkbox" data-channel-pick
-                                       value="<?= (int) $c['id'] ?>"
-                                       class="h-4 w-4 rounded border-edge-strong text-brand focus:ring-brand/40">
-                                <span class="truncate text-sm text-ink"><?= htmlspecialchars((string) $c['display_name']) ?></span>
-                            </label>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-                <p class="mt-3 text-xs text-ink-muted"><?= e('usr.first_is_default') ?></p>
-            <?php endif; ?>
-        </div>
-        <footer class="flex justify-end gap-2 border-t border-edge px-5 py-4">
-            <button type="button" data-hs-overlay="#am2-channels" class="<?= $btnGhost ?>"><?= e('ch.cancel') ?></button>
-            <button type="button" data-channels-apply class="<?= $btnBrand ?>"><?= e('ch.save') ?></button>
-        </footer>
-    </div>
-</div>
-
-<!-- Duplex, for a selection. -->
 <div id="am2-bulk-duplex" role="dialog" tabindex="-1" aria-labelledby="am2-duplex-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -1010,7 +916,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     const setScope = (ids, label) => {
         scope = { ids, label };
-        document.querySelectorAll('[data-channels-scope], [data-duplex-scope], [data-feature-scope]')
+        document.querySelectorAll('[data-duplex-scope], [data-feature-scope]')
             .forEach((el) => { el.textContent = label; });
     };
 
@@ -1035,14 +941,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     // A single row. The button carries data-hs-overlay as well, so Preline
     // opens the dialogue through its own trigger.
-    document.querySelectorAll('[data-row-channels]').forEach((btn) => {
-        btn.setAttribute('data-hs-overlay', '#am2-channels');
-        btn.addEventListener('click', () => {
-            setScope([btn.dataset.unit], btn.dataset.unit + ' · ' + btn.dataset.name);
-            document.querySelectorAll('[data-channel-pick]').forEach((c) => { c.checked = false; });
-        });
-    });
-
     document.querySelectorAll('[data-row-edit]').forEach((btn) => {
         btn.setAttribute('data-hs-overlay', '#am2-edit-unit');
         btn.addEventListener('click', () => {
@@ -1091,12 +989,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             failed.length === 0);
         setTimeout(() => window.location.reload(), failed.length ? 2600 : 900);
     }
-
-    document.querySelector('[data-channels-apply]')?.addEventListener('click', () => {
-        const picked = [...document.querySelectorAll('[data-channel-pick]:checked')].map((c) => c.value);
-        applyToScope((id) => ({ save_user_channels: '1', u_id: id, channels: JSON.stringify(picked) }),
-                     '#am2-channels');
-    });
 
     document.querySelectorAll('[data-apply-duplex]').forEach((btn) => {
         btn.addEventListener('click', () => applyToScope(
