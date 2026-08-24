@@ -16,6 +16,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { env, NODE_URL, psqlInvocation } from '../contract/helpers.mjs';
+// The relay's own catalogue, so a translated message is one edit, not two.
+const MSG = createRequire(import.meta.url)('../../server/lib/messages.js');
 
 const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
@@ -240,7 +242,7 @@ describe('joining a channel you do not belong to says so', () => {
         unit.inbox.length = 0;
         send(unit, 'join_channel', { new_channel_slug: 'ct_channel_a3' });
         const res = await waitFor(unit, 'join_error', 5000);
-        assert.match(String(res.data?.message ?? ''), /member/i);
+        assert.equal(String(res.data?.message ?? ''), MSG.NOT_A_CHANNEL_MEMBER);
 
         listener.inbox.length = 0;
         listener.binary.length = 0;

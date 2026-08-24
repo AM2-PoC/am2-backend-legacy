@@ -26,16 +26,20 @@ before(async () => {
     branchA = await asBranchA();
 });
 
+/*
+ * users.php had two more JSON endpoints and both are gone.
+ *
+ * `save_user_channels` backed a channel dialogue that opened with every box
+ * cleared and sent the ticked ones as the complete new set, so granting one
+ * channel revoked the rest. `get_user_channels` was written and never wired --
+ * nothing in the page called it, which is how that dialogue ended up reading no
+ * state at all.
+ *
+ * The membership invariants they covered are asserted against user_access.php
+ * in channel-access.test.mjs, and api_users.php keeps its own
+ * action=get_user_channels for the Admin APK, covered in api-and-authz.
+ */
 describe('users.php hidden JSON endpoints', () => {
-    test('GET ?get_user_channels=1&u_id= returns a bare array of channel ids', async () => {
-        const res = await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup);
-        assert.equal(res.status, 200);
-        assert.match(res.headers.get('content-type'), /application\/json/);
-        const body = await json(res);
-        assert.ok(Array.isArray(body), 'must be a bare array, not an envelope');
-        body.forEach((v) => assert.equal(typeof v, 'number'));
-    });
-
     test('POST update_feature answers {success} and uses msg (not message) on failure', async () => {
         const ok = await json(await postForm('/users.php', sup, {
             update_feature: '1', u_id: PANEL_UNIT, feature: 'enable_maps', val: 'true',
@@ -66,26 +70,6 @@ describe('users.php hidden JSON endpoints', () => {
             update_feature: '1', u_id: PANEL_UNIT, feature: 'duplex_mode', val: 'HALF DUPLEX',
         }));
         assert.equal(duplex.success, true);
-    });
-
-    test('POST save_user_channels takes a JSON string and makes the first entry default', async () => {
-        const chans = await json(await get(`/channels.php?ajax_action=get_channel_users&channel_id=${PANEL_CHANNEL}`, sup));
-        assert.ok(Array.isArray(chans));
-
-        const res = await json(await postForm('/users.php', sup, {
-            save_user_channels: '1', u_id: PANEL_UNIT, channels: JSON.stringify([PANEL_CHANNEL]),
-        }));
-        assert.equal(res.success, true);
-
-        const after = await json(await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup));
-        assert.deepEqual(after, [Number(PANEL_CHANNEL)]);
-
-        // Empty list is a valid input meaning "revoke everything".
-        const cleared = await json(await postForm('/users.php', sup, {
-            save_user_channels: '1', u_id: PANEL_UNIT, channels: JSON.stringify([]),
-        }));
-        assert.equal(cleared.success, true);
-        assert.deepEqual(await json(await get(`/users.php?get_user_channels=1&u_id=${PANEL_UNIT}`, sup)), []);
     });
 });
 

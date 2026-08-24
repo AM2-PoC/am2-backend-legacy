@@ -18,6 +18,7 @@ const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 
 const { pool, redisClient, createLog, channelPermission } = require('./db');
+const MSG = require('./messages');
 const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
 const {
     activeConnections,
@@ -628,7 +629,7 @@ function attachProtocol(server) {
                              */
                             ws.send(JSON.stringify({
                                 type: 'join_error',
-                                data: { channel_slug: data.new_channel_slug, message: 'Not a member of this channel' },
+                                data: { channel_slug: data.new_channel_slug, message: MSG.NOT_A_CHANNEL_MEMBER },
                             }));
                         }
                     } catch (err) {
@@ -843,16 +844,16 @@ function attachProtocol(server) {
                     const { peer: target, reason } = resolvePeer(ws, targetId);
                     if (!target) {
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: reason === 'offline'
-                            ? 'Personel sedang offline'
-                            : 'Panggilan privat tidak tersedia untuk personel ini' } }));
+                            ? MSG.PEER_OFFLINE
+                            : MSG.PRIVATE_CALL_UNAVAILABLE_FOR_PEER } }));
                         break;
                     }
 
                     const invitation = createPtpInvite(ws, target, 'audio');
                     if (!invitation.ok) {
                         const message = invitation.reason === 'busy'
-                            ? 'Personel sedang dalam panggilan lain'
-                            : 'Panggilan privat tidak tersedia';
+                            ? MSG.PEER_BUSY
+                            : MSG.PRIVATE_CALL_UNAVAILABLE;
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message } }));
                         break;
                     }
@@ -869,7 +870,7 @@ function attachProtocol(server) {
                     const inviter = String(data?.target_id ?? '');
                     const accepted = consumePtpInvite(ws, inviter, 'audio');
                     if (!accepted.ok) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'No pending call invitation' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: MSG.NO_PENDING_INVITATION } }));
                         break;
                     }
                     accepted.peer.send(JSON.stringify({
@@ -891,16 +892,16 @@ function attachProtocol(server) {
                     const { peer: target, reason } = resolvePeer(ws, targetId);
                     if (!target) {
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: reason === 'offline'
-                            ? 'Personel sedang offline'
-                            : 'Panggilan video privat tidak tersedia untuk personel ini' } }));
+                            ? MSG.PEER_OFFLINE
+                            : MSG.VIDEO_CALL_UNAVAILABLE_FOR_PEER } }));
                         break;
                     }
 
                     const invitation = createPtpInvite(ws, target, 'video');
                     if (!invitation.ok) {
                         const message = invitation.reason === 'busy'
-                            ? 'Personel sedang dalam panggilan lain'
-                            : 'Panggilan video privat tidak tersedia';
+                            ? MSG.PEER_BUSY
+                            : MSG.VIDEO_CALL_UNAVAILABLE;
                         ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message } }));
                         break;
                     }
@@ -915,14 +916,14 @@ function attachProtocol(server) {
                 case 'accept_ptp_video': {
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video) {
                         if (ws.sessionUser) {
-                            ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data?.target_id, message: 'Panggilan video privat tidak tersedia' } }));
+                            ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: data?.target_id, message: MSG.VIDEO_CALL_UNAVAILABLE } }));
                         }
                         break;
                     }
                     const inviter = String(data?.target_id ?? '');
                     const accepted = consumePtpInvite(ws, inviter, 'video');
                     if (!accepted.ok) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'No pending call invitation' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: MSG.NO_PENDING_INVITATION } }));
                         break;
                     }
                     accepted.peer.send(JSON.stringify({

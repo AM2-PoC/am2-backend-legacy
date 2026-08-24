@@ -17,6 +17,10 @@ import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { env, NODE_URL } from '../contract/helpers.mjs';
+// The relay's own catalogue, not a guess at what it says. This assertion used
+// a regex -- /tidak ditemukan|offline|no pending/i -- which passed for two
+// different messages and then failed when the real one was translated.
+const MSG = createRequire(import.meta.url)('../../server/lib/messages.js');
 
 const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js');
 const WebSocket = require('ws');
@@ -108,7 +112,7 @@ describe('a private call needs an invitation that exists', () => {
         attacker.inbox.length = 0;
         send(attacker, 'accept_ptp', { target_id: victimId });
         const res = await waitFor(attacker, 'ptp_failed');
-        assert.match(String(res.data?.message ?? ''), /tidak ditemukan|offline|no pending/i,
+        assert.equal(String(res.data?.message ?? ''), MSG.NO_PENDING_INVITATION,
             'the relay accepted an answer to a call that was never placed');
     });
 

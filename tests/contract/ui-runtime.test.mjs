@@ -126,9 +126,10 @@ describe('pages wait for the deferred bundle', () => {
 describe('settings.php keeps the ids its script writes into', () => {
     test('the regions the upload swaps in are all present', () => {
         const src = readSrc('settings.php');
-        // The APK upload posts by XHR and replaces these three nodes with the
-        // server's own re-render, so the ids are a contract between the page
-        // and its own response.
+        // The restore action posts by XHR and replaces these three nodes with
+        // the server's own re-render, so the ids are a contract between the
+        // page and its own response. The APK upload used the same regions and
+        // is gone; the ids stay because restore still lands in them.
         for (const id of ['am2-page-alert', 'am2-shelf-version', 'am2-shelf-list']) {
             assert.ok(src.includes(`id="${id}"`), `#${id} is gone; the upload lands nowhere`);
         }
@@ -136,8 +137,11 @@ describe('settings.php keeps the ids its script writes into', () => {
 
     test('the drop zones still point at real inputs', () => {
         const src = readSrc('settings.php');
-        for (const [zone, input] of [['am2-apk-zone', 'apk_file'],
-                                     ['am2-sql-zone', 'am2-restore-file']]) {
+        // am2-apk-zone/apk_file was the second pair. The APK upload path was
+        // removed outright -- the panel no longer writes an uploaded file to
+        // disk anywhere -- and update-channel-surface.test.mjs asserts it stays
+        // gone by absence. Restore is the only upload left.
+        for (const [zone, input] of [['am2-sql-zone', 'am2-restore-file']]) {
             assert.ok(src.includes(`id="${zone}" data-input="${input}"`),
                 `${zone} no longer names its input`);
             assert.ok(src.includes(`id="${input}" type="file"`),
@@ -155,7 +159,9 @@ describe('settings.php keeps the ids its script writes into', () => {
             .replace(/\/\*[\s\S]*?\*\//g, '')
             .replace(/<!--[\s\S]*?-->/g, '')
             .replace(/^\s*\/\/.*$/gm, '');
-        assert.equal((code.match(/type="file"/g) ?? []).length, 2,
+        // One, not two: the APK upload and its input went with the upload
+        // path. Restore is the only file the panel still accepts.
+        assert.equal((code.match(/type="file"/g) ?? []).length, 1,
             'a file input was replaced by a drop zone');
     });
 });
