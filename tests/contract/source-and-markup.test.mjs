@@ -8,6 +8,7 @@ import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
+import path from 'node:path';
 
 let sup;
 before(async () => { sup = await asSuper(); });
@@ -151,25 +152,67 @@ describe('the node relay contract', () => {
         }
     });
 
-    test('the relay speaks English on the wire and in its own console', () => {
-        // Scoped to what actually reaches someone: a data.message the field
-        // app displays verbatim, an HTTP `message`/`error` field, or a
-        // console.* line that ends up in journalctl. Code comments are not
-        // in scope here -- protocol.js and routes.js still narrate their own
-        // logic in Indonesian, which nobody but the next reader ever sees.
+    test('the relay console speaks English', () => {
+        // Scoped to console.* lines, which end up in journalctl and are read by
+        // whoever is holding the server, not by anyone holding a radio. Code
+        // comments are not in scope -- protocol.js and routes.js still narrate
+        // their own logic in Indonesian, which nobody but the next reader sees.
         const src = serverSrc();
         const words = /\b(yang|dan|atau|tidak|sudah|telah|akan|dengan|untuk|dari|harap|gagal|berhasil|diperbarui|dikeluarkan|instansi|salah|nonaktif|kembali|masa aktif)\b/i;
 
         const bad = [];
-        for (const m of src.matchAll(/(?:message|error)\s*:\s*[`'"][^`'"]*[`'"]/g)) {
-            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
-        }
         for (const m of src.matchAll(/console\.(log|error|warn)\([^)]*\)/g)) {
             if (words.test(m[0])) bad.push(m[0].slice(0, 70));
         }
 
         assert.deepEqual(bad, [],
-            `Indonesian text reached a wire message or a console line:\n${bad.join('\n')}`);
+            `Indonesian text reached a console line:\n${bad.join('\n')}`);
+    });
+
+    test('every operator-facing message is one we chose', () => {
+        /*
+         * This half used to demand English on the wire, and the wire never
+         * complied: `data.message` is displayed verbatim by the handset, whose
+         * own fallback for a missing one is "Permintaan Gagal". Two strings
+         * were English and six Indonesian, from the same handlers. The decision
+         * is Indonesian until i18n lands, so the two were translated and the
+         * assertion changed shape rather than being deleted.
+         *
+         * Pinned as an exact set, not scanned for a language. A new message
+         * fails here, which is the moment to decide what it says -- and this
+         * list is the catalogue i18n will work from.
+         */
+        // protocol.js alone: routes.js answers machine callers, and its
+        // 'Unauthorized' is an HTTP body for a caller holding a key, not a
+        // line anyone reads off a handset.
+        const src = fs.readFileSync(
+            path.join(path.dirname(SERVER_JS), 'lib', 'protocol.js'), 'utf8');
+
+        const found = new Set();
+        for (const m of src.matchAll(/message:\s*'([^']+)'/g)) found.add(m[1]);
+        // `const message = cond ? 'a' : 'b';` -- both branches reach the client.
+        for (const m of src.matchAll(/const message =[^;]+;/g)) {
+            for (const lit of m[0].matchAll(/'([^']+)'/g)) {
+                if (/[a-z] [a-z]/i.test(lit[1])) found.add(lit[1]);
+            }
+        }
+        // The ternary written inline inside the send call.
+        for (const m of src.matchAll(/message:\s*reason ===[^}]+?\}/g)) {
+            for (const lit of m[0].matchAll(/'([^']+)'/g)) {
+                if (/[a-z] [a-z]/i.test(lit[1])) found.add(lit[1]);
+            }
+        }
+
+        assert.deepEqual([...found].sort(), [
+            'Bukan anggota channel ini',
+            'Panggilan privat tidak tersedia',
+            'Panggilan privat tidak tersedia untuk personel ini',
+            'Panggilan video privat tidak tersedia',
+            'Panggilan video privat tidak tersedia untuk personel ini',
+            'Personel sedang dalam panggilan lain',
+            'Personel sedang offline',
+            'Tidak ada undangan panggilan yang menunggu',
+        ], 'an operator-facing message changed; decide what it says, then pin it here');
     });
 
     test('the relay stays split by concern', () => {

@@ -628,7 +628,7 @@ function attachProtocol(server) {
                              */
                             ws.send(JSON.stringify({
                                 type: 'join_error',
-                                data: { channel_slug: data.new_channel_slug, message: 'Not a member of this channel' },
+                                data: { channel_slug: data.new_channel_slug, message: 'Bukan anggota channel ini' },
                             }));
                         }
                     } catch (err) {
@@ -869,7 +869,7 @@ function attachProtocol(server) {
                     const inviter = String(data?.target_id ?? '');
                     const accepted = consumePtpInvite(ws, inviter, 'audio');
                     if (!accepted.ok) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'No pending call invitation' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'Tidak ada undangan panggilan yang menunggu' } }));
                         break;
                     }
                     accepted.peer.send(JSON.stringify({
@@ -922,7 +922,7 @@ function attachProtocol(server) {
                     const inviter = String(data?.target_id ?? '');
                     const accepted = consumePtpInvite(ws, inviter, 'video');
                     if (!accepted.ok) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'No pending call invitation' } }));
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: inviter, message: 'Tidak ada undangan panggilan yang menunggu' } }));
                         break;
                     }
                     accepted.peer.send(JSON.stringify({
