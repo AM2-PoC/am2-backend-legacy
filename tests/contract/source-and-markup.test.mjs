@@ -174,36 +174,19 @@ describe('the node relay contract', () => {
          * This half used to demand English on the wire, and the wire never
          * complied: `data.message` is displayed verbatim by the handset, whose
          * own fallback for a missing one is "Permintaan Gagal". Two strings
-         * were English and six Indonesian, from the same handlers. The decision
-         * is Indonesian until i18n lands, so the two were translated and the
-         * assertion changed shape rather than being deleted.
+         * were English and six Indonesian, from the same handlers, under a test
+         * that had been red for weeks.
          *
-         * Pinned as an exact set, not scanned for a language. A new message
-         * fails here, which is the moment to decide what it says -- and this
-         * list is the catalogue i18n will work from.
+         * The strings now live in server/lib/messages.js, so this pins an
+         * object rather than scanning for a language -- a scan is exactly how
+         * six of them sat there unnoticed. A new message fails here, which is
+         * the moment to decide what it says.
          */
-        // protocol.js alone: routes.js answers machine callers, and its
-        // 'Unauthorized' is an HTTP body for a caller holding a key, not a
-        // line anyone reads off a handset.
-        const src = fs.readFileSync(
-            path.join(path.dirname(SERVER_JS), 'lib', 'protocol.js'), 'utf8');
+        const catalogue = fs.readFileSync(
+            path.join(path.dirname(SERVER_JS), 'lib', 'messages.js'), 'utf8');
+        const strings = [...catalogue.matchAll(/^\s{4}[A-Z_]+:\s*'([^']+)'/gm)].map((m) => m[1]);
 
-        const found = new Set();
-        for (const m of src.matchAll(/message:\s*'([^']+)'/g)) found.add(m[1]);
-        // `const message = cond ? 'a' : 'b';` -- both branches reach the client.
-        for (const m of src.matchAll(/const message =[^;]+;/g)) {
-            for (const lit of m[0].matchAll(/'([^']+)'/g)) {
-                if (/[a-z] [a-z]/i.test(lit[1])) found.add(lit[1]);
-            }
-        }
-        // The ternary written inline inside the send call.
-        for (const m of src.matchAll(/message:\s*reason ===[^}]+?\}/g)) {
-            for (const lit of m[0].matchAll(/'([^']+)'/g)) {
-                if (/[a-z] [a-z]/i.test(lit[1])) found.add(lit[1]);
-            }
-        }
-
-        assert.deepEqual([...found].sort(), [
+        assert.deepEqual(strings.sort(), [
             'Bukan anggota channel ini',
             'Panggilan privat tidak tersedia',
             'Panggilan privat tidak tersedia untuk personel ini',
@@ -213,6 +196,18 @@ describe('the node relay contract', () => {
             'Personel sedang offline',
             'Tidak ada undangan panggilan yang menunggu',
         ], 'an operator-facing message changed; decide what it says, then pin it here');
+    });
+
+    test('operator-facing messages are not written inline', () => {
+        // The catalogue only helps while it is the only place they live. One
+        // sentence used to appear three times in protocol.js, and two copies
+        // drifted into another language before anyone noticed.
+        const protocol = fs.readFileSync(
+            path.join(path.dirname(SERVER_JS), 'lib', 'protocol.js'), 'utf8');
+        const inline = [...protocol.matchAll(/message:\s*'([^']+)'/g)].map((m) => m[1]);
+
+        assert.deepEqual(inline, [],
+            `these belong in lib/messages.js:\n${inline.join('\n')}`);
     });
 
     test('the relay stays split by concern', () => {
