@@ -8,6 +8,7 @@ import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
 import fs from 'node:fs';
+import path from 'node:path';
 
 let sup;
 before(async () => { sup = await asSuper(); });
@@ -21,7 +22,10 @@ describe('form field names are the API', () => {
         'channels.php':     ['add_channel', 'edit_channel', 'delete_channel'],
         'user_access.php':  ['update_multi_access'],
         'admin_panel.php':  ['save_admin', 'update_delegation'],
-        'settings.php':     ['update_password', 'export_db', 'import_db', 'upload_apk'],
+        // `upload_apk` was here. The APK upload path is gone: the panel writes
+        // no uploaded file to disk at all now, and its absence is asserted by
+        // update-channel-surface.test.mjs.
+        'settings.php':     ['update_password', 'export_db', 'import_db'],
     };
 
     // Dispatch fields appended to a FormData in JS. There is no name= for these,
@@ -122,34 +126,88 @@ describe('the node relay contract', () => {
     const src = serverSrc();
 
     test('every admin route still exists', () => {
-        for (const r of ['set-app-version', 'sync-channels', 'refresh-branch-permissions',
-                         'update-user-profile', 'update-channel', 'assign-channel',
-                         'remove-channel', 'update-permissions', 'set-permission',
-                         'force-logout']) {
+        for (const r of ['sync-channels', 'refresh-branch-permissions',
+                         'update-permissions', 'force-logout']) {
             assert.ok(src.includes(`/api/admin/${r}`), `route ${r} disappeared`);
         }
         assert.ok(src.includes('/api/check-update'));
     });
 
-    test('the relay speaks English on the wire and in its own console', () => {
-        // Scoped to what actually reaches someone: a data.message the field
-        // app displays verbatim, an HTTP `message`/`error` field, or a
-        // console.* line that ends up in journalctl. Code comments are not
-        // in scope here -- protocol.js and routes.js still narrate their own
-        // logic in Indonesian, which nobody but the next reader ever sees.
+    test('the admin routes nothing called stay gone', () => {
+        // Ten routes were reachable from the internet with no credential. A key
+        // now gates them and the six nothing called were removed outright --
+        // an unused write path is a hole with no upside. Asserted by absence so
+        // one cannot drift back in behind the key.
+        //
+        // Comments stripped first: two of the removed names survive in prose
+        // explaining why the live-push they drove no longer happens, and a
+        // guard that trips on its own explanation is one people route around.
+        const code = src
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+        for (const r of ['set-app-version', 'update-user-profile', 'update-channel',
+                         'assign-channel', 'remove-channel', 'set-permission']) {
+            assert.ok(!code.includes(`/api/admin/${r}`),
+                `route ${r} is back; it was removed as an uncalled write path`);
+        }
+    });
+
+    test('the relay console speaks English', () => {
+        // Scoped to console.* lines, which end up in journalctl and are read by
+        // whoever is holding the server, not by anyone holding a radio. Code
+        // comments are not in scope -- protocol.js and routes.js still narrate
+        // their own logic in Indonesian, which nobody but the next reader sees.
         const src = serverSrc();
         const words = /\b(yang|dan|atau|tidak|sudah|telah|akan|dengan|untuk|dari|harap|gagal|berhasil|diperbarui|dikeluarkan|instansi|salah|nonaktif|kembali|masa aktif)\b/i;
 
         const bad = [];
-        for (const m of src.matchAll(/(?:message|error)\s*:\s*[`'"][^`'"]*[`'"]/g)) {
-            if (words.test(m[0])) bad.push(m[0].slice(0, 70));
-        }
         for (const m of src.matchAll(/console\.(log|error|warn)\([^)]*\)/g)) {
             if (words.test(m[0])) bad.push(m[0].slice(0, 70));
         }
 
         assert.deepEqual(bad, [],
-            `Indonesian text reached a wire message or a console line:\n${bad.join('\n')}`);
+            `Indonesian text reached a console line:\n${bad.join('\n')}`);
+    });
+
+    test('every operator-facing message is one we chose', () => {
+        /*
+         * This half used to demand English on the wire, and the wire never
+         * complied: `data.message` is displayed verbatim by the handset, whose
+         * own fallback for a missing one is "Permintaan Gagal". Two strings
+         * were English and six Indonesian, from the same handlers, under a test
+         * that had been red for weeks.
+         *
+         * The strings now live in server/lib/messages.js, so this pins an
+         * object rather than scanning for a language -- a scan is exactly how
+         * six of them sat there unnoticed. A new message fails here, which is
+         * the moment to decide what it says.
+         */
+        const catalogue = fs.readFileSync(
+            path.join(path.dirname(SERVER_JS), 'lib', 'messages.js'), 'utf8');
+        const strings = [...catalogue.matchAll(/^\s{4}[A-Z_]+:\s*'([^']+)'/gm)].map((m) => m[1]);
+
+        assert.deepEqual(strings.sort(), [
+            'Bukan anggota channel ini',
+            'Panggilan privat tidak tersedia',
+            'Panggilan privat tidak tersedia untuk personel ini',
+            'Panggilan video privat tidak tersedia',
+            'Panggilan video privat tidak tersedia untuk personel ini',
+            'Personel sedang dalam panggilan lain',
+            'Personel sedang offline',
+            'Tidak ada undangan panggilan yang menunggu',
+        ], 'an operator-facing message changed; decide what it says, then pin it here');
+    });
+
+    test('operator-facing messages are not written inline', () => {
+        // The catalogue only helps while it is the only place they live. One
+        // sentence used to appear three times in protocol.js, and two copies
+        // drifted into another language before anyone noticed.
+        const protocol = fs.readFileSync(
+            path.join(path.dirname(SERVER_JS), 'lib', 'protocol.js'), 'utf8');
+        const inline = [...protocol.matchAll(/message:\s*'([^']+)'/g)].map((m) => m[1]);
+
+        assert.deepEqual(inline, [],
+            `these belong in lib/messages.js:\n${inline.join('\n')}`);
     });
 
     test('the relay stays split by concern', () => {
@@ -174,10 +232,14 @@ describe('the node relay contract', () => {
     });
 
     test('websocket message types the field app depends on still exist', () => {
+        // `user_profile_update` was here. It was the only thing
+        // /api/admin/update-user-profile emitted, and that route went with the
+        // five other uncalled write paths, so nothing can produce the message
+        // any more.
         for (const t of ['login_success', 'login_error', 'channels_updated', 'permission_update',
                          'users_online', 'join_channel_success', 'ptt_active_status', 'ptt_error',
                          'video_stream_status', 'ptp_invitation', 'ptp_confirmed', 'ptp_failed',
-                         'ptp_cancelled', 'force_logout', 'user_profile_update']) {
+                         'ptp_cancelled', 'force_logout']) {
             assert.ok(src.includes(`'${t}'`) || src.includes(`"${t}"`),
                 `server -> client message type ${t} disappeared`);
         }

@@ -83,14 +83,16 @@ describe('settings.php restore is superadmin only', () => {
         assert.ok(!html.includes('data-hs-overlay="#am2-restore"'),
             'the restore dialog is offered to an account that may not use it');
         assert.ok(!/name="import_db"/.test(html), 'the restore submit is rendered');
-        assert.ok(!/name="apk_file"/.test(html), 'the APK upload is rendered');
     });
 
     test('a superadmin still has both, so the guard hid them from the right account', async () => {
         const html = await (await get('/settings.php', sup)).text();
         assert.ok(html.includes('data-hs-overlay="#am2-restore"'), 'the restore dialog is gone');
         assert.match(html, /name="import_db"/);
-        assert.match(html, /name="apk_file"/);
+        // apk_file was asserted here too. The APK upload path was removed
+        // outright, so its absence is no longer evidence that the guard hid it
+        // from a branch admin -- it is absent for everyone, and
+        // update-channel-surface.test.mjs pins that separately.
         assert.match(html, /name="export_db"/);
     });
 

@@ -90,23 +90,32 @@ describe('KNOWN BROKEN — locked here so the security release must change them 
 });
 
 describe('node relay routes', () => {
-    test('the four panel-only routes are reachable from the host but denied at the edge', async () => {
+    test('the four panel-only routes are gated at the relay and at the edge', async () => {
+        // This asserted 400 from localhost, back when the routes took anyone's
+        // word for it and only a missing userId could stop them. They are now
+        // behind a key, so an unauthenticated call is refused before any
+        // parameter is looked at -- which is the right order: a caller with no
+        // credential learns nothing about the shape of the request.
         const local = await fetch(`${NODE_URL}/api/admin/sync-channels`);
-        assert.equal(local.status, 400, 'reachable over localhost, rejects a missing userId');
+        assert.equal(local.status, 401, 'the relay accepted an unauthenticated admin call');
 
         const edge = await fetch('https://apiapi.am2-poc.com/api/admin/sync-channels',
             { redirect: 'manual' });  // deliberately the public edge, not the origin
         assert.equal(edge.status, 403, 'denied at nginx');
     });
 
-    test('sync-channels and refresh-branch-permissions validate their required parameter', async () => {
-        assert.equal((await fetch(`${NODE_URL}/api/admin/sync-channels`)).status, 400);
+    test('authentication is decided before the parameters are', async () => {
+        // Both routes used to answer 400 for a missing parameter. Behind the
+        // key the answer is 401 and the body says only "Unauthorized": the
+        // parameter check is real and still there, but it is not reachable
+        // without a credential, so it cannot be used to probe the API's shape.
+        assert.equal((await fetch(`${NODE_URL}/api/admin/sync-channels`)).status, 401);
         const r = await fetch(`${NODE_URL}/api/admin/refresh-branch-permissions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
         });
-        assert.equal(r.status, 400);
+        assert.equal(r.status, 401);
     });
 
     test('check-update answers the shape the field app parses', async () => {
@@ -124,15 +133,18 @@ describe('node relay routes', () => {
         }
     });
 
-    test('the admin routes still require no credential', async () => {
-        // Tightening the API credential will change this. The assertion documents
-        // the starting point.
+    test('the admin routes require a credential', async () => {
+        // This asserted the opposite, with a note that tightening the API
+        // credential would change it. It did: ten routes were reachable from
+        // the internet with no credential, six of them uncalled and now gone,
+        // and a key gates the four that remain. The assertion is inverted
+        // rather than deleted so a regression to the open state fails loudly.
         const res = await fetch(`${NODE_URL}/api/admin/force-logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
         });
-        assert.notEqual(res.status, 401, 'today: no authentication layer exists');
+        assert.equal(res.status, 401, 'an admin route ran without a credential');
         assert.notEqual(res.status, 403);
     });
 });
