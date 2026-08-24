@@ -21,7 +21,10 @@ describe('form field names are the API', () => {
         'channels.php':     ['add_channel', 'edit_channel', 'delete_channel'],
         'user_access.php':  ['update_multi_access'],
         'admin_panel.php':  ['save_admin', 'update_delegation'],
-        'settings.php':     ['update_password', 'export_db', 'import_db', 'upload_apk'],
+        // `upload_apk` was here. The APK upload path is gone: the panel writes
+        // no uploaded file to disk at all now, and its absence is asserted by
+        // update-channel-surface.test.mjs.
+        'settings.php':     ['update_password', 'export_db', 'import_db'],
     };
 
     // Dispatch fields appended to a FormData in JS. There is no name= for these,
@@ -122,13 +125,30 @@ describe('the node relay contract', () => {
     const src = serverSrc();
 
     test('every admin route still exists', () => {
-        for (const r of ['set-app-version', 'sync-channels', 'refresh-branch-permissions',
-                         'update-user-profile', 'update-channel', 'assign-channel',
-                         'remove-channel', 'update-permissions', 'set-permission',
-                         'force-logout']) {
+        for (const r of ['sync-channels', 'refresh-branch-permissions',
+                         'update-permissions', 'force-logout']) {
             assert.ok(src.includes(`/api/admin/${r}`), `route ${r} disappeared`);
         }
         assert.ok(src.includes('/api/check-update'));
+    });
+
+    test('the admin routes nothing called stay gone', () => {
+        // Ten routes were reachable from the internet with no credential. A key
+        // now gates them and the six nothing called were removed outright --
+        // an unused write path is a hole with no upside. Asserted by absence so
+        // one cannot drift back in behind the key.
+        //
+        // Comments stripped first: two of the removed names survive in prose
+        // explaining why the live-push they drove no longer happens, and a
+        // guard that trips on its own explanation is one people route around.
+        const code = src
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+        for (const r of ['set-app-version', 'update-user-profile', 'update-channel',
+                         'assign-channel', 'remove-channel', 'set-permission']) {
+            assert.ok(!code.includes(`/api/admin/${r}`),
+                `route ${r} is back; it was removed as an uncalled write path`);
+        }
     });
 
     test('the relay speaks English on the wire and in its own console', () => {
@@ -174,10 +194,14 @@ describe('the node relay contract', () => {
     });
 
     test('websocket message types the field app depends on still exist', () => {
+        // `user_profile_update` was here. It was the only thing
+        // /api/admin/update-user-profile emitted, and that route went with the
+        // five other uncalled write paths, so nothing can produce the message
+        // any more.
         for (const t of ['login_success', 'login_error', 'channels_updated', 'permission_update',
                          'users_online', 'join_channel_success', 'ptt_active_status', 'ptt_error',
                          'video_stream_status', 'ptp_invitation', 'ptp_confirmed', 'ptp_failed',
-                         'ptp_cancelled', 'force_logout', 'user_profile_update']) {
+                         'ptp_cancelled', 'force_logout']) {
             assert.ok(src.includes(`'${t}'`) || src.includes(`"${t}"`),
                 `server -> client message type ${t} disappeared`);
         }

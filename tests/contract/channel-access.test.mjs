@@ -96,14 +96,29 @@ describe('membership invariants hold whichever page writes them', () => {
         assertConsistent(UNIT);
     });
 
-    test('editing from the units page does not grant transmit to an RX channel', async () => {
+    /*
+     * These three used to post save_user_channels to users.php, which sent a
+     * membership list and nothing else. That page no longer grants channels:
+     * its dialogue opened with every box cleared and replaced the whole set, so
+     * granting one channel revoked the rest.
+     *
+     * The invariants are not about that page, though -- they are about what
+     * am2_set_user_channels() must never do to rows the caller did not mention.
+     * Retargeted onto user_access.php, which is now the only writer.
+     *
+     * Two of them had started passing without testing anything: a POST to the
+     * removed handler renders the page, `status < 400` holds, and the seeded
+     * rows satisfy the assertion. A vacuous green is worse than a red.
+     */
+    test('re-saving a membership does not grant transmit to an RX channel', async () => {
         await seed();
-        // The Units page sends a membership list and nothing more. Every
-        // channel it keeps must keep the permission it already had.
-        const res = await postForm('/users.php', cookie, {
-            save_user_channels: '1',
-            u_id: UNIT,
-            channels: JSON.stringify([CH_A, CH_A2]),
+        // Same two channels, and permissions[] omitted entirely: every channel
+        // that survives must keep the permission it already had.
+        const res = await postForm('/user_access.php', cookie, {
+            update_multi_access: '1',
+            user_id: UNIT,
+            'channels[]': [CH_A, CH_A2],
+            default_channel: CH_A,
         });
         assert.ok(res.status < 400);
 
@@ -113,13 +128,14 @@ describe('membership invariants hold whichever page writes them', () => {
         assertConsistent(UNIT);
     });
 
-    test('editing from the units page does not move the default channel', async () => {
+    test('a membership list that says nothing about the default does not move it', async () => {
         await seed();
-        // Reversed order on purpose: the old code made element zero the default.
-        await postForm('/users.php', cookie, {
-            save_user_channels: '1',
-            u_id: UNIT,
-            channels: JSON.stringify([CH_A2, CH_A]),
+        // Reversed order on purpose: the old code made element zero the
+        // default. default_channel omitted, so the stored one must survive.
+        await postForm('/user_access.php', cookie, {
+            update_multi_access: '1',
+            user_id: UNIT,
+            'channels[]': [CH_A2, CH_A],
         });
 
         const def = membership(UNIT).find((r) => r.isDefault);
@@ -130,8 +146,8 @@ describe('membership invariants hold whichever page writes them', () => {
 
     test('revoking every channel clears last_channel_id rather than dangling', async () => {
         await seed();
-        await postForm('/users.php', cookie, {
-            save_user_channels: '1', u_id: UNIT, channels: JSON.stringify([]),
+        await postForm('/user_access.php', cookie, {
+            update_multi_access: '1', user_id: UNIT,
         });
         assert.strictEqual(membership(UNIT).length, 0);
         assertConsistent(UNIT);
