@@ -13,7 +13,7 @@
 const WebSocket = require('ws');
 
 const { pool, redisClient } = require('./db');
-const { activeConnections, channelRooms, activeVideoRooms } = require('./state');
+const { activeConnections, channelRooms, activeVideoRooms, rosterFor } = require('./state');
 
 const broadcastChannelUpdate = async (userId) => {
     const uid = String(userId);
@@ -117,6 +117,7 @@ const broadcastUsersInChannel = async (channelSlug) => {
     try {
         const result = await pool.query(`
             SELECT u.id, u.name, u.status, u.latitude, u.longitude, u.accuracy, u.updated_at,
+                   u.admin_id,
                    COALESCE(p.enable_p2p, true) as enable_p2p,
                    COALESCE(p.enable_ptt_video, false) as enable_ptt_video,
                    COALESCE(p.duplex_mode, 'HALF DUPLEX') as duplex_mode
@@ -128,9 +129,22 @@ const broadcastUsersInChannel = async (channelSlug) => {
 
         const clients = channelRooms.get(channelSlug);
         if (clients) {
-            const msg = JSON.stringify({ type: 'users_online', data: result.rows });
-            clients.forEach(c => {
-                if(c.readyState === WebSocket.OPEN) c.send(msg);
+            /*
+             * One payload per distinct viewpoint rather than per socket: what
+             * a recipient sees depends only on its tenant and whether it has
+             * private calling at all, and a channel has a handful of those and
+             * potentially hundreds of sockets.
+             */
+            const byViewpoint = new Map();
+            clients.forEach((c) => {
+                if (c.readyState !== WebSocket.OPEN) return;
+                const key = `${c.sessionUser?.admin_id ?? ''}|${c.enable_p2p ? 1 : 0}`;
+                let msg = byViewpoint.get(key);
+                if (msg === undefined) {
+                    msg = JSON.stringify({ type: 'users_online', data: rosterFor(result.rows, c) });
+                    byViewpoint.set(key, msg);
+                }
+                c.send(msg);
             });
         }
     } catch (err) {

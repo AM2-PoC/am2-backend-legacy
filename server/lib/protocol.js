@@ -22,6 +22,7 @@ const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-a
 const {
     activeConnections,
     peerFor,
+    resolvePeer,
     ptpPeerFor,
     createPtpInvite,
     consumePtpInvite,
@@ -833,9 +834,17 @@ function attachProtocol(server) {
                 case 'request_ptp': {
                     if (!ws.sessionUser || !ws.enable_p2p) return;
                     const targetId = String(data?.target_id ?? '');
-                    const target = peerFor(ws, targetId);
-                    if (!target || target.readyState !== WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: 'Personel sedang offline' } }));
+                    /*
+                     * Offline is claimed only when the socket is actually gone.
+                     * peerFor also returns null for a peer in another tenant,
+                     * and reporting that as offline sent operators after a
+                     * network fault for a unit that was plainly connected.
+                     */
+                    const { peer: target, reason } = resolvePeer(ws, targetId);
+                    if (!target) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: reason === 'offline'
+                            ? 'Personel sedang offline'
+                            : 'Panggilan privat tidak tersedia untuk personel ini' } }));
                         break;
                     }
 
@@ -873,9 +882,17 @@ function attachProtocol(server) {
                 case 'request_ptp_video': {
                     if (!ws.sessionUser || !ws.enable_p2p || !ws.enable_ptt_video) return;
                     const targetId = String(data?.target_id ?? '');
-                    const target = peerFor(ws, targetId);
-                    if (!target || target.readyState !== WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: 'Personel sedang offline' } }));
+                    /*
+                     * Offline is claimed only when the socket is actually gone.
+                     * peerFor also returns null for a peer in another tenant,
+                     * and reporting that as offline sent operators after a
+                     * network fault for a unit that was plainly connected.
+                     */
+                    const { peer: target, reason } = resolvePeer(ws, targetId);
+                    if (!target) {
+                        ws.send(JSON.stringify({ type: 'ptp_failed', data: { target_id: targetId, message: reason === 'offline'
+                            ? 'Personel sedang offline'
+                            : 'Panggilan video privat tidak tersedia untuk personel ini' } }));
                         break;
                     }
 
