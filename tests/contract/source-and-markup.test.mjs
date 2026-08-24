@@ -27,7 +27,12 @@ describe('form field names are the API', () => {
     // Dispatch fields appended to a FormData in JS. There is no name= for these,
     // so the second end to check is the append call.
     const scripted = {
-        'users.php': ['save_user_channels', 'update_feature'],
+        // `save_user_channels` was here and is deliberately gone. It backed a
+        // second channel picker on this page whose checkboxes opened cleared,
+        // so granting one channel revoked the rest -- the production log caught
+        // it twice on one unit. Channel access is decided on user_access.php,
+        // which paints current state before anyone changes it.
+        'users.php': ['update_feature'],
         // The access roster left the form when the page moved onto the shared
         // table frame: one dialogue now serves a single channel and a
         // selection, and a selection cannot be a form submit. Same field name,
@@ -92,7 +97,10 @@ describe('form field names are the API', () => {
     });
 
     test('GET dispatch parameters survive', () => {
-        assert.match(readSrc('users.php'), /\$_GET\['get_user_channels'\]/);
+        // users.php had a get_user_channels branch asserted here. Nothing in
+        // the page ever called it -- it was written and never wired -- and the
+        // dialogue it should have filled read no state at all. Removed with the
+        // dialogue; api_users.php serves the Admin APK and is unaffected.
         assert.match(readSrc('channels.php'), /ajax_action/);
         assert.match(readSrc('user_access.php'), /db_force_logout/);
     });
