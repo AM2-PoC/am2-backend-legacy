@@ -32,7 +32,14 @@ Thumbs.db
 *.iml
 
 # Node/server dependencies and build output
-node_modules/
+# No trailing slash. `node_modules/` matches a directory only, and a *symlink*
+# named node_modules is not a directory to git -- so one created to run the
+# suite from a worktree was committed by `git add -A`, reached main, and sat
+# there through two production deploys. It was harmless only because
+# build-release.sh runs `npm ci` after `git archive` and overwrote it; had the
+# order been reversed, production would have loaded its dependencies from a
+# developer's working tree.
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
