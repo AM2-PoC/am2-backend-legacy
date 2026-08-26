@@ -17,7 +17,7 @@ Two distinct API surfaces exist and they are **not** the same thing:
 | `WebAdmin/*.php` **panel pages** (`dashboard.php`, `users.php`, `channels.php`, `user_access.php`, `logs.php`, `settings.php`, `livetrack.php`, `admin_panel.php`) | Browser (the PHP dashboard) | PHP `$_SESSION` |
 | `WebAdmin/api_*.php` | **Admin Native APK** (mobile admin app) | **None** — `admin_id`/`role` passed as plain request params |
 | `WebAdmin/fetch_logs.php`, `get-users-ajax.php` | Browser (panel AJAX) | `$_SESSION` |
-| `WebAdmin/get_users_location.php`, `update_location.php` | Unauthenticated (APK/legacy) | **None** |
+| `WebAdmin/get_users_location.php` | Unauthenticated (APK/legacy) | **None** | (`update_location.php` was removed in #59 -- see 1.14–1.16)
 | `server.js` `/api/admin/*` | PHP panel → Node, server-to-server over `http://localhost:5000` | **None** |
 | `server.js` `/api/check-update`, `/update/*`, WebSocket | AM2 user APK | WS: `app_login` message |
 
@@ -272,131 +272,6 @@ Cascade at `:99-103` clears `users.current_channel`, deletes from `ptt_logs`, `a
 
 **POST `action=save_access`** — `channel_id:int`, `users` = **JSON-encoded string** of an id array (`json_decode($_POST['users'] ?? '[]', true)`, `:117`). Inserts with hard-coded `is_default='false'`, `permission='FULL DUPLEX'` (`:126`). After commit, fires `syncUserChannels($uid)` per user (`:130`). ⇒ `{"success":true}` / `{"success":false,"message":...}`.
 
----
-
-### 1.3 `api_dashboard_chart.php`
-
-**Any method.** Params `admin_id`, `role` (GET or POST, `:5-6`). Sets `SET TIME ZONE 'Asia/Jakarta'` (`:9`).
-
-```php
-// api_dashboard_chart.php:47-52
-echo json_encode([
-    'labels' => $labels,
-    'values' => $values,
-    'status' => 'success',
-    'timestamp' => date('Y-m-d H:i:s')
-]);
-```
-`labels: string[]` (`"HH:00"`), `values: int[]`. 24 buckets via `generate_series`.
-Error: `{"error":...}` at **200** (`:54-56`) — no 500, and **no `status` key**, so a client keying off `status` sees `undefined`.
-
----
-
-### 1.4 `api_dashboard_stats.php`
-
-**GET.** Params `admin_id`, `role`.
-```php
-// api_dashboard_stats.php:32-36
-echo json_encode([
-    'total_user' => (int)$total_user,
-    'user_online' => (int)$user_online,
-    'total_channel' => (int)$total_channel
-]);
-```
-Error: `{"error":...}` at **200** (`:38`).
-
----
-
-### 1.5 `api_get_users.php`
-
-**GET.** Params `admin_id`, `role`. Returns only `status='online'` users. `Content-Type` header is emitted *after* the body is built (`:63`).
-
-```php
-// api_get_users.php:49-60
-$results[] = [
-    'id'           => $user['id'],
-    'name'         => htmlspecialchars($user['name']),
-    'lat'          => (float)$user['latitude'],
-    'lng'          => (float)$user['longitude'],
-    'accuracy'     => (float)$user['accuracy'],
-    'is_online'    => 1,
-    'is_speaking'  => (int)$user['is_speaking'],
-    'is_stale'     => $is_stale,
-    'channel_name' => $user['channel_name'] ?? 'Standby',
-    'updated_at'   => $user['updated_at']
-];
-```
-`is_stale` = `updated_at` older than 60 s (`:48`). `is_speaking` = last `ptt_logs` row is `PUSH`/`PUSH_PRIVATE` within 7 s (`:22-25`).
-Error: **500** + `{"error":...}` (`:66-68`).
-
-⚠️ `name` is HTML-escaped **inside JSON** — a redesign that renders it as text will show `&amp;` literals.
-
----
-
-### 1.6 `api_login.php`
-
-**POST only.** Params `username:string`, `password:string`.
-
-```php
-// api_login.php:18-24
-echo json_encode([
-    'success' => true,
-    'message' => 'Login Berhasil',
-    'admin_id' => (int)$user['id'],
-    'username' => $user['username'],
-    'role' => $user['role']
-]);
-```
-Failures, all **HTTP 200**:
-- `{"success":false,"message":"Akun Anda sedang dinonaktifkan."}` (`:16`)
-- `{"success":false,"message":"Username atau Password salah."}` (`:27`)
-- `{"success":false,"message":"Kesalahan sistem: <pdo msg>"}` (`:30`)
-- non-POST ⇒ `{"success":false,"message":"Method not allowed"}` (`:33`) — **status 200, not 405.**
-
-No session is created. The mobile admin app is expected to carry `admin_id`/`role` in every subsequent request.
-
----
-
-### 1.7 `api_logs.php`
-
-**GET.** Param `category:'ALL'|'PTT'|'ADM'` (default `'ALL'`). LIMIT 50 per source; `ALL` merges and re-slices to 50 (`:45-50`).
-
-Bare array; element shape (note **Indonesian keys**):
-`id:string, jam:"HH:MM:SS", tanggal:"DD/MM/YYYY", raw_time:string, pelaksana:string, pelaksana_id:string, target:string, aksi:string, kategori:'PTT'|'ADM'`.
-
-```php
-// api_logs.php:52
-echo json_encode($results);
-// api_logs.php:54-57
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
-}
-```
-
----
-
-### 1.8 `api_settings.php`
-
-**GET `action=export_db`** (`:7-31`) — params `admin_id:int`, `role`. Not JSON: streams a `pg_dump` via `passthru()` with `Content-Type: application/octet-stream` and an attachment filename. Superadmin gets `-n public`. The non-superadmin branch is unreachable — `am2_api_require_super('export-db')` refuses first — and is left for the dead-code pass. `settings.php` no longer has it at all: a branch admin's export is built in PHP from that account's own rows, because `-t public.users` dumped every branch's. Uses `$host/$port/$user/$dbname/$password` globals from `config.php`.
-
-**GET `action=check_update`** — see section 1.8 above, which is the current description. This heading is a duplicate: `### 1.3` through `### 1.8` each appear twice in this file, and the copies had already drifted apart before this edit. Do not add a second spec here; the endpoint validates the published set and the earlier section carries the manifest shape.
-
-**GET (no action)** — params `admin_id:int`, `role`. Returns a single object: `username, role, user_quota, channel_quota, expired_at, can_manage_maps:bool, can_manage_p2p:bool, can_manage_video:bool, total_admins:int, total_users:int, total_channels:int` (`:78-85`). Not found ⇒ `{"error":"Settings not found"}` at **200** (`:87`). PDO error ⇒ **500** + `{"error":...}` (`:90-91`).
-
-**POST `action=update_password`** — `admin_id:int`, `new_password:string`.
-```php
-// api_settings.php:100-108
-if (strlen($new_pass) < 8) { echo json_encode(['success'=>false,'message'=>'Password minimal 8 karakter']); exit; }
-...
-echo json_encode(['success' => true, 'message' => 'Password diperbarui']);
-```
-**No old-password check, and no verification that `admin_id` is the caller.**
-
-**POST `action=import_db`** — multipart `sql_file`. Shells out `psql ... < tmpfile` (`:121-122`). ⇒ `{"success":true,"message":"Database berhasil dipulihkan"}` or `{"success":false,"message":"File .sql tidak ditemukan"}` (`:115`). All **200**. Since `fix(webadmin): make the restore report what psql actually did`: `exec()` with `-v ON_ERROR_STOP=1 --single-transaction`, so `success` reflects psql's exit status and a dump that breaks halfway is rolled back whole.
-
----
-
 ### 1.9 `api_user_access.php`
 
 **GET** — params `admin_id`, `role`, `search:string`.
@@ -527,54 +402,29 @@ Error ⇒ **500** + `{"error":"Database Error","message":...}` (`:58-62`).
 
 ---
 
-### 1.14 `update_location.php` — **no auth at all**
+### 1.14–1.16 — removed endpoints
 
-**POST only.** Params `user_id:string`, `latitude`, `longitude`, `accuracy` (default 0).
-```php
-// update_location.php:4-7
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('HTTP/1.1 405 Method Not Allowed');
-    exit(json_encode(['status' => 'error', 'message' => 'Gunakan metode POST']));
-}
-```
-The only **405** in the codebase. Missing fields ⇒ `{"status":"error","message":"Data tidak lengkap"}` at **200** (`:15`). Success ⇒ `{"status":"success","message":"Lokasi diperbarui","user":<user_id>}` (`:37-41`); zero rows ⇒ `{"status":"error","message":"User ID tidak ditemukan di database"}` (`:43-46`). PDO error ⇒ **500** + `{"status":"error","message":...}` (`:50-51`).
+`update_location.php`, `assign.php` and `create_admin.php` were documented here
+as live. None of them exists.
 
-Also note it **forces `status='online'`** as a side effect of a location ping.
+`update_location.php` was deleted in `148d37a` (#59). It passed `am2_api_auth()`,
+which accepts any logged-in panel session, and then wrote latitude, longitude
+and `status='online'` for whatever `user_id` the request named -- so any branch
+admin could place any unit anywhere on the live map. Nothing called it: the
+handset reports position over the WebSocket as `update_location`, documented in
+section 3. **This entry is kept as a tombstone rather than deleted, because it
+was headed "no auth at all" and anyone auditing that claim should find the
+answer here instead of a hole that no longer exists.**
 
----
+`assign.php` and `create_admin.php` were deleted in `caf8fdd`, together with
+`layout.php` and `sidebar.php`, when `admin_panel.php` was rebuilt on the shared
+shell. Their work lives in `admin_panel.php` and `api_user_access.php`.
 
-### 1.15 `assign.php` — **returns a full HTML page, not JSON**
-
-`session_start()` + redirect to `login.php` if unauthenticated (`:3`). **GET** renders the page; **POST with `assign` set** writes `user_channels`. Params: `user_id`, `channel_id`, `is_rx` (checkbox presence ⇒ `'true'`/`'false'`).
-
-```php
-// assign.php:12-16
-$stmt = $pdo->prepare("INSERT INTO user_channels (user_id, channel_id, is_rx_only) VALUES (?, ?, ?) 
-                       ON CONFLICT (user_id, channel_id) DO UPDATE SET is_rx_only = EXCLUDED.is_rx_only");
-$stmt->execute([$user_id, $channel_id, $is_rx]);
-$msg = "<div class='alert alert-success'>Akses Berhasil Diperbarui!</div>";
-```
-
-⚠️ **This file is dead/broken.** It writes `user_channels.is_rx_only`, a column that **does not exist** in `struktur_am2.sql` (the real column is `permission`). Every POST here throws, and the listing query at `:78-81` also selects `uc.is_rx_only`, so the page fatals on render too. It is not linked from `sidebar.php`. Treat as removable — but confirm with the user before deleting, since "no endpoint may change" was stated as absolute.
-
-Always **HTTP 200**. Also: unescaped `{$u['name']}` / `{$c['name']}` interpolation into `<option>` at `:53` and `:59`, and `{$l['uname']}` at `:84` — XSS sinks.
+The tables in sections 5 and 6 still name these files where they describe how
+things were; the code no longer does.
 
 ---
 
-### 1.16 `create_admin.php` — **returns a full HTML page, not JSON**
-
-`session_start()` + redirect if unauthenticated (`:3-6`). **POST** params `id`, `name`, `password`.
-
-```php
-// create_admin.php:20-23
-$stmt = $pdo->prepare("INSERT INTO users (id, name, password, role, status) VALUES (?, ?, ?, ?, 'offline')");
-$stmt->execute([$id, $name, $hashed_password, $role]);
-$message = "<div class='alert alert-success'>Admin [$name] Berhasil Dibuat!</div>";
-```
-
-⚠️ **Also legacy/wrong.** It inserts into `public.users` with `role='superadmin'` — but panel login (`login.php:17`) authenticates against `public.admin`. An account created here **cannot log into the panel**. The listing at `:84` also reads `users WHERE role='superadmin'`. `admin_panel.php` is the real admin-creation path. Not linked from `sidebar.php`. Always **200**.
-
----
 
 ### 1.17 `logout.php`
 
