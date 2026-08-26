@@ -26,6 +26,26 @@ function markdownFiles(dir) {
     return out;
 }
 
+test('the endpoint reference does not document a file that is gone', () => {
+    // Three endpoints had their own sections here long after being deleted --
+    // including `update_location.php`, headed "no auth at all", which was the
+    // IDOR closed in #59. A reference that still describes a removed hole sends
+    // whoever audits it hunting for something that is not there, and a
+    // reference that still describes a removed endpoint gets called anyway.
+    //
+    // Only headings are checked. Prose may name a deleted file on purpose --
+    // the tombstone for those three does exactly that -- and a guard that
+    // tripped on its own explanation is one people route around.
+    const root = path.join(DOCS, '..');
+    const src = fs.readFileSync(path.join(DOCS, 'reference/backend-contract.md'), 'utf8');
+    const missing = [];
+    for (const m of src.matchAll(/^#{3}\s+\d+\.\d+\s+`([A-Za-z0-9_.-]+\.php)`/gm)) {
+        if (!fs.existsSync(path.join(root, 'WebAdmin', m[1]))) missing.push(m[1]);
+    }
+    assert.deepEqual(missing, [],
+        `documented as live, but the file is gone:\n${missing.join('\n')}`);
+});
+
 test('no reference document repeats a heading', () => {
     const offenders = [];
     for (const file of markdownFiles(DOCS)) {

@@ -17,7 +17,7 @@ Two distinct API surfaces exist and they are **not** the same thing:
 | `WebAdmin/*.php` **panel pages** (`dashboard.php`, `users.php`, `channels.php`, `user_access.php`, `logs.php`, `settings.php`, `livetrack.php`, `admin_panel.php`) | Browser (the PHP dashboard) | PHP `$_SESSION` |
 | `WebAdmin/api_*.php` | **Admin Native APK** (mobile admin app) | **None** — `admin_id`/`role` passed as plain request params |
 | `WebAdmin/fetch_logs.php`, `get-users-ajax.php` | Browser (panel AJAX) | `$_SESSION` |
-| `WebAdmin/get_users_location.php`, `update_location.php` | Unauthenticated (APK/legacy) | **None** |
+| `WebAdmin/get_users_location.php` | Unauthenticated (APK/legacy) | **None** | (`update_location.php` was removed in #59 -- see 1.14–1.16)
 | `server.js` `/api/admin/*` | PHP panel → Node, server-to-server over `http://localhost:5000` | **None** |
 | `server.js` `/api/check-update`, `/update/*`, WebSocket | AM2 user APK | WS: `app_login` message |
 
@@ -402,54 +402,29 @@ Error ⇒ **500** + `{"error":"Database Error","message":...}` (`:58-62`).
 
 ---
 
-### 1.14 `update_location.php` — **no auth at all**
+### 1.14–1.16 — removed endpoints
 
-**POST only.** Params `user_id:string`, `latitude`, `longitude`, `accuracy` (default 0).
-```php
-// update_location.php:4-7
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('HTTP/1.1 405 Method Not Allowed');
-    exit(json_encode(['status' => 'error', 'message' => 'Gunakan metode POST']));
-}
-```
-The only **405** in the codebase. Missing fields ⇒ `{"status":"error","message":"Data tidak lengkap"}` at **200** (`:15`). Success ⇒ `{"status":"success","message":"Lokasi diperbarui","user":<user_id>}` (`:37-41`); zero rows ⇒ `{"status":"error","message":"User ID tidak ditemukan di database"}` (`:43-46`). PDO error ⇒ **500** + `{"status":"error","message":...}` (`:50-51`).
+`update_location.php`, `assign.php` and `create_admin.php` were documented here
+as live. None of them exists.
 
-Also note it **forces `status='online'`** as a side effect of a location ping.
+`update_location.php` was deleted in `148d37a` (#59). It passed `am2_api_auth()`,
+which accepts any logged-in panel session, and then wrote latitude, longitude
+and `status='online'` for whatever `user_id` the request named -- so any branch
+admin could place any unit anywhere on the live map. Nothing called it: the
+handset reports position over the WebSocket as `update_location`, documented in
+section 3. **This entry is kept as a tombstone rather than deleted, because it
+was headed "no auth at all" and anyone auditing that claim should find the
+answer here instead of a hole that no longer exists.**
 
----
+`assign.php` and `create_admin.php` were deleted in `caf8fdd`, together with
+`layout.php` and `sidebar.php`, when `admin_panel.php` was rebuilt on the shared
+shell. Their work lives in `admin_panel.php` and `api_user_access.php`.
 
-### 1.15 `assign.php` — **returns a full HTML page, not JSON**
-
-`session_start()` + redirect to `login.php` if unauthenticated (`:3`). **GET** renders the page; **POST with `assign` set** writes `user_channels`. Params: `user_id`, `channel_id`, `is_rx` (checkbox presence ⇒ `'true'`/`'false'`).
-
-```php
-// assign.php:12-16
-$stmt = $pdo->prepare("INSERT INTO user_channels (user_id, channel_id, is_rx_only) VALUES (?, ?, ?) 
-                       ON CONFLICT (user_id, channel_id) DO UPDATE SET is_rx_only = EXCLUDED.is_rx_only");
-$stmt->execute([$user_id, $channel_id, $is_rx]);
-$msg = "<div class='alert alert-success'>Akses Berhasil Diperbarui!</div>";
-```
-
-⚠️ **This file is dead/broken.** It writes `user_channels.is_rx_only`, a column that **does not exist** in `struktur_am2.sql` (the real column is `permission`). Every POST here throws, and the listing query at `:78-81` also selects `uc.is_rx_only`, so the page fatals on render too. It is not linked from `sidebar.php`. Treat as removable — but confirm with the user before deleting, since "no endpoint may change" was stated as absolute.
-
-Always **HTTP 200**. Also: unescaped `{$u['name']}` / `{$c['name']}` interpolation into `<option>` at `:53` and `:59`, and `{$l['uname']}` at `:84` — XSS sinks.
+The tables in sections 5 and 6 still name these files where they describe how
+things were; the code no longer does.
 
 ---
 
-### 1.16 `create_admin.php` — **returns a full HTML page, not JSON**
-
-`session_start()` + redirect if unauthenticated (`:3-6`). **POST** params `id`, `name`, `password`.
-
-```php
-// create_admin.php:20-23
-$stmt = $pdo->prepare("INSERT INTO users (id, name, password, role, status) VALUES (?, ?, ?, ?, 'offline')");
-$stmt->execute([$id, $name, $hashed_password, $role]);
-$message = "<div class='alert alert-success'>Admin [$name] Berhasil Dibuat!</div>";
-```
-
-⚠️ **Also legacy/wrong.** It inserts into `public.users` with `role='superadmin'` — but panel login (`login.php:17`) authenticates against `public.admin`. An account created here **cannot log into the panel**. The listing at `:84` also reads `users WHERE role='superadmin'`. `admin_panel.php` is the real admin-creation path. Not linked from `sidebar.php`. Always **200**.
-
----
 
 ### 1.17 `logout.php`
 
