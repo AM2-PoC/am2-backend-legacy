@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Where a relay alert actually goes.
+#
+# This lived only on the production host, so nothing reviewed it, nothing
+# deployed it, and nothing tested it. It is tracked here now for the same
+# reason every other script in this directory is.
+#
+# It used to open with `wall`, which writes to every logged-in TTY on the
+# machine. On the production VPS that is whoever happens to be working,
+# interrupted once an hour, about a fault they cannot act on from a broadcast
+# line. The journal keeps it for anyone looking, and the issue thread reaches
+# the person who can actually fix it.
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 alert-message" >&2
+    exit 64
+fi
+
+message=$*
+timestamp=$(date -Is)
+repo=${AM2_ALERT_REPO:-AM2-PoC/am2-backend-legacy}
+issue=${AM2_ALERT_ISSUE:-32}
+
+/usr/bin/systemd-cat --identifier=am2-relay-operator --priority=crit <<<"$message"
+
+exec env HOME=/root XDG_CONFIG_HOME=/etc/am2 GH_CONFIG_DIR=/etc/am2/gh \
+    /usr/bin/gh issue comment "$issue" --repo "$repo" \
+    --body "[WATCHDOG $timestamp] $message"

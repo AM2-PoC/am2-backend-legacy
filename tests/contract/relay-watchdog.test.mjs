@@ -161,3 +161,82 @@ test('watchdog units execute every minute and route failures to alert service', 
   assert.match(timer, /^Persistent=true$/m);
   assert.match(alertUnit, /send-relay-alert\.sh/);
 });
+
+/*
+ * An alarm that never stops is not an alarm.
+ *
+ * The watchdog was installed on 11 August into a hybrid runtime state and has
+ * been failing every minute since -- 891 consecutive failures over sixteen
+ * days. It was right every single time: the relay really was running from a
+ * different release than /current pointed at. Nobody acted, and the alert kept
+ * arriving, hourly, by `wall` -- broadcast to every terminal logged into the
+ * production VPS -- and as a new comment on one GitHub issue, twenty-six of
+ * them, on a thread titled "configure external relay alert delivery".
+ *
+ * What is missing is not detection. It is the two edges: something broke, and
+ * something is fixed again. A fault that persists is one fact, not one fact per
+ * hour, and a fault that clears is a fact nothing ever reported at all.
+ */
+
+test('a persisting fault is announced once, and its recovery closes the episode', () => {
+    const f = fixture();
+    try {
+        const first = run(alert, f.env, ['relay HTTP 502']);
+        assert.equal(first.status, 0, first.stderr);
+
+        const again = run(alert, f.env, ['relay HTTP 502']);
+        assert.equal(again.status, 0, again.stderr);
+        assert.equal(
+            (readFileSync(f.calls, 'utf8').match(/^webhook /gm) || []).length, 1,
+            'the same fault was announced twice',
+        );
+
+        // The relay comes back. The watchdog passes, and that is the edge that
+        // was never reported: the issue thread only ever said something broke.
+        const healthy = run(watchdog, f.env);
+        assert.equal(healthy.status, 0, healthy.stderr);
+
+        const calls = readFileSync(f.calls, 'utf8');
+        const delivered = calls.match(/^webhook .*/gm) || [];
+        assert.equal(delivered.length, 2, 'recovery was not announced');
+        assert.match(delivered[1], /recover|healthy|clear/i);
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('a fault that returns after recovery is announced again immediately', () => {
+    const f = fixture();
+    try {
+        run(alert, f.env, ['relay HTTP 502']);
+        run(watchdog, f.env);                       // recovers, closing the episode
+        run(alert, f.env, ['relay HTTP 502']);      // the same fault, a new episode
+
+        const delivered = (readFileSync(f.calls, 'utf8').match(/^webhook /gm) || []).length;
+        assert.equal(delivered, 3,
+            'a fault that came back was suppressed by the previous episode');
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('a healthy watchdog with nothing outstanding says nothing at all', () => {
+    const f = fixture();
+    try {
+        const result = run(watchdog, f.env);
+        assert.equal(result.status, 0, result.stderr);
+        assert.ok(!existsSync(f.calls), 'a healthy check announced something');
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('the operator notifier does not broadcast to every terminal on the host', () => {
+    // `wall` writes to every logged-in TTY on the box. On the production VPS
+    // that is whoever happens to be working, interrupted once an hour, about a
+    // fault they cannot fix from a broadcast. The journal and the issue thread
+    // both reach the person who can.
+    const notifier = resolve(root, 'infra/scripts/notify-relay-operator');
+    assert.ok(existsSync(notifier),
+        'the notifier lives only on the host, so nothing reviews or deploys it');
+    // A command at the start of a line, not the word anywhere -- the comment
+    // explaining why it was removed says "wall" too.
+    const source = readFileSync(notifier, 'utf8');
+    assert.doesNotMatch(source, /^\s*(\/usr\/bin\/)?wall\b/m,
+        'the notifier still broadcasts to every terminal');
+    assert.match(source, /gh issue comment/, 'the notifier no longer delivers anywhere');
+});
