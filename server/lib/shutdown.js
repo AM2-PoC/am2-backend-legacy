@@ -28,6 +28,27 @@ const CLOSE_GOING_AWAY = 1001;
 const CLOSE_REASON = 'server restarting';
 
 /**
+ * How many people are actually talking.
+ *
+ * activeSpeakers is keyed by channel, and its values are Sets of speakers. A
+ * channel gets its key the moment somebody joins and never loses it -- only the
+ * members of its Set come and go -- so the Map's own size counts every channel
+ * anybody has joined since boot, which on a live relay is permanently non-zero.
+ *
+ * Reading that size made the drain wait its entire grace on every shutdown and
+ * then report "2 transmission(s) still open" on a relay whose database said
+ * nobody was connected at all. The number to wait on is the members, not the
+ * keys.
+ */
+function transmitting(activeSpeakers) {
+    let count = 0;
+    for (const speakers of activeSpeakers.values()) {
+        count += speakers ? speakers.size : 0;
+    }
+    return count;
+}
+
+/**
  * Stop accepting, wait out what is in the air, then close.
  *
  * Every collaborator is a parameter -- the clock included -- because the only
@@ -50,13 +71,14 @@ async function drain({
 
     const deadline = now() + graceMs;
     let waited = false;
-    while (activeSpeakers.size > 0 && now() < deadline) {
+    while (transmitting(activeSpeakers) > 0 && now() < deadline) {
         waited = true;
         await wait(pollMs);
     }
     if (waited) {
-        log(activeSpeakers.size > 0
-            ? `shutdown: ${activeSpeakers.size} transmission(s) still open at the deadline`
+        const open = transmitting(activeSpeakers);
+        log(open > 0
+            ? `shutdown: ${open} transmission(s) still open at the deadline`
             : 'shutdown: transmissions finished');
     }
 
@@ -121,4 +143,4 @@ function installShutdown(options) {
     }
 }
 
-module.exports = { drain, installShutdown, CLOSE_GOING_AWAY, CLOSE_REASON };
+module.exports = { drain, installShutdown, transmitting, CLOSE_GOING_AWAY, CLOSE_REASON };
