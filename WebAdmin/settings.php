@@ -129,7 +129,7 @@ function am2_field_channel(PDO $pdo): array
 {
     $dir = dirname(__DIR__) . '/server/update';
     $out = [
-        'version' => null, 'changelog' => '', 'url' => '',
+        'version' => null, 'build' => null, 'changelog' => '', 'url' => '',
         'files' => [], 'readable' => is_dir($dir),
     ];
 
@@ -145,10 +145,11 @@ function am2_field_channel(PDO $pdo): array
     // The relay answers from the table, so the table is what the devices are
     // actually told -- version.json beside the APK is only a deployment note.
     try {
-        $row = $pdo->query("SELECT version_name, release_notes FROM public.app_versions
+        $row = $pdo->query("SELECT version_code, version_name, release_notes FROM public.app_versions
                             ORDER BY version_code DESC LIMIT 1")->fetch();
         if ($row) {
             $out['version'] = (string) $row['version_name'];
+            $out['build'] = (int) $row['version_code'];
             $out['changelog'] = (string) ($row['release_notes'] ?? '');
         }
     } catch (PDOException $e) {
@@ -435,6 +436,7 @@ if ($is_super) {
         'label'     => t('set.channel_admin'),
         'note'      => t('set.channel_admin_note'),
         'version'   => $shelf_valid ? ($advertisement['advertised']['version_name'] ?? null) : null,
+        'build'     => $shelf_valid ? ($advertisement['advertised']['version_code'] ?? null) : null,
         'changelog' => $shelf_valid ? am2_release_notes($advertisement['changelog']) : '',
         'url'       => $shelf_valid ? $shelf_url : '',
         'files'     => $shelf['files'],
@@ -451,6 +453,7 @@ if ($is_super) {
         'label'     => t('set.channel_field'),
         'note'      => t('set.channel_field_note'),
         'version'   => $field['version'],
+        'build'     => $field['build'],
         'changelog' => am2_release_notes($field['changelog']),
         'url'       => $field['url'],
         'files'     => $field['files'],
@@ -772,6 +775,21 @@ include 'partials/shell.php';
                                 <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
                                     <?= htmlspecialchars((string) $ch['version']) ?>
                                 </p>
+                                <?php if ($ch['build'] !== null): ?>
+                                    <!--
+                                        The build, beside the name and not instead of it.
+
+                                        version_name is written by a human and stays put for a
+                                        release or ten, so two different APKs render identically.
+                                        version_code is the CI run number and is the only thing
+                                        either end compares when deciding an update exists -- it is
+                                        what actually identifies what a handset is carrying.
+                                    -->
+                                    <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.15em]
+                                              text-ink-subtle">
+                                        <?= e('set.build', ['code' => (string) $ch['build']]) ?>
+                                    </p>
+                                <?php endif; ?>
                                 <?php if ($ch['changelog'] !== ''): ?>
                                     <p class="mt-2 text-xs text-ink-muted">
                                         <?= htmlspecialchars($ch['changelog']) ?>
