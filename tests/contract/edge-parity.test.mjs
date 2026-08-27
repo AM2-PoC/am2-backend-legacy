@@ -58,6 +58,13 @@ test('every WebAdmin vhost includes them', () => {
     }
 });
 
+test('every WebAdmin root redirects explicitly to login', () => {
+    for (const f of VHOSTS) {
+        assert.match(read(f), /location = \/\s*\{\s*return 302 \/login\.php;\s*\}/s,
+            `${f} leaves / to the origin DirectoryIndex instead of the login contract`);
+    }
+});
+
 test('repository and development artifacts are denied by every edge vhost', () => {
     const snippet = read(DEV_DENY);
     for (const marker of ['docs', 'infra', 'tests', '.github', '.git',
