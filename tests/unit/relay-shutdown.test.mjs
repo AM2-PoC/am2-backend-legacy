@@ -31,14 +31,27 @@ function fakeClient() {
     };
 }
 
-function harness({ speakers = [], graceMs = 3000, hardMs = 8000 } = {}) {
+/*
+ * activeSpeakers is a Map keyed by channel whose values are Sets of speakers.
+ * A channel gets its key the moment somebody joins it, and that key is never
+ * removed -- only the members of its Set are. So `.size` counts channels that
+ * have ever seen a join, which on a live relay is permanently non-zero.
+ *
+ * The first version of the drain read `.size` and waited its full grace on
+ * every shutdown, then logged "2 transmission(s) still open" against a database
+ * that said nobody was even connected.
+ */
+function harness({ speakers = [], idleChannels = [], graceMs = 3000, hardMs = 8000 } = {}) {
     const clients = [fakeClient(), fakeClient()];
     const events = [];
     let clock = 0;
     return {
         clients,
         events,
-        activeSpeakers: new Map(speakers.map((id) => [id, { id }])),
+        activeSpeakers: new Map([
+            ...idleChannels.map((channel) => [channel, new Set()]),
+            ...(speakers.length ? [['ch_live', new Set(speakers)]] : []),
+        ]),
         opts: {
             server: { close: () => events.push('server.close') },
             wss: { clients: new Set(clients) },
@@ -78,8 +91,9 @@ describe('draining the relay', () => {
         const h = harness({ speakers: ['OD1'] });
         const finished = drain({ ...h.opts, activeSpeakers: h.activeSpeakers });
 
-        // The transmission ends after a couple of polls.
-        setTimeout(() => h.activeSpeakers.clear(), 0);
+        // The transmission ends after a couple of polls. The channel keeps its
+        // key, exactly as the relay leaves it.
+        setTimeout(() => h.activeSpeakers.get('ch_live').clear(), 0);
         await finished;
 
         assert.ok(h.events.some((e) => e.startsWith('wait:')), 'it did not wait at all');
@@ -117,4 +131,28 @@ describe('draining the relay', () => {
         assert.equal(exits.length, 1, 'a second signal ran the shutdown again');
         assert.equal(h.events.filter((e) => e === 'server.close').length, 1);
     });
+});
+
+test('an idle channel is not a transmission', () => {
+    // Every channel anybody has joined since boot holds a key here forever.
+    // Reading the Map's size makes each of them look like somebody talking, so
+    // the drain waits its whole grace on every shutdown and says so in the log.
+    const h = harness({ idleChannels: ['ch_a', 'ch_b'] });
+    return drain({ ...h.opts, activeSpeakers: h.activeSpeakers }).then(() => {
+        assert.ok(!h.events.some((e) => e.startsWith('wait:')),
+            'the drain waited although nobody was transmitting');
+    });
+});
+
+test('it counts the people talking, not the rooms they are in', async () => {
+    // Two people talking, in one of three channels: the two numbers differ,
+    // which is the only way to tell which one is being reported.
+    const h = harness({ speakers: ['OD1:JOKO', 'OD2:ALI'], idleChannels: ['ch_a', 'ch_b'] });
+    setTimeout(() => h.activeSpeakers.get('ch_live').clear(), 0);
+    await drain({ ...h.opts, activeSpeakers: h.activeSpeakers });
+
+    const counted = h.events.find((e) => /transmission/.test(e));
+    assert.ok(counted, 'the drain never reported what it was waiting for');
+    assert.doesNotMatch(counted, /\b3\b/,
+        'the count included a channel with nobody talking in it');
 });
