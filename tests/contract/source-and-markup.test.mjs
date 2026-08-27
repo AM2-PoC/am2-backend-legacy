@@ -249,6 +249,9 @@ describe('the node relay contract', () => {
             assert.ok(src.includes(`'${t}'`) || src.includes(`"${t}"`),
                 `client -> server message type ${t} disappeared`);
         }
+        assert.match(src,
+            /WHERE\s+LOWER\(u\.id\)\s*=\s*LOWER\(\$1\)\s+OR\s+UPPER\(u\.name\)\s*=\s*UPPER\(\$1\)/s,
+            'Client uppercases the login identity, but relay user-id lookup remains case-sensitive');
     });
 
     test('binary frame tags stay 1 for audio and 2 for video', () => {
