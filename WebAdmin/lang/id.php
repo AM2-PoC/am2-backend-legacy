@@ -402,6 +402,7 @@ return [
     'set.scan_to_install'       => 'Pindai untuk pasang',
     'set.version_missing'       => 'Berkas rilis :file tidak tersedia. Unggah APK yang dipublikasikan atau publikasikan rilis lain.',
     'set.no_version'            => 'Belum ada rilis aplikasi administrator yang dipublikasikan.',
+    'set.build'                 => 'Build :code',
     'set.not_advertised'        => 'Paket ini tidak diumumkan ke perangkat: :reason',
     'set.folder_missing'        => 'Penyimpanan pembaruan tidak tersedia. Hubungi administrator sistem.',
     'set.folder_readonly'       => 'Penyimpanan pembaruan hanya-baca. Hubungi administrator sistem.',
