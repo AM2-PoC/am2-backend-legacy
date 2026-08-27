@@ -27,17 +27,28 @@ async function advertised() {
     return { status: res.status, body: await res.json() };
 }
 
-/** The distribution card, as rendered. */
+/**
+ * The Admin Native channel alone, as rendered.
+ *
+ * Scoped to the first of the two channel sections on purpose. The field app is
+ * published from app_versions and currently carries the same version string, so
+ * a slice covering both cards cannot tell "the admin channel announces a
+ * refused version" from "the field channel announces its own, correctly".
+ */
 async function shelf(locale = 'id') {
     const res = await fetch(`${BASE}/settings.php`, {
         headers: { Host: HOST, Cookie: `${sup};am2_lang=${locale}` },
     });
     assert.equal(res.status, 200, 'settings.php did not render');
     const html = await res.text();
-    const start = html.indexOf('id="am2-card-shelf"');
+    const start = html.indexOf('id="am2-shelf-version"');
     assert.ok(start > 0, 'the distribution card is not on the page');
-    const end = html.indexOf('id="am2-shelf-upload"', start);
-    return html.slice(start, end > start ? end : html.length);
+
+    const SECTION = '<section class="rounded-control border border-edge p-4">';
+    const first = html.indexOf(SECTION, start);
+    assert.ok(first > 0, 'the admin channel section is not on the page');
+    const second = html.indexOf(SECTION, first + SECTION.length);
+    return html.slice(first, second > first ? second : html.length);
 }
 
 /** The manifest on disk, whatever state it is in. */

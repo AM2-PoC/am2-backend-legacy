@@ -6,17 +6,25 @@
 // rendered "Sesi native persisten, CSRF pada semua mutasi, logout server-side."
 // -- the only Indonesian surviving anywhere on the English render.
 //
-// The field may now carry both languages at once. This states what that reader
-// must do with every shape the field has ever held, including the plain string
-// every manifest published so far contains.
+// The field may now carry both languages at once. Two things read it: the panel
+// in PHP, and the relay in JavaScript, which hands the notes to every field
+// handset. Putting an object in that column without teaching the relay to read
+// it would send handsets a JSON blob where a sentence belongs.
+//
+// Two implementations of one rule is what this codebase otherwise refuses. They
+// are in different runtimes with no way to share, so instead every case below
+// is asserted against BOTH -- which is the only thing that can stop them
+// drifting apart later.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const I18N = new URL('../../WebAdmin/i18n.php', import.meta.url).pathname;
+const { resolveReleaseNotes } = createRequire(import.meta.url)('../../server/lib/release-notes.js');
 
 /**
  * Call am2_release_notes() for one locale.
@@ -26,7 +34,7 @@ const I18N = new URL('../../WebAdmin/i18n.php', import.meta.url).pathname;
  * which is why setting $_GET['lang'] is enough to choose a language without a
  * session, a database, or a request.
  */
-function notes(value, locale) {
+function fromPhp(value, locale) {
     const dir = mkdtempSync(join(tmpdir(), 'am2-notes-'));
     const harness = join(dir, 'run.php');
     writeFileSync(harness, `<?php
@@ -42,43 +50,79 @@ echo json_encode(am2_release_notes(json_decode(${JSON.stringify(JSON.stringify(v
     }
 }
 
-describe('am2_release_notes', () => {
-    test('reads the language being asked for', () => {
-        const both = { id: 'Sesi native persisten.', en: 'Persistent native sessions.' };
-        assert.equal(notes(both, 'id'), 'Sesi native persisten.');
-        assert.equal(notes(both, 'en'), 'Persistent native sessions.');
-    });
+const LEGACY = 'Sesi native persisten, CSRF pada semua mutasi.';
 
-    test('accepts the plain string every published manifest still holds', () => {
-        const legacy = 'Sesi native persisten, CSRF pada semua mutasi.';
-        assert.equal(notes(legacy, 'en'), legacy);
-        assert.equal(notes(legacy, 'id'), legacy);
-    });
-
-    test('reads an object that arrived as encoded JSON', () => {
+const cases = [
+    {
+        name: 'reads the language being asked for',
+        value: { id: 'Sesi native persisten.', en: 'Persistent native sessions.' },
+        locale: 'en',
+        expected: 'Persistent native sessions.',
+    },
+    {
+        name: 'reads Indonesian when Indonesian is asked for',
+        value: { id: 'Sesi native persisten.', en: 'Persistent native sessions.' },
+        locale: 'id',
+        expected: 'Sesi native persisten.',
+    },
+    {
+        // Every manifest published so far, and every row already in
+        // app_versions, holds exactly this. A release note is not worth a
+        // migration, so the plain string has to keep working untouched.
+        name: 'accepts the plain string every published release still holds',
+        value: LEGACY,
+        locale: 'en',
+        expected: LEGACY,
+    },
+    {
         // app_versions.release_notes is a text column: an object stored there
-        // comes back as its JSON, not as an array.
-        const encoded = JSON.stringify({ id: 'Rilis.', en: 'Release.' });
-        assert.equal(notes(encoded, 'en'), 'Release.');
-    });
-
-    test('falls back to the default locale before giving up', () => {
-        assert.equal(notes({ id: 'Hanya Indonesia.' }, 'en'), 'Hanya Indonesia.');
-    });
-
-    test('falls back to whatever single language is present', () => {
+        // comes back as its JSON, not as a structure.
+        name: 'reads an object that arrived as encoded JSON',
+        value: JSON.stringify({ id: 'Rilis.', en: 'Release.' }),
+        locale: 'en',
+        expected: 'Release.',
+    },
+    {
+        name: 'falls back to the default locale before giving up',
+        value: { id: 'Hanya Indonesia.' },
+        locale: 'en',
+        expected: 'Hanya Indonesia.',
+    },
+    {
         // Wrong language beats an empty box: an operator can still read a
         // version note they did not ask for, and cannot read nothing.
-        assert.equal(notes({ fr: 'Notes de version.' }, 'en'), 'Notes de version.');
-    });
+        name: 'falls back to whatever single language is present',
+        value: { fr: 'Notes de version.' },
+        locale: 'en',
+        expected: 'Notes de version.',
+    },
+    {
+        name: 'an empty entry does not win over a filled one',
+        value: { en: '   ', id: 'Ada isinya.' },
+        locale: 'en',
+        expected: 'Ada isinya.',
+    },
+    { name: 'an empty string stays empty', value: '', locale: 'en', expected: '' },
+    { name: 'an empty object is an empty string', value: {}, locale: 'en', expected: '' },
+    { name: 'nothing at all is an empty string, not a crash', value: null, locale: 'en', expected: '' },
+    {
+        // The relay's caller sends no locale at all; it must not become the
+        // literal string "undefined" or throw.
+        name: 'no locale asked for means the default',
+        value: { id: 'Bawaan.', en: 'Default.' },
+        locale: '',
+        expected: 'Bawaan.',
+    },
+];
 
-    test('an empty entry does not win over a filled one', () => {
-        assert.equal(notes({ en: '   ', id: 'Ada isinya.' }, 'en'), 'Ada isinya.');
-    });
+describe('release notes resolve the same way in both runtimes', () => {
+    for (const { name, value, locale, expected } of cases) {
+        test(`${name} (panel, PHP)`, () => {
+            assert.equal(fromPhp(value, locale), expected);
+        });
 
-    test('nothing at all is an empty string, not a crash', () => {
-        assert.equal(notes('', 'en'), '');
-        assert.equal(notes({}, 'en'), '');
-        assert.equal(notes(null, 'en'), '');
-    });
+        test(`${name} (relay, JavaScript)`, () => {
+            assert.equal(resolveReleaseNotes(value, locale), expected);
+        });
+    }
 });
