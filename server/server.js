@@ -38,6 +38,7 @@ const {
 const { pool, redisClient, connectRedis, startCleanup, resetSessions, createLog } = require('./lib/db');
 const { registerRoutes } = require('./lib/routes');
 const { attachProtocol } = require('./lib/protocol');
+const { installShutdown } = require('./lib/shutdown');
 
 connectRedis();
 startCleanup();
@@ -153,7 +154,29 @@ registerRoutes(app);
 // --- WEBSOCKET ENGINE ---
 // The protocol lives in lib/protocol.js: one connection that stays open,
 // against the endpoints in lib/routes.js that arrive and answer.
-attachProtocol(server);
+const wss = attachProtocol(server);
+
+/*
+ * A restart ends transmissions instead of severing them.
+ *
+ * The unit sends SIGINT and nothing handled it, so Node exited on the spot and
+ * every socket died at the TCP layer with no close frame -- a handset only
+ * learned it was disconnected when the socket timed out, and whoever was
+ * mid-sentence was cut mid-word. The grace the unit already allowed through
+ * TimeoutStopSec was never used by anything.
+ *
+ * Three seconds is a transmission, not a deploy: long enough for a press
+ * already in the air to finish, short enough that nobody holding the button
+ * can hold the release.
+ */
+installShutdown({
+    server,
+    wss,
+    activeSpeakers,
+    graceMs: Number(process.env.AM2_SHUTDOWN_GRACE_MS || 3000),
+    hardMs: Number(process.env.AM2_SHUTDOWN_HARD_MS || 8000),
+    log: (line) => console.log(line),
+});
 
 /*
  * Where the relay offers itself.

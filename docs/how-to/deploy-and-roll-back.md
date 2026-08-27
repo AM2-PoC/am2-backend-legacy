@@ -232,16 +232,34 @@ sudo systemctl daemon-reload
 sudo ln -sfn "$REL" /var/www/am2/current
 sudo systemctl reload apache2
 sudo systemctl reset-failed am2-api
-sudo systemctl restart am2-api
+
+# Restart only when the relay source actually changed.
+#
+# A WebSocket cannot survive its process ending, so every restart drops every
+# connected handset. The drain makes that an ended transmission rather than a
+# severed one, but the cheapest interruption is still the one not taken: most
+# releases change WebAdmin and leave server/ untouched, and for those the
+# running relay is already running exactly what is deployed.
+OLD_PID=$(systemctl show am2-api -p MainPID --value)
+RUNNING=$(sudo readlink -f "/proc/$OLD_PID/cwd")
+if [[ "$("$REL/infra/scripts/relay-source-digest.sh" "$RUNNING")" \
+   == "$("$REL/infra/scripts/relay-source-digest.sh" "$REL/server")" ]]; then
+    echo "relay source unchanged; leaving $OLD_PID and its sessions alone"
+else
+    sudo systemctl restart am2-api
+fi
 ```
 
-Keep file descriptor 9 open through the complete swap, restart, immediate verification, and any rollback. The watchdog takes a non-blocking shared lock and silently skips samples while this exclusive deployment lock is held; it never restarts the relay itself. Verify service, HTTP, and runtime identity directly before releasing the lock, then run one watchdog sample after release:
+Keep file descriptor 9 open through the complete swap, restart, immediate verification, and any rollback. The watchdog takes a non-blocking shared lock and silently skips samples while this exclusive deployment lock is held; it never restarts the relay itself.
+
+Verify service and HTTP directly before releasing the lock, then run one watchdog sample after release. Runtime identity is asserted on the relay's *source*, not its path: a relay left running from an earlier release directory is correct as long as it holds byte-identical code, which is exactly the state a skipped restart produces.
 
 ```bash
 systemctl is-active --quiet am2-api
 curl -fsS http://127.0.0.1:5000/ | grep -F 'PTT Server'
 NEW_PID=$(systemctl show am2-api -p MainPID --value)
-test "$(sudo readlink -f "/proc/$NEW_PID/cwd")" = "$(readlink -f /var/www/am2/current)/server"
+test "$("$REL/infra/scripts/relay-source-digest.sh" "$(sudo readlink -f "/proc/$NEW_PID/cwd")")" \
+   = "$("$REL/infra/scripts/relay-source-digest.sh" "$(readlink -f /var/www/am2/current)/server")"
 flock -u 9
 exec 9>&-
 sudo /usr/local/libexec/am2/check-relay-health.sh

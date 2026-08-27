@@ -28,7 +28,38 @@ pid=$(systemctl show "$service" -p MainPID --value 2>/dev/null || true)
 current_real=$(readlink -f "$current" 2>/dev/null || true)
 pid_cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
 [[ -n $current_real && -n $pid_cwd ]] || fail "cannot resolve current/PID cwd identity"
-[[ $pid_cwd == "$current_real/server" ]] || fail "runtime identity mismatch: cwd=$pid_cwd current=$current_real/server"
+
+# What matters is the code the relay is running, not the path it is running it
+# from.
+#
+# A WebSocket cannot survive its process ending, so a deploy either restarts the
+# relay and cuts whoever is transmitting, or swaps /current and leaves the relay
+# where it is. The second is right whenever server/ did not change -- and this
+# check called it a fault, every minute, for sixteen days, because it compared
+# paths. Nobody could act on that without accepting the very interruption the
+# skipped restart avoided.
+#
+# So compare content. Identical means the relay is running exactly what is
+# deployed and the path is bookkeeping; different means it is running code that
+# is no longer deployed, which is the real fault and still fails.
+#
+# node_modules is excluded because it is reinstalled per release from the same
+# lockfile, and hashing it every minute would cost more than it tells us.
+# package-lock.json is a regular file in server/, so a dependency change is
+# still caught.
+# One implementation, shared with the deploy that asks the same question.
+digest_of() {
+    "$(dirname "$0")/relay-source-digest.sh" "$1"
+}
+
+if [[ $pid_cwd != "$current_real/server" ]]; then
+    running=$(digest_of "$pid_cwd") \
+        || fail "runtime identity mismatch: cannot read relay source at $pid_cwd"
+    deployed=$(digest_of "$current_real/server") \
+        || fail "runtime identity mismatch: cannot read deployed relay source at $current_real/server"
+    [[ $running == "$deployed" ]] \
+        || fail "runtime identity mismatch: relay is running stale code from $pid_cwd, deployed is $current_real/server"
+fi
 
 mkdir -p "$state_dir"
 restart_file="$state_dir/${service}.restarts"
