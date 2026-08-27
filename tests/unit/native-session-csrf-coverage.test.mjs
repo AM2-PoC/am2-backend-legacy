@@ -28,5 +28,13 @@ for (const endpoint of endpoints) {
 test('native login is the only POST endpoint deliberately exempt from CSRF', () => {
     const source = readFileSync(new URL('../../WebAdmin/api_login.php', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /am2_csrf_require\(\)/);
-    assert.match(source, /session_regenerate_id\(true\)/);
+    // Rotation moved into am2_session_login(); it must still happen, and the
+    // helper it moved into must be the thing that does it.
+    const boot = readFileSync(new URL('../../WebAdmin/session_boot.php', import.meta.url), 'utf8');
+    const helper = boot.slice(boot.indexOf('function am2_session_login'));
+    assert.ok(
+        /session_regenerate_id\(true\)/.test(source)
+            || (/am2_session_login\(\)/.test(source) && /session_regenerate_id\(true\)/.test(helper)),
+        'the native login does not rotate the session id',
+    );
 });

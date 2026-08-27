@@ -55,3 +55,67 @@ if (!function_exists('am2_session_boot')) {
         session_start();
     }
 }
+
+if (!function_exists('am2_session_login')) {
+    /**
+     * Rotate the session id at login, and issue exactly one cookie for it.
+     *
+     * session_regenerate_id() does not replace the Set-Cookie header already
+     * queued by session_start(); it appends a second one. Two PHPSESSID cookies
+     * then leave the server -- the dead id first, the live id second.
+     *
+     * A browser is fine with that. RFC 6265 has the store replace by
+     * (name, domain, path) as it processes them in order, so the second
+     * overwrites the first and only the live id survives. Admin Native does not
+     * use a browser's store: its jar kept both, sent both, and PHP takes the
+     * *first* PHPSESSID in a Cookie header -- the dead one, half the time,
+     * because the jar was backed by an unordered set. Those handsets ran the
+     * whole login anonymously, which read as "Gagal memperbarui fitur" on any
+     * switch that needs an admin right.
+     *
+     * The jar is being fixed too. This is the other half: a response that
+     * cannot be misread does not depend on every client reading it correctly.
+     *
+     * Only session cookies are dropped. header_remove() takes a whole name at
+     * once, so anything else already queued -- am2_lang from ?lang= on the
+     * login form -- is read back and re-sent rather than lost.
+     */
+    function am2_session_login(): void
+    {
+        session_regenerate_id(true);
+
+        if (headers_sent()) {
+            return;
+        }
+
+        $prefix = session_name() . '=';
+        $others = [];
+        foreach (headers_list() as $header) {
+            if (stripos($header, 'Set-Cookie:') !== 0) {
+                continue;
+            }
+            $value = ltrim(substr($header, strlen('Set-Cookie:')));
+            if (stripos($value, $prefix) !== 0) {
+                $others[] = $value;
+            }
+        }
+
+        header_remove('Set-Cookie');
+        foreach ($others as $value) {
+            header('Set-Cookie: ' . $value, false);
+        }
+
+        // Rebuilt from the live parameters rather than by keeping one of the
+        // removed headers: the id is the one regeneration just created, and the
+        // flags are whatever am2_session_boot() decided for this request.
+        $params = session_get_cookie_params();
+        setcookie(session_name(), session_id(), [
+            'expires'  => $params['lifetime'] ? time() + $params['lifetime'] : 0,
+            'path'     => $params['path'],
+            'domain'   => $params['domain'],
+            'secure'   => $params['secure'],
+            'httponly' => $params['httponly'],
+            'samesite' => $params['samesite'],
+        ]);
+    }
+}
