@@ -372,7 +372,7 @@ function attachProtocol(server) {
                             LEFT JOIN public.admin a ON u.admin_id = a.id
                             LEFT JOIN public.user_app_permissions p ON u.id = p.user_id
                             LEFT JOIN public.channels c ON u.last_channel_id = c.id
-                            WHERE u.id = $1 OR UPPER(u.name) = UPPER($1)
+                            WHERE LOWER(u.id) = LOWER($1) OR UPPER(u.name) = UPPER($1)
                             LIMIT 1
                         `, [cleanIdentity]);
 
