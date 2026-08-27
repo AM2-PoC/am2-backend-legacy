@@ -47,3 +47,20 @@ body=${http_result%$'\n'*}
 [[ $body == *"PTT Server"* ]] || fail "HTTP body missing PTT Server marker"
 
 printf '%s\n' "$restarts" > "$restart_file"
+
+# The other edge.
+#
+# Failure routes to the alert through systemd's OnFailure=. Recovery had no
+# path at all, so the issue thread could only ever say that something broke --
+# never that it was fixed -- and the only way to learn the difference was to
+# come back here and look. Silence has to mean healthy for silence to be worth
+# anything.
+#
+# A failure to deliver the notice is worth an error line and nothing more: the
+# relay is healthy, and reporting it as unhealthy because a comment did not
+# post would be a lie in the more dangerous direction.
+if [[ -f "$state_dir/episode.open" ]]; then
+    "$(dirname "$0")/send-relay-alert.sh" --recovered \
+        "relay healthy again: $service on $current_real" \
+        || echo "relay recovered but the notice could not be delivered" >&2
+fi
