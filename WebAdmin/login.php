@@ -34,7 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             } else {
                 // Without this, the session id issued before authentication
                 // survives it, so an id planted beforehand becomes a valid one.
-                session_regenerate_id(true);
+                // Rotating leaves two Set-Cookie headers behind, so the helper
+                // collapses them to one; see session_boot.php.
+                am2_session_login();
                 am2_login_succeeded($client);
 
                 $_SESSION['admin_logged_in'] = true;
