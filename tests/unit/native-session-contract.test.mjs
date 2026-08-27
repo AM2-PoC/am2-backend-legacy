@@ -6,8 +6,21 @@ const config = readFileSync(new URL('../../WebAdmin/config.php', import.meta.url
 const login = readFileSync(new URL('../../WebAdmin/api_login.php', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../../WebAdmin/api_settings.php', import.meta.url), 'utf8');
 
+// Rotation moved into am2_session_login(), which also collapses the two
+// Set-Cookie headers PHP would otherwise emit. Accept either the direct call
+// or the helper -- and check the helper really rotates, so booting through one
+// that does nothing cannot satisfy this.
+const rotates = (source) => {
+    if (/session_regenerate_id\(true\)/.test(source)) return true;
+    if (!/am2_session_login\(\)/.test(source)) return false;
+    const boot = readFileSync(new URL('../../WebAdmin/session_boot.php', import.meta.url), 'utf8');
+    const helper = boot.slice(boot.indexOf('function am2_session_login'));
+    return /session_regenerate_id\(true\)/.test(helper);
+};
+
+
 test('native login establishes a regenerated server session and returns its csrf token', () => {
-    assert.match(login, /session_regenerate_id\(true\)/);
+    assert.ok(rotates(login), 'the login does not rotate the session id');
     assert.match(login, /\$_SESSION\['admin_logged_in'\]\s*=\s*true/);
     assert.match(login, /\$_SESSION\['admin_id'\]\s*=\s*\(int\)\s*\$user\['id'\]/);
     assert.match(login, /'csrf_token'\s*=>\s*am2_csrf_token\(\)/);
