@@ -411,23 +411,47 @@ if ($is_super) {
     $field = am2_field_channel($pdo);
     [$field_target, $field_present] = am2_channel_target($field['url'], $field['files']);
 
+    /*
+     * The same verdict api_settings.php reaches, from the same function.
+     *
+     * This card used to read admin_version.json itself and print whatever
+     * version_name was in it. The endpoint validated the set and refused it, so
+     * the panel announced a version no handset could ever be offered, and the
+     * number on screen was the reason to believe the channel worked.
+     *
+     * When it is refused there is no version, which also takes away the QR code
+     * and the download URL: an operator should not be invited to install a set
+     * the server will not advertise.
+     */
+    $advertisement = am2_admin_update_advertisement(
+        __DIR__ . '/update',
+        AM2_ADMIN_UPDATE_BASE,
+        AM2_ADMIN_UPDATE_PACKAGE,
+        AM2_ADMIN_UPDATE_DENIED_SIGNERS
+    );
+    $shelf_valid = $advertisement['valid'] === true;
+
     $channels[] = [
         'label'     => t('set.channel_admin'),
         'note'      => t('set.channel_admin_note'),
-        'version'   => $shelf['version']['version_name'] ?? null,
-        'changelog' => (string) ($shelf['version']['changelog'] ?? ''),
-        'url'       => $shelf_url,
+        'version'   => $shelf_valid ? ($advertisement['advertised']['version_name'] ?? null) : null,
+        'changelog' => $shelf_valid ? am2_release_notes($advertisement['changelog']) : '',
+        'url'       => $shelf_valid ? $shelf_url : '',
         'files'     => $shelf['files'],
         'target'    => $shelf_target,
         'present'   => $shelf_present,
-        'empty'     => t('set.no_version'),
+        // The reason, not a generic emptiness. The reader here is a signed-in
+        // superadmin; the public endpoint still says only "no update".
+        'empty'     => $shelf_valid
+            ? t('set.no_version')
+            : t('set.not_advertised', ['reason' => $advertisement['reason']]),
         'managed'   => true,
     ];
     $channels[] = [
         'label'     => t('set.channel_field'),
         'note'      => t('set.channel_field_note'),
         'version'   => $field['version'],
-        'changelog' => $field['changelog'],
+        'changelog' => am2_release_notes($field['changelog']),
         'url'       => $field['url'],
         'files'     => $field['files'],
         'target'    => $field_target,

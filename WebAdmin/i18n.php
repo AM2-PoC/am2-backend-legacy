@@ -137,3 +137,57 @@ function am2_folded_groups(): array
     $raw = $_COOKIE['am2_folded'] ?? '';
     return $raw === '' ? [] : array_values(array_filter(explode(',', $raw)));
 }
+
+/**
+ * Release notes, in the language of whoever is reading them.
+ *
+ * Every other string on the panel comes from a catalogue keyed by locale. These
+ * did not: the update manifest and app_versions.release_notes each held one
+ * free-text field, so an English page showed "Sesi native persisten, CSRF pada
+ * semua mutasi" — the only Indonesian left on the whole English render.
+ *
+ * Notes are written per release, not per key, so they cannot live in the
+ * catalogue. What they can do is carry both languages at once. A JSON object
+ * keyed by locale is read for the active one; a plain string is still accepted
+ * and returned unchanged, because every manifest published before this and
+ * every row already in app_versions holds exactly that, and a release note is
+ * not worth a migration.
+ *
+ * A locale the notes do not carry falls back to the default, then to whatever
+ * single language is present — showing the notes in the wrong language beats
+ * showing an operator nothing at all.
+ */
+function am2_release_notes($notes, ?string $locale = null): string
+{
+    if (is_string($notes)) {
+        // A row or a manifest may hold the object as encoded JSON rather than
+        // as a decoded array; anything else is the plain string it looks like.
+        $trimmed = trim($notes);
+        if ($trimmed === '' || $trimmed[0] !== '{') {
+            return $notes;
+        }
+        $decoded = json_decode($trimmed, true);
+        if (!is_array($decoded)) {
+            return $notes;
+        }
+        $notes = $decoded;
+    }
+
+    if (!is_array($notes)) {
+        return '';
+    }
+
+    $wanted = $locale ?? am2_locale();
+    foreach ([$wanted, AM2_DEFAULT_LOCALE] as $candidate) {
+        if (isset($notes[$candidate]) && is_string($notes[$candidate]) && trim($notes[$candidate]) !== '') {
+            return $notes[$candidate];
+        }
+    }
+
+    foreach ($notes as $value) {
+        if (is_string($value) && trim($value) !== '') {
+            return $value;
+        }
+    }
+    return '';
+}

@@ -17,6 +17,7 @@ const WebSocket = require('ws');
 
 const { pool, createLog } = require('./db');
 const { activeConnections } = require('./state');
+const { resolveReleaseNotes } = require('./release-notes');
 const {
     broadcastChannelUpdate,
     broadcastUsersInChannel,
@@ -72,7 +73,13 @@ function registerRoutes(app) {
                     server_version_code: result.rows[0].version_code,
                     server_version_name: result.rows[0].version_name,
                     force_update: result.rows[0].force_update,
-                    release_notes: result.rows[0].release_notes,
+                    // ?lang= if the caller states one; the field app does
+                    // not, so it gets the default and sees what it always saw.
+                    // The column may now hold both languages at once, which is
+                    // what stops the panel rendering Indonesian to an English
+                    // reader; see lib/release-notes.js.
+                    release_notes: resolveReleaseNotes(
+                        result.rows[0].release_notes, String(req.query.lang || '')),
                     update_url: UPDATE_BASE ? `${UPDATE_BASE}/update/update.apk` : null
                 });
             } else {

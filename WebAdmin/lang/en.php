@@ -402,6 +402,7 @@ return [
     'set.scan_to_install'       => 'Scan to install',
     'set.version_missing'       => 'Release file :file is unavailable. Upload the published APK or publish a different release.',
     'set.no_version'            => 'No administrator-app release has been published.',
+    'set.not_advertised'        => 'This package is not advertised to devices: :reason',
     'set.folder_missing'        => 'Update storage is unavailable. Contact the system administrator.',
     'set.folder_readonly'       => 'Update storage is read-only. Contact the system administrator.',
     'set.on_shelf'              => 'In the update folder',
