@@ -33,7 +33,7 @@ try {
         exit(json_encode(['success' => false, 'message' => 'Akun Anda sedang dinonaktifkan.']));
     }
 
-    session_regenerate_id(true);
+    am2_session_login();
     am2_login_succeeded($client);
     $_SESSION['admin_logged_in'] = true;
     $_SESSION['last_seen'] = time();
