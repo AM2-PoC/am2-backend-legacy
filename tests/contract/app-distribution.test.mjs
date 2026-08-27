@@ -111,3 +111,26 @@ describe('the admin update channel', () => {
         }
     });
 });
+
+test('each environment tells the validator which package it actually builds', () => {
+    // The Android flavours append applicationIdSuffix, so a staging APK is
+    // com.am2.admin.staging and only production is the bare com.am2.admin that
+    // config.php defaults to. An environment that does not say so refuses every
+    // update set it is given, with "package is not the expected application",
+    // while its base URL and its signer both look perfectly correct.
+    //
+    // This was set by hand on the host and silently reverted by the next
+    // deploy, because the vhost is tracked and installed from the repository.
+    // A host-only edit to a tracked file is a change with a fuse on it.
+    const vhost = fs.readFileSync(
+        new URL('../../infra/apache/am2-webadmin-staging.conf', import.meta.url), 'utf8');
+
+    assert.match(vhost, /SetEnv\s+AM2_ADMIN_UPDATE_PACKAGE\s+com\.am2\.admin\.staging/,
+        'the staging vhost does not name the package the staging flavour builds');
+
+    // Production is the default and must stay unset rather than repeated: two
+    // places holding one value is how they come to disagree.
+    const config = fs.readFileSync(path.join(SRC, 'config.php'), 'utf8');
+    assert.match(config, /AM2_ADMIN_UPDATE_PACKAGE[\s\S]{0,80}?'com\.am2\.admin'/,
+        'the default package is no longer com.am2.admin');
+});
