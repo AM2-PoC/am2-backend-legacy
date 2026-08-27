@@ -148,3 +148,81 @@ function am2_validate_signed_update_set(
 
     return ['valid' => true, 'reason' => ''];
 }
+
+/**
+ * The one decision about what may be advertised, for everything that asks.
+ *
+ * There were two. api_settings.php validated the published set before serving
+ * it; the settings card read the same file itself and printed whatever
+ * version_name it found. They disagreed in the direction that hides a failure:
+ * the card announced a version while every handset asking the endpoint got a
+ * 404 and a null, and the number on screen was the reason to believe the
+ * channel worked.
+ *
+ * Returns the verdict, the validated set, and the manifest's changelog. The
+ * changelog is carried out separately and never validated -- it is free text
+ * that no decision depends on, and it is the only field here allowed to be
+ * absent, empty, or written in a language nobody asked for.
+ *
+ * `reason` is for an operator reading the panel, not for the public endpoint:
+ * a handset is told nothing beyond "no update", because a stranger learning
+ * exactly which check refused is a stranger learning how to pass it.
+ */
+function am2_admin_update_advertisement(
+    string $updateDir,
+    string $baseUrl,
+    string $package,
+    array $deniedSigners,
+    int $installedVersionCode = 0
+): array {
+    $refused = static fn (string $why, $changelog = ''): array => [
+        'valid' => false, 'reason' => $why, 'advertised' => [], 'changelog' => $changelog,
+    ];
+
+    $path = rtrim($updateDir, '/') . '/admin_version.json';
+    if (!is_file($path) || !is_readable($path)) {
+        return $refused('no manifest has been published');
+    }
+
+    $parsed = json_decode((string) file_get_contents($path), true);
+    if (!is_array($parsed)) {
+        return $refused('the manifest is not readable JSON');
+    }
+
+    $changelog = $parsed['changelog'] ?? '';
+    $advertised = $parsed;
+    unset($advertised['changelog']);
+
+    $file = am2_admin_update_file(
+        $baseUrl,
+        (string) ($parsed['update_url'] ?? ''),
+        $updateDir
+    );
+    if ($file === null) {
+        return $refused('download path does not resolve', $changelog);
+    }
+
+    // Zero, not the caller's word for it: the server does not know what any
+    // handset has installed, and a version code that arrives in the request is
+    // a version code the requester chose. The client enforces monotonicity
+    // against its own installed build, where the answer is actually known.
+    $verdict = am2_validate_signed_update_set(
+        $advertised,
+        $file,
+        $package,
+        rtrim($baseUrl, '/') . '/admin.apk',
+        $installedVersionCode,
+        $deniedSigners
+    );
+
+    if ($verdict['valid'] !== true) {
+        return $refused((string) $verdict['reason'], $changelog);
+    }
+
+    return [
+        'valid' => true,
+        'reason' => '',
+        'advertised' => $advertised,
+        'changelog' => $changelog,
+    ];
+}

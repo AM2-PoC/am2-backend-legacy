@@ -19,19 +19,37 @@ const gate = settings.slice(
     settings.indexOf('am2_api_auth();'),
 );
 
+/*
+ * The validation moved out of this gate and into
+ * am2_admin_update_advertisement(), because the settings card had to reach the
+ * same verdict and, reading the manifest for itself, reached a different one --
+ * announcing a version this endpoint was refusing to serve.
+ *
+ * So "the gate validates" now means one of two things, and both are checked:
+ * it calls the validator itself, or it calls the one function that does. A
+ * gate that calls neither, or a helper that validates nothing, still fails.
+ */
+const validation = readFileSync(new URL('../../WebAdmin/admin_update_validation.php', import.meta.url), 'utf8');
+const advertisement = validation.slice(validation.indexOf('function am2_admin_update_advertisement'));
+
+function validatesThePublishedSet(source) {
+    if (source.includes('am2_validate_signed_update_set(')) return true;
+    return source.includes('am2_admin_update_advertisement(')
+        && advertisement.includes('am2_validate_signed_update_set(');
+}
+
 test('the update check validates the manifest before advertising it', () => {
     assert.ok(gate.length > 0, 'the check_update gate must precede authentication');
-    const validated = gate.indexOf('am2_validate_signed_update_set(');
-    assert.ok(validated >= 0, 'check_update must validate the published set');
+    assert.ok(validatesThePublishedSet(gate), 'check_update must validate the published set');
     // The rejection path has to come from the validator, not from a second
     // opinion written next to it that can drift out of agreement.
-    assert.match(gate, /\$validation\s*\[\s*'valid'\s*\]/, 'the validator verdict must decide the response');
+    assert.match(gate, /\$\w+\s*\[\s*'valid'\s*\]/, 'the validator verdict must decide the response');
 });
 
 test('an invalid or absent set is not advertised', () => {
     const reject = gate.indexOf('http_response_code(404)');
-    const validated = gate.indexOf('am2_validate_signed_update_set(');
-    assert.ok(validated >= 0, 'the validator must be called at all');
+    const validated = gate.search(/am2_validate_signed_update_set\(|am2_admin_update_advertisement\(/);
+    assert.ok(validatesThePublishedSet(gate), 'the validator must be called at all');
     assert.ok(reject > validated, '404 must be reachable from the validator verdict');
 });
 

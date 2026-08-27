@@ -56,7 +56,13 @@ test('update endpoint never invents a downloadable release', () => {
         'missing metadata still advertises a hard-coded APK URL');
     assert.match(endpoint, /http_response_code\(404\)/,
         'missing or invalid update state must fail closed');
-    assert.match(endpoint, /\$download_file === null/,
+    // The resolution moved into am2_admin_update_advertisement() with the rest
+    // of the decision. What matters is that the published URL is still made to
+    // name a real file below the update directory, and that failing to do so
+    // refuses -- wherever that now lives.
+    assert.match(validation, /function am2_admin_update_file\(/,
+        'nothing resolves the published URL to a file on disk');
+    assert.match(validation, /am2_admin_update_file\([\s\S]{0,400}?===\s*null/,
         'published metadata is not checked against the exact APK on disk');
     assert.match(endpoint, /AM2_ADMIN_UPDATE_BASE/,
         'download URL is not bound to the current environment');

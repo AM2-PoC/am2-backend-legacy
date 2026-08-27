@@ -18,13 +18,6 @@ require_once __DIR__ . '/config.php';
  * visible at the point it applies.
  */
 if (($_GET['action'] ?? '') === 'check_update') {
-    $json_path = __DIR__ . '/update/admin_version.json';
-    $data = is_file($json_path)
-        ? json_decode((string) file_get_contents($json_path), true)
-        : null;
-    $manifest = is_array($data) ? $data : [];
-    $changelog = (string) ($manifest['changelog'] ?? '');
-
     /*
      * The published set is validated before it is advertised, not after.
      *
@@ -40,33 +33,24 @@ if (($_GET['action'] ?? '') === 'check_update') {
      * a client. This is the publishing side of the same rule: refuse to
      * advertise a set the handset would reject anyway.
      *
-     * `changelog` is carried outside the validated set because it is free text
-     * that no decision depends on. Everything else must be exact.
+     * The decision itself lives in am2_admin_update_advertisement() because the
+     * settings card has to reach the same verdict, and when the two read the
+     * manifest separately they disagreed: the card announced a version this
+     * endpoint was refusing to serve.
      */
-    $advertised = $manifest;
-    unset($advertised['changelog']);
-    $download_file = am2_admin_update_file(
+    $advertisement = am2_admin_update_advertisement(
+        __DIR__ . '/update',
         AM2_ADMIN_UPDATE_BASE,
-        (string) ($manifest['update_url'] ?? ''),
-        __DIR__ . '/update'
+        AM2_ADMIN_UPDATE_PACKAGE,
+        AM2_ADMIN_UPDATE_DENIED_SIGNERS
     );
+    $advertised = $advertisement['advertised'];
+    $changelog = am2_release_notes($advertisement['changelog']);
 
-    // Zero, not the caller's word for it: the server does not know what any
-    // handset has installed, and a version code that arrives in the request is
-    // a version code the requester chose. The client enforces monotonicity
-    // against its own installed build, where the answer is actually known.
-    $validation = $download_file === null
-        ? ['valid' => false, 'reason' => 'download path does not resolve']
-        : am2_validate_signed_update_set(
-            $advertised,
-            $download_file,
-            AM2_ADMIN_UPDATE_PACKAGE,
-            rtrim(AM2_ADMIN_UPDATE_BASE, '/') . '/admin.apk',
-            0,
-            AM2_ADMIN_UPDATE_DENIED_SIGNERS
-        );
-
-    if ($validation['valid'] !== true) {
+    if ($advertisement['valid'] !== true) {
+        // The reason is deliberately not sent: a stranger learning which check
+        // refused is a stranger learning how to pass it. It reaches the panel,
+        // where the reader is a signed-in superadmin.
         http_response_code(404);
         echo json_encode([
             'latest_version' => null,
