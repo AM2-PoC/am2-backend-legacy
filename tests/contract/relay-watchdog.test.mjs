@@ -9,7 +9,7 @@ const root = resolve(import.meta.dirname, '../..');
 const watchdog = resolve(root, 'infra/scripts/check-relay-health.sh');
 const alert = resolve(root, 'infra/scripts/send-relay-alert.sh');
 
-function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION', restarts = '0', previousRestarts = null, cwdMatches = true } = {}) {
+function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION', restarts = '0', previousRestarts = null, cwdMatches = true, cwdContent = 'same' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'am2-watchdog-'));
   const bin = join(dir, 'bin');
   const state = join(dir, 'state');
@@ -21,8 +21,24 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
   mkdirSync(state);
   if (previousRestarts !== null) writeFileSync(join(state, 'am2-api.restarts'), `${previousRestarts}\n`);
   mkdirSync(join(release, 'server'), { recursive: true });
+  writeFileSync(join(release, 'server', 'server.js'), 'console.log("relay");\n');
+  writeFileSync(join(release, 'server', 'package-lock.json'), '{"lockfileVersion":3}\n');
   spawnSync('ln', ['-s', release, current]);
+
+  // A relay left running from an earlier release directory. Whether that is a
+  // fault depends entirely on what is in it, which is the distinction the check
+  // could not previously make.
   const cwd = cwdMatches ? join(release, 'server') : join(dir, 'old-release/server');
+  if (!cwdMatches) {
+    mkdirSync(cwd, { recursive: true });
+    writeFileSync(join(cwd, 'server.js'),
+      cwdContent === 'same' ? 'console.log("relay");\n' : 'console.log("older relay");\n');
+    writeFileSync(join(cwd, 'package-lock.json'), '{"lockfileVersion":3}\n');
+    // node_modules is reinstalled per release and is excluded from the
+    // comparison, so a difference here must not register as stale code.
+    mkdirSync(join(cwd, 'node_modules', 'ws'), { recursive: true });
+    writeFileSync(join(cwd, 'node_modules', 'ws', 'index.js'), 'whatever\n');
+  }
 
   writeFileSync(join(bin, 'systemctl'), `#!/usr/bin/env bash
 case "$1" in
@@ -107,7 +123,7 @@ for (const [name, options, reason] of [
   ['inactive unit', { active: 'failed' }, /inactive|service/i],
   ['HTTP failure', { status: '502', body: 'Bad Gateway' }, /HTTP|502/i],
   ['restart growth', { restarts: '1', previousRestarts: '0' }, /restart/i],
-  ['hybrid runtime identity', { cwdMatches: false }, /identity|cwd|current/i],
+  ['stale relay code from an earlier release', { cwdMatches: false, cwdContent: 'different' }, /identity|cwd|current|stale/i],
 ]) {
   test(`watchdog fails on ${name}`, () => {
     const f = fixture(options);
@@ -239,4 +255,45 @@ test('the operator notifier does not broadcast to every terminal on the host', (
     assert.doesNotMatch(source, /^\s*(\/usr\/bin\/)?wall\b/m,
         'the notifier still broadcasts to every terminal');
     assert.match(source, /gh issue comment/, 'the notifier no longer delivers anywhere');
+});
+
+test('a relay still running from an earlier release is healthy when the code is identical', () => {
+    // The deploy that swaps /current without restarting the relay is the whole
+    // reason this distinction matters. When server/ is byte-identical the relay
+    // is running exactly the code that is deployed, and calling that unhealthy
+    // is what produced 891 consecutive failures nobody could act on -- while
+    // the alternative, restarting on every deploy, cuts whoever is transmitting.
+    const f = fixture({ cwdMatches: false, cwdContent: 'same' });
+    try {
+        const result = run(watchdog, f.env);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.stderr, '');
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('a relay running different code from an earlier release is not healthy', () => {
+    const f = fixture({ cwdMatches: false, cwdContent: 'different' });
+    try {
+        const result = run(watchdog, f.env);
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /identity|stale|mismatch/i);
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('the deploy and the watchdog ask the same question of the relay', () => {
+    // Both need to know whether a running relay holds the code that is
+    // deployed: the watchdog to decide whether to alert, the deploy to decide
+    // whether restarting -- and cutting whoever is transmitting -- is necessary
+    // at all. Two implementations of that would eventually disagree, and the
+    // disagreement would be invisible until a deploy skipped a restart the
+    // watchdog then complained about for sixteen days.
+    const health = readFileSync(resolve(root, 'infra/scripts/check-relay-health.sh'), 'utf8');
+    const runbook = readFileSync(resolve(root, 'docs/how-to/deploy-and-roll-back.md'), 'utf8');
+
+    assert.match(health, /relay-source-digest\.sh/,
+        'the watchdog computes the relay digest itself');
+    assert.doesNotMatch(health, /find\s+\.\s+-name\s+node_modules/,
+        'the watchdog carries its own copy of the digest');
+    assert.match(runbook, /relay-source-digest\.sh/,
+        'the runbook still restarts the relay without asking whether it must');
 });
