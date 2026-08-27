@@ -204,30 +204,53 @@ import {
     const map = L.map('map', { zoomControl: false, attributionControl: true })
                  .setView([-2.5, 118], 5);
 
-    // Attribution was switched off. CARTO and OpenStreetMap both require it,
-    // so this is a licence term rather than a design choice -- it is small and
-    // in the corner, but it is there.
+    // Attribution was switched off. Every provider here requires it, so this is
+    // a licence term rather than a design choice -- it is small and in the
+    // corner, but it is there.
     map.attributionControl.setPrefix('');
 
     /*
-     * The basemap follows the theme. It was Voyager -- a light street map --
-     * in both, which under the dark theme put a white continent behind dark
-     * chrome and made the markers hard to pick out. CARTO's Positron and Dark
-     * Matter share a structure, so switching between them changes the palette
-     * and nothing else.
+     * The basemap follows the theme, and costs nothing to draw.
+     *
+     * It was CARTO's Positron and Dark Matter, chosen because the two share a
+     * structure so switching between them changes the palette and nothing else.
+     * CARTO has since put its free basemaps behind an API key, and the way it
+     * enforces that is the reason this went unnoticed for weeks: the tile still
+     * returns 200 with a valid PNG, and the words "API KEY REQUIRED" are
+     * painted diagonally across the image. No status code and no content type
+     * says anything is wrong. The map simply reads as vandalised.
+     *
+     * Esri's Light Gray and Dark Gray Canvas are the same pair of properties --
+     * one structure, two palettes -- served without a key. They are a deliberate
+     * basemap-under-data design, which is what this page is: markers and tracks
+     * over terrain that must not compete with them.
      */
     const BASEMAP = {
-        light: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
-        dark: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
+        light: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        dark: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
     };
-    const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-               + '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+    const ATTR = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> '
+               + '&mdash; Esri, HERE, Garmin, &copy; '
+               + '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+    /*
+     * Esri's canvases stop at zoom 16; past that the service answers with a
+     * blank tile rather than a 404. Leaflet upscales level 16 instead, but only
+     * because it is told where the real levels end -- without this, zooming in
+     * to find one unit empties the map, which is exactly when an operator does
+     * it.
+     */
+    const MAX_NATIVE_ZOOM = 16;
 
     let tiles = null;
     function paintBasemap() {
         const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
         if (tiles) map.removeLayer(tiles);
-        tiles = L.tileLayer(BASEMAP[theme], { attribution: ATTR }).addTo(map);
+        tiles = L.tileLayer(BASEMAP[theme], {
+            attribution: ATTR,
+            maxNativeZoom: MAX_NATIVE_ZOOM,
+            maxZoom: 19,
+        }).addTo(map);
     }
     paintBasemap();
 
