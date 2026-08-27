@@ -83,6 +83,27 @@ describe('the admin update channel', () => {
         }
     });
 
+    test('the card names the build, not only the marketing version', async () => {
+        // version_name does not move on its own. The admin app takes it from
+        // app/version.properties, where a human writes "1.1.0" and leaves it
+        // there for a release or ten, so build 51 and build 52 both render as
+        // "1.1.0-staging" and an operator cannot tell which one a handset has.
+        //
+        // version_code does move -- it is the CI run number, and it is the only
+        // thing either end compares when deciding an update exists. The
+        // manifest carries it and the endpoint serves it; the card simply never
+        // showed it.
+        const { body } = await advertised();
+        if (!body.latest_version) {
+            return; // covered by the refusal tests
+        }
+        const card = await shelf();
+        assert.match(
+            card, new RegExp(`\\b${body.version_code}\\b`),
+            `the endpoint serves build ${body.version_code} and the card does not name it`,
+        );
+    });
+
     test('a refused channel is shown as refused, not as empty space', async () => {
         const { body } = await advertised();
         if (body.latest_version) {
