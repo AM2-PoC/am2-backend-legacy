@@ -169,7 +169,12 @@ function am2_field_channel(): array
      * opinion about the same file. Null means the relay could not be reached,
      * which is a channel whose state is genuinely unknown.
      */
-    $advertised = am2_node_get('/api/check-update');
+    // With the locale. The relay resolves release notes per language and
+    // defaults to Indonesian, so asking without one renders Indonesian notes on
+    // an English page -- the exact leak this channel was cleaned up for,
+    // reintroduced by the fix for a different one. Latent while every published
+    // manifest holds a plain string, which reads the same in every language.
+    $advertised = am2_node_get('/api/check-update?lang=' . urlencode(am2_locale()));
     if (!is_array($advertised) || ($advertised['success'] ?? false) !== true) {
         return $out;
     }
