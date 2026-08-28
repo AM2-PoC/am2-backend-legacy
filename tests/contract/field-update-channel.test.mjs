@@ -90,6 +90,27 @@ describe('the field update channel', () => {
         );
     });
 
+    test('the card asks the relay in the language it is being read in', () => {
+        // Deferring to the relay cost the card its locale: the relay resolves
+        // release notes per language and defaults to Indonesian, so an English
+        // page rendered Indonesian notes -- the exact leak this channel was
+        // cleaned up for, reintroduced by the fix for a different one.
+        //
+        // Latent until a manifest carries notes as an object, which is why it
+        // survived a full suite: every published manifest holds a plain string,
+        // and a plain string reads the same in every language.
+        const settings = fs.readFileSync(path.join(SRC, 'settings.php'), 'utf8');
+        const channel = settings.slice(settings.indexOf('function am2_field_channel'));
+        const body = channel.slice(0, channel.indexOf('\n}'));
+
+        // Nested parentheses in the argument, so match forward from the call
+        // rather than trying to balance them.
+        const at = body.indexOf('am2_node_get(');
+        assert.notEqual(at, -1, 'the card no longer asks the relay at all');
+        assert.match(body.slice(at, at + 160), /am2_locale\(\)/,
+            'the card asks without saying which language it is being read in');
+    });
+
     test('nothing reads the table that nothing writes', () => {
         // Enforced by absence. app_versions was populated by hand and read by
         // two things that disagreed; leaving one reader is how it comes back.
