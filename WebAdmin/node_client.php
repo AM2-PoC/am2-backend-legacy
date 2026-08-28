@@ -19,25 +19,19 @@
 require_once __DIR__ . '/config.php';
 
 /**
- * Send a request to the relay. Returns nothing — callers never read the body.
+ * The one place a request actually leaves the panel.
+ *
+ * One transport, because that is the whole point of this file: three of the six
+ * old syncUserChannels copies never sent the API key, and nothing surfaced it
+ * because they discarded the response. A second transport added here for a
+ * reading call would be the same mistake in miniature -- a path the auth header
+ * could fall off without anybody noticing.
+ *
+ * Returns the body so a reader can use it. Two second ceiling either way: the
+ * panel must not block on the relay.
  */
-function am2_node_call(string $path, ?array $payload = null): void
+function am2_node_transport(string $url, string $header, ?array $payload): ?string
 {
-    $url = AM2_NODE_BASE . $path;
-
-    if ($payload === null) {
-        $header = am2_node_auth_header();
-        $options = ['http' => ['timeout' => 2, 'header' => $header]];
-    } else {
-        $header = "Content-type: application/json\r\n" . am2_node_auth_header();
-        $options = ['http' => [
-            'header'  => $header,
-            'method'  => 'POST',
-            'content' => json_encode($payload),
-            'timeout' => 2,
-        ]];
-    }
-
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -49,12 +43,52 @@ function am2_node_call(string $path, ?array $payload = null): void
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         }
-        @curl_exec($ch);
+        $body = @curl_exec($ch);
         curl_close($ch);
-        return;
+        return is_string($body) ? $body : null;
     }
 
-    @file_get_contents($url, false, stream_context_create($options));
+    $options = ['http' => ['timeout' => 2, 'header' => $header, 'ignore_errors' => true]];
+    if ($payload !== null) {
+        $options['http']['method'] = 'POST';
+        $options['http']['content'] = json_encode($payload);
+    }
+    $body = @file_get_contents($url, false, stream_context_create($options));
+    return is_string($body) ? $body : null;
+}
+
+/**
+ * Send a request to the relay. Returns nothing — these callers never read the
+ * body, and never have.
+ */
+function am2_node_call(string $path, ?array $payload = null): void
+{
+    $header = $payload === null
+        ? am2_node_auth_header()
+        : "Content-type: application/json\r\n" . am2_node_auth_header();
+
+    am2_node_transport(AM2_NODE_BASE . $path, $header, $payload);
+}
+
+/**
+ * Ask the relay something and read the answer.
+ *
+ * Exists for a single reason: the relay decides what the field update channel
+ * may advertise, and the panel has to show that decision rather than form a
+ * second opinion about the same files. The admin card and its endpoint once
+ * disagreed exactly that way.
+ *
+ * Null means the relay could not be reached or did not answer JSON, which is a
+ * channel whose state is genuinely unknown rather than a channel that is empty.
+ */
+function am2_node_get(string $path): ?array
+{
+    $body = am2_node_transport(AM2_NODE_BASE . $path, am2_node_auth_header(), null);
+    if ($body === null || $body === '') {
+        return null;
+    }
+    $parsed = json_decode($body, true);
+    return is_array($parsed) ? $parsed : null;
 }
 
 /** Push a user's channel list to their live session. */
