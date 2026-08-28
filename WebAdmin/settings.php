@@ -155,22 +155,31 @@ function am2_field_channel(): array
     }
     usort($out['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
 
-    $json = $dir . '/version.json';
-    if (!is_file($json) || !is_readable($json)) {
-        return $out;
-    }
-    $parsed = json_decode((string) file_get_contents($json), true);
-    if (!is_array($parsed)) {
+    /*
+     * What the relay would actually advertise, asked rather than recomputed.
+     *
+     * This card read version.json for itself and reported whatever it found --
+     * on production, "1.0.0, build 1", for a manifest written in May naming an
+     * APK that has never been in the directory. The relay refuses that set, so
+     * no handset would ever be offered it, and the card announced it anyway.
+     *
+     * That is precisely the disagreement the admin card had with its own
+     * endpoint. The rule lives in the relay because that is where a handset's
+     * answer comes from; this shows the decision instead of forming a second
+     * opinion about the same file. Null means the relay could not be reached,
+     * which is a channel whose state is genuinely unknown.
+     */
+    $advertised = am2_node_get('/api/check-update');
+    if (!is_array($advertised) || ($advertised['success'] ?? false) !== true) {
         return $out;
     }
 
-    $out['version'] = ($parsed['version_name'] ?? '') !== '' ? (string) $parsed['version_name'] : null;
-    $out['build'] = isset($parsed['version_code']) ? (int) $parsed['version_code'] : null;
-    $out['changelog'] = $parsed['changelog'] ?? '';
-    // `update_url` is the published field. `download_url` was its name before
-    // the manifest carried a digest and a signer, and manifests in that older
-    // shape are still on disk.
-    $out['url'] = (string) ($parsed['update_url'] ?? $parsed['download_url'] ?? '');
+    $out['version'] = ($advertised['server_version_name'] ?? '') !== ''
+        ? (string) $advertised['server_version_name'] : null;
+    $out['build'] = isset($advertised['server_version_code'])
+        ? (int) $advertised['server_version_code'] : null;
+    $out['changelog'] = $advertised['release_notes'] ?? '';
+    $out['url'] = (string) ($advertised['update_url'] ?? '');
 
     return $out;
 }

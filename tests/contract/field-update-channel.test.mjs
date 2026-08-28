@@ -21,11 +21,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { SERVER_JS, SRC } from './helpers.mjs';
+import { SERVER_JS, SRC, NODE_URL, BASE, HOST, asSuper } from './helpers.mjs';
 
 const UPDATE_DIR = path.join(path.dirname(SERVER_JS), 'update');
 const ROOT = new URL('../..', import.meta.url).pathname;
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+/** The field channel's section of the distribution card, as rendered. */
+async function shelf() {
+    const sup = await asSuper();
+    const html = await (await fetch(`${BASE}/settings.php`, {
+        headers: { Host: HOST, Cookie: sup },
+    })).text();
+    const SECTION = '<section class="rounded-control border border-edge p-4">';
+    const start = html.indexOf('id="am2-shelf-version"');
+    const first = html.indexOf(SECTION, start);
+    const second = html.indexOf(SECTION, first + SECTION.length);
+    assert.ok(second > first, 'the field channel section is not on the page');
+    return html.slice(second, second + 3000);
+}
 
 /** The manifest CI wrote beside the APK, which is what a handset fetches. */
 function published() {
@@ -49,6 +63,31 @@ describe('the field update channel', () => {
             'the field card reads something other than the manifest the handset reads');
         assert.doesNotMatch(body, /app_versions/,
             'the field card still reads a table no handset has ever asked for');
+    });
+
+    test('the card shows what the relay would advertise, not its own reading', async () => {
+        // The admin card and its endpoint once disagreed because each read the
+        // manifest for itself; this is the same card and the same trap. The
+        // relay decides what may be advertised -- it refuses a manifest naming
+        // an APK that is not there -- and the panel has to show that decision
+        // rather than a second opinion about the same file.
+        const res = await fetch(`${NODE_URL}/api/check-update`);
+        const advertised = res.ok ? await res.json() : null;
+
+        const settings = fs.readFileSync(path.join(SRC, 'settings.php'), 'utf8');
+        const channel = settings.slice(settings.indexOf('function am2_field_channel'));
+        const body = channel.slice(0, channel.indexOf('\n}'));
+        assert.match(body, /am2_node_get|check-update/,
+            'the field card decides for itself what the channel holds');
+
+        if (!advertised || advertised.success !== true) {
+            return; // nothing published here
+        }
+        const card = await shelf();
+        assert.ok(
+            card.includes(String(advertised.server_version_code)),
+            `the relay advertises build ${advertised.server_version_code} and the card does not show it`,
+        );
     });
 
     test('nothing reads the table that nothing writes', () => {
