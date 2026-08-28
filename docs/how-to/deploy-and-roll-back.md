@@ -140,6 +140,18 @@ sudo -u am2deploy /home/am2deploy/am2-main/infra/scripts/build-release.sh \
 
 If staging shared paths differ, inspect existing links and pass those exact absolute directories. Do not guess or reuse production data.
 
+## Publish the field app, when there is a new one
+
+The radio app's update channel is one manifest and one APK: `server/update/version.json` is what a handset fetches, and the APK it names is what a handset downloads. They are published together or not at all — separately is the one way to leave a manifest describing bytes other than the ones beside it, which the handset refuses on the digest while reporting nothing an operator can act on.
+
+```bash
+"$REL/infra/scripts/publish-field-update.sh" \
+  --artifact /path/to/downloaded/ci-artifact \
+  --update-dir /var/www/am2/shared/server-update
+```
+
+It refuses a manifest that does not describe the APK shipped beside it, a build that does not advance past the published one, and an artifact holding more than one APK. `public.app_versions` is deliberately not touched: nothing reads it, and it was a second hand-written copy of this channel that drifted three builds behind.
+
 ## Preflight, smoke, migration
 
 Install the host-owned preflight helper before loading either relay unit. Keeping `ExecStartPre` outside the release means a pre-P0 rollback target can still be started and validated:
