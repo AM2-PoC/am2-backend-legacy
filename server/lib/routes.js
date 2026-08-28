@@ -13,13 +13,13 @@
  * Takes `app` because the express instance is wiring and belongs to server.js;
  * everything else it needs it requires for itself.
  */
-const fs = require('node:fs');
 const path = require('node:path');
 const WebSocket = require('ws');
 
 const { pool, createLog } = require('./db');
 const { activeConnections } = require('./state');
 const { resolveReleaseNotes } = require('./release-notes');
+const { fieldUpdate } = require('./field-update');
 const {
     broadcastChannelUpdate,
     broadcastUsersInChannel,
@@ -82,16 +82,16 @@ function registerRoutes(app) {
      * inventing a source for it.
      */
     app.get('/api/check-update', (req, res) => {
-        const manifestPath = path.join(__dirname, '..', 'update', 'version.json');
-        let manifest;
-        try {
-            manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        } catch (err) {
+        // Refused sets answer exactly what an empty channel answers. A handset
+        // learns there is no update; it does not learn which check refused,
+        // because a stranger learning that is a stranger learning how to pass
+        // it. The reason is logged for whoever has to fix it.
+        const verdict = fieldUpdate(path.join(__dirname, '..', 'update'));
+        if (!verdict.valid) {
+            console.warn(`[check-update] not advertising: ${verdict.reason}`);
             return res.status(404).json({ success: false, message: 'No version info found' });
         }
-        if (!manifest || typeof manifest !== 'object' || !manifest.version_code) {
-            return res.status(404).json({ success: false, message: 'No version info found' });
-        }
+        const manifest = verdict.manifest;
 
         res.json({
             success: true,
