@@ -13,6 +13,8 @@
  * Takes `app` because the express instance is wiring and belongs to server.js;
  * everything else it needs it requires for itself.
  */
+const fs = require('node:fs');
+const path = require('node:path');
 const WebSocket = require('ws');
 
 const { pool, createLog } = require('./db');
@@ -59,35 +61,49 @@ function registerRoutes(app) {
 
     // --- AUTO UPDATE ENDPOINTS ---
 
-    app.get('/api/check-update', async (req, res) => {
+    /*
+     * What a handset is offered, read from the file a handset actually fetches.
+     *
+     * This answered from public.app_versions, on the belief that the table was
+     * the channel and the manifest beside the APK was a deployment note. It was
+     * backwards. AboutActivity fetches UPDATE_MANIFEST_URL -- that manifest --
+     * and nothing in the client calls this endpoint at all: across every
+     * retained access log it has been asked for zero times, while the manifest
+     * has been fetched by real handsets.
+     *
+     * So the table was a second, hand-written copy of the channel, and it drifted
+     * exactly as a second copy does: it said build 3 while build 124 was
+     * published and being downloaded. Reading what the handset reads is the only
+     * arrangement in which this endpoint and the field cannot disagree.
+     *
+     * The shape of the reply is unchanged, because an older build somewhere may
+     * still call it and would break on a new one. `force_update` lived only in
+     * the table and has never had a caller, so it answers false rather than
+     * inventing a source for it.
+     */
+    app.get('/api/check-update', (req, res) => {
+        const manifestPath = path.join(__dirname, '..', 'update', 'version.json');
+        let manifest;
         try {
-            const result = await pool.query(`
-                SELECT version_code, version_name, force_update, release_notes
-                FROM public.app_versions
-                ORDER BY version_code DESC LIMIT 1
-            `);
-
-            if (result.rows.length > 0) {
-                res.json({
-                    success: true,
-                    server_version_code: result.rows[0].version_code,
-                    server_version_name: result.rows[0].version_name,
-                    force_update: result.rows[0].force_update,
-                    // ?lang= if the caller states one; the field app does
-                    // not, so it gets the default and sees what it always saw.
-                    // The column may now hold both languages at once, which is
-                    // what stops the panel rendering Indonesian to an English
-                    // reader; see lib/release-notes.js.
-                    release_notes: resolveReleaseNotes(
-                        result.rows[0].release_notes, String(req.query.lang || '')),
-                    update_url: UPDATE_BASE ? `${UPDATE_BASE}/update/update.apk` : null
-                });
-            } else {
-                res.status(404).json({ success: false, message: "No version info found" });
-            }
+            manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
         } catch (err) {
-            res.status(500).json({ success: false, error: err.message });
+            return res.status(404).json({ success: false, message: 'No version info found' });
         }
+        if (!manifest || typeof manifest !== 'object' || !manifest.version_code) {
+            return res.status(404).json({ success: false, message: 'No version info found' });
+        }
+
+        res.json({
+            success: true,
+            server_version_code: manifest.version_code,
+            server_version_name: manifest.version_name,
+            force_update: false,
+            // ?lang= if the caller states one; the field app does not, so it
+            // gets the default and sees what it always saw.
+            release_notes: resolveReleaseNotes(manifest.changelog, String(req.query.lang || '')),
+            update_url: manifest.update_url
+                || (UPDATE_BASE ? `${UPDATE_BASE}/update/update.apk` : null),
+        });
     });
 
 

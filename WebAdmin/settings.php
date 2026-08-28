@@ -119,13 +119,26 @@ function am2_update_state(): array
  *
  * There are two, and the panel only ever showed one. Admin Native reads
  * update/admin_version.json through api_settings.php?action=check_update; the
- * field app reads the app_versions table through the relay's /api/check-update
- * and downloads from server/update/. The two share nothing -- not the
- * directory, not the metadata, not even the shape of it -- and the docs say
- * plainly not to merge them. So this reads the second one and shows it beside
- * the first, rather than leaving an operator to assume the panel covers both.
+ * field app reads server/update/version.json directly. The two share nothing --
+ * not the directory, not the metadata, not even the shape of it -- and the docs
+ * say plainly not to merge them. So this reads the second one and shows it
+ * beside the first, rather than leaving an operator to assume the panel covers
+ * both.
+ *
+ * It used to read public.app_versions instead, on the belief that the relay
+ * answered from the table and the file beside the APK was "only a deployment
+ * note". That was backwards. AboutActivity fetches UPDATE_MANIFEST_URL, which
+ * is this file; nothing in the client calls the relay endpoint, and across
+ * every retained access log it has been asked for zero times while this file
+ * has been fetched by real handsets.
+ *
+ * So the table was never the channel -- it was a second, hand-written copy that
+ * only this card read, which is why this card was the only thing that lied. It
+ * showed build 3 while build 124 was published and being downloaded. Reading
+ * what the handset reads is the only arrangement in which the two cannot
+ * disagree.
  */
-function am2_field_channel(PDO $pdo): array
+function am2_field_channel(): array
 {
     $dir = dirname(__DIR__) . '/server/update';
     $out = [
@@ -142,27 +155,23 @@ function am2_field_channel(PDO $pdo): array
     }
     usort($out['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
 
-    // The relay answers from the table, so the table is what the devices are
-    // actually told -- version.json beside the APK is only a deployment note.
-    try {
-        $row = $pdo->query("SELECT version_code, version_name, release_notes FROM public.app_versions
-                            ORDER BY version_code DESC LIMIT 1")->fetch();
-        if ($row) {
-            $out['version'] = (string) $row['version_name'];
-            $out['build'] = (int) $row['version_code'];
-            $out['changelog'] = (string) ($row['release_notes'] ?? '');
-        }
-    } catch (PDOException $e) {
-        error_log('AM2 settings field-channel: ' . $e->getMessage());
+    $json = $dir . '/version.json';
+    if (!is_file($json) || !is_readable($json)) {
+        return $out;
+    }
+    $parsed = json_decode((string) file_get_contents($json), true);
+    if (!is_array($parsed)) {
+        return $out;
     }
 
-    $json = $dir . '/version.json';
-    if (is_file($json) && is_readable($json)) {
-        $parsed = json_decode((string) file_get_contents($json), true);
-        if (is_array($parsed)) {
-            $out['url'] = (string) ($parsed['download_url'] ?? '');
-        }
-    }
+    $out['version'] = ($parsed['version_name'] ?? '') !== '' ? (string) $parsed['version_name'] : null;
+    $out['build'] = isset($parsed['version_code']) ? (int) $parsed['version_code'] : null;
+    $out['changelog'] = $parsed['changelog'] ?? '';
+    // `update_url` is the published field. `download_url` was its name before
+    // the manifest carried a digest and a signer, and manifests in that older
+    // shape are still on disk.
+    $out['url'] = (string) ($parsed['update_url'] ?? $parsed['download_url'] ?? '');
+
     return $out;
 }
 
@@ -409,7 +418,7 @@ function am2_channel_target(string $url, array $files): array
 
 $channels = [];
 if ($is_super) {
-    $field = am2_field_channel($pdo);
+    $field = am2_field_channel();
     [$field_target, $field_present] = am2_channel_target($field['url'], $field['files']);
 
     /*
