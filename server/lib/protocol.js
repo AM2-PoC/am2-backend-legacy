@@ -490,6 +490,38 @@ function attachProtocol(server) {
                     }
                     break;
 
+                /*
+                 * What VOX actually heard, from the handset that heard it.
+                 *
+                 * Three rounds of VOX work were argued without this number. A
+                 * microphone returning near-silence and a threshold set too
+                 * high look identical on the wire: both produce transmissions
+                 * that last exactly the silence timeout, because the timer is
+                 * set at the trigger and never refreshed.
+                 *
+                 * It existed on the handset and nowhere else. Since Android 4.1
+                 * no other app may read another's logcat, so without a PC and
+                 * adb it was locked on the device that had it. This is the road
+                 * the client already uses for everything else it tells us.
+                 *
+                 * Logged, not stored: it is a diagnostic for a fault being
+                 * chased now, not a metric anything reports on.
+                 */
+                case 'vox_level': {
+                    if (!ws.sessionUser) break;
+                    const peak = Number(data.peak);
+                    const threshold = Number(data.threshold);
+                    if (!Number.isFinite(peak) || !Number.isFinite(threshold)) break;
+                    console.log(
+                        `event=vox_level user=${ws.sessionUser.id}`
+                        + ` client_version=${ws.clientVersionName || 'unknown'}`
+                        + ` peak=${peak} threshold=${threshold}`
+                        + ` would_trigger=${peak > threshold}`
+                        + ` talking=${data.talking === true}`,
+                    );
+                    break;
+                }
+
                 case 'update_location':
                     if (ws.sessionUser) {
                         await updateUserLocation(ws.sessionUser.id, data.latitude, data.longitude, data.accuracy, data.address);
