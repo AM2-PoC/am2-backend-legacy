@@ -97,6 +97,64 @@ const resetSessions = async () => {
     }
 };
 
+/*
+ * Device tokens: issuing, checking, and taking back.
+ *
+ * The credential itself is made in lib/device-tokens.js, which touches no
+ * database and can therefore be tested anywhere. These are the three things
+ * that need the pool.
+ */
+const { newToken, hashToken } = require('./device-tokens');
+
+/** Issue one, replacing whatever that device held before. */
+const issueDeviceToken = async (userId, deviceId) => {
+    const token = newToken();
+    if (deviceId) {
+        await pool.query(
+            'DELETE FROM public.device_tokens WHERE user_id = $1 AND device_id = $2',
+            [userId, deviceId],
+        );
+    }
+    await pool.query(
+        `INSERT INTO public.device_tokens (token_hash, user_id, device_id, last_used_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+        [hashToken(token), userId, deviceId || null],
+    );
+    return token;
+};
+
+/**
+ * The user this token belongs to, or null.
+ *
+ * Looked up by digest, so a token that is not in the table is
+ * indistinguishable from one that never existed. last_used_at is written
+ * because a token nobody has presented in months is the one worth asking
+ * about.
+ */
+const userForDeviceToken = async (token) => {
+    if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
+    const hash = hashToken(token);
+    const res = await pool.query(
+        'SELECT user_id FROM public.device_tokens WHERE token_hash = $1',
+        [hash],
+    );
+    if (res.rows.length === 0) return null;
+    await pool.query(
+        'UPDATE public.device_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1',
+        [hash],
+    );
+    return String(res.rows[0].user_id);
+};
+
+/** Take them all back. What happens when a handset is lost. */
+const revokeDeviceTokens = async (userId) => {
+    const res = await pool.query(
+        'DELETE FROM public.device_tokens WHERE user_id = $1',
+        [userId],
+    );
+    return res.rowCount || 0;
+};
+
 /** On boot, then once a day. */
 const startCleanup = () => {
     runCleanup();
@@ -152,4 +210,5 @@ async function channelPermission(userId, channelSlug) {
 }
 
 module.exports = {
+    issueDeviceToken, userForDeviceToken, revokeDeviceTokens,
     resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission };

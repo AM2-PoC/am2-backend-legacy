@@ -77,6 +77,17 @@ function am2_update_user(PDO $pdo, string $id, string $name, string $password, $
                 SET name = ?, password = ?, created_by = ?, entity_type = ?, updated_at = NOW()
               WHERE id = ?"
         )->execute([$name, password_hash($password, PASSWORD_BCRYPT), $adminId, $entityType, $id]);
+
+        /*
+         * A new password ends the old sessions.
+         *
+         * The handset keeps a device token rather than the operator's password,
+         * and the whole reason that is an improvement is revocation. Leaving
+         * the tokens in place would mean a changed password stopped nothing:
+         * every handset that already had one would keep signing in with it,
+         * which is the property being fixed rather than reproduced.
+         */
+        $pdo->prepare('DELETE FROM public.device_tokens WHERE user_id = ?')->execute([$id]);
         return;
     }
 
@@ -103,6 +114,9 @@ function am2_delete_user(PDO $pdo, string $id, $adminId): string
     $name = (string) ($stmt->fetchColumn() ?: $id);
 
     $pdo->prepare('UPDATE public.users SET created_by = ? WHERE id = ?')->execute([$adminId, $id]);
+    // Before the row it names, so a failure here cannot leave tokens behind
+    // that point at a unit which no longer exists.
+    $pdo->prepare('DELETE FROM public.device_tokens WHERE user_id = ?')->execute([$id]);
     $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
 
     return $name;
