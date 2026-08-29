@@ -61,3 +61,33 @@ test('binary audio records received and forwarded frame metadata', () => {
     assert.match(source, /tracePtt\('frame_forwarded'/);
     assert.match(source, /frameBytes: message\.length/);
 });
+
+/*
+ * The one number three rounds of VOX work were argued without.
+ *
+ * A microphone returning near-silence and a threshold set too high produce the
+ * same thing on the wire: transmissions that last exactly the silence timeout,
+ * because the timer is set at the trigger and never refreshed. Telling them
+ * apart needs the amplitude VOX measured, and the amplitude lived only in the
+ * handset's logcat -- which since Android 4.1 no other app may read, so without
+ * a PC and adb it was locked on the device.
+ *
+ * The relay already receives telemetry from every client and logs it. This is
+ * the same road, for the number that actually decides.
+ */
+test('the relay records the level VOX measured, not only the frames it sent', () => {
+    const relay = readFileSync(new URL('../../server/lib/protocol.js', import.meta.url), 'utf8');
+    assert.match(relay, /case 'vox_level'/,
+        'the relay drops the level report, so it can only be read on the handset');
+    assert.match(relay, /event=vox_level/,
+        'the level is received and never logged, which is the same as not having it');
+});
+
+/*
+ * The client half of this is asserted in the client repository, not here.
+ *
+ * The first version of this file read AudioRecorder.kt through a relative path
+ * into a sibling checkout. That exists on a machine where both repositories sit
+ * side by side and on no CI runner, so it passed locally and failed in CI --
+ * which is the worst direction for a test to be wrong in.
+ */
