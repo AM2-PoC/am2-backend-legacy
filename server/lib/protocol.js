@@ -177,6 +177,18 @@ function shouldForwardBinary(client, binaryType) {
     return false;
 }
 
+/**
+ * A client-supplied tally, as a number or as zero.
+ *
+ * The handset is not a trusted input. Interpolating whatever arrives into a
+ * log line lets a crafted frame write arbitrary text into the operator's
+ * journal, where it reads as though the relay said it.
+ */
+function count(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
 function tracePtt(event, { traceId, frameSequence, frameBytes } = {}) {
     if (!pttTraceEnabled) return;
     const fields = [`event=${event}`, `mono_ns=${process.hrtime.bigint()}`];
@@ -563,7 +575,11 @@ function attachProtocol(server) {
                         + ` client_version=${ws.clientVersionName || 'unknown'}`
                         + ` peak=${peak} threshold=${threshold}`
                         + ` would_trigger=${peak > threshold}`
-                        + ` talking=${data.talking === true}`,
+                        + ` talking=${data.talking === true}`
+                        + ` blocked_others=${count(data.blocked_others)}`
+                        + ` blocked_playback=${count(data.blocked_playback)}`
+                        + ` blocked_tone=${count(data.blocked_tone)}`
+                        + ` blocked_interval=${count(data.blocked_interval)}`,
                     );
                     break;
                 }
