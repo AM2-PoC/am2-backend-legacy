@@ -16,11 +16,23 @@ FIELD = re.compile(r"(\w+)=(\S+)")
 
 
 def samples(since):
-    out = subprocess.run(
-        ["journalctl", "-u", "am2-api", "-u", "am2-api-staging",
-         "--since", since, "--no-pager", "-o", "short-iso"],
-        capture_output=True, text=True,
-    ).stdout
+    try:
+        run = subprocess.run(
+            ["journalctl", "-u", "am2-api", "-u", "am2-api-staging",
+             "--since", since, "--no-pager", "-o", "short-iso"],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        raise SystemExit("journalctl tidak ada di PATH.")
+    if run.returncode != 0:
+        # An empty read and a refused read look identical downstream, and the
+        # message for an empty read blames the handset.
+        detail = run.stderr.strip().splitlines()
+        raise SystemExit(
+            "journal tidak terbaca (coba dengan sudo): "
+            + (detail[-1] if detail else f"journalctl keluar {run.returncode}")
+        )
+    out = run.stdout
     for line in out.splitlines():
         if "event=vox_level" not in line:
             continue
@@ -30,16 +42,25 @@ def samples(since):
 
 
 def num(row, key):
+    """The value, or None when this build never reported it.
+
+    Absent and zero are different answers. Defaulting a missing key to zero is
+    what let a build that predates a field look like one measuring a genuine
+    zero -- and for the block counts, that reads as "no guard refused anything",
+    which is the sentence that would justify moving the threshold.
+    """
+    if key not in row:
+        return None
     try:
-        return int(row.get(key, 0))
+        return int(float(row[key]))
     except ValueError:
-        return 0
+        return None
 
 
 def spread(name, values):
-    if not values:
-        return f"  {name:<9} (tidak ada)"
-    v = sorted(values)
+    v = sorted(x for x in values if x is not None)
+    if not v:
+        return f"  {name:<9} (tidak dilaporkan build ini)"
     return (f"  {name:<9} n={len(v):<4} min={v[0]:<7} "
             f"median={v[len(v) // 2]:<7} max={v[-1]}")
 
@@ -58,11 +79,18 @@ def main():
         sub = [r for r in rows if r.get("talking") == state]
         print(f"{label} (talking={state})")
         print(spread("peak", [num(r, "peak") for r in sub]))
-        # Absent on builds before the floor was measured; skip rather than
-        # print a column of zeroes that reads like a measurement.
-        if any("mean" in r for r in sub):
-            print(spread("mean", [num(r, "mean") for r in sub]))
-            print(spread("floor", [num(r, "floor") for r in sub]))
+        # Only the rows that carry them. A window spanning a relay upgrade
+        # holds both kinds, and counting the older rows as zero drags the
+        # minimum to nothing -- the column of zeroes this is meant to avoid.
+        for field in ("mean", "floor"):
+            carried = [num(r, field) for r in sub if field in r]
+            if carried:
+                print(spread(field, carried))
+                if len(carried) != len(sub):
+                    print(f"            ({len(carried)} dari {len(sub)} sampel; "
+                          "sisanya dari build sebelum field ini ada)")
+            else:
+                print(spread(field, []))
         print()
 
     thresholds = Counter(r.get("threshold") for r in rows)
@@ -70,18 +98,21 @@ def main():
     if set(thresholds) == {"500"}:
         print("  -> 500 adalah MIN_THRESHOLD: slider di 100/100, tidak ada sisa jalan.")
 
-    blocks = {k: sum(num(r, k) for r in rows)
-              for k in ("blocked_others", "blocked_playback",
-                        "blocked_tone", "blocked_interval")}
-    if any(blocks.values()):
-        print("\nframe cukup keras yang DITOLAK, per penjaga:")
-        for k, v in sorted(blocks.items(), key=lambda kv: -kv[1]):
-            print(f"  {k:<18} {v}")
-    elif any("blocked_others" in r for r in rows):
-        print("\nTidak ada frame keras yang ditolak penjaga mana pun.")
-        print("  -> kalau VOX tetap tuli, sebabnya ambang, bukan penjaga.")
-    else:
+    guards = ("blocked_others", "blocked_playback", "blocked_tone", "blocked_interval")
+    reporting = [r for r in rows if any(g in r for g in guards)]
+    if not reporting:
         print("\n(build ini belum melaporkan sebab penolakan)")
+        print("  -> jangan simpulkan penjaga tidak bersalah dari sini.")
+        return 0
+
+    blocks = {g: sum(num(r, g) or 0 for r in reporting) for g in guards}
+    print(f"\nframe cukup keras yang DITOLAK, per penjaga "
+          f"({len(reporting)} dari {len(rows)} sampel melaporkannya):")
+    for k, v in sorted(blocks.items(), key=lambda kv: -kv[1]):
+        print(f"  {k:<18} {v}")
+    if not any(blocks.values()):
+        print("  -> tidak ada penjaga yang menahan frame keras dalam sampel ini;")
+        print("     kalau VOX tetap tuli, tersangka berikutnya adalah ambang.")
     return 0
 
 

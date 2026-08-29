@@ -184,6 +184,39 @@ function shouldForwardBinary(client, binaryType) {
  * log line lets a crafted frame write arbitrary text into the operator's
  * journal, where it reads as though the relay said it.
  */
+/**
+ * A version name that cannot pretend to be a log field.
+ *
+ * This is client-controlled free text and it is interpolated raw into three
+ * journal lines, one of which is event=vox_level itself. A name like
+ * "1 event=vox_level peak=32767 threshold=100 talking=true" makes every login
+ * and every link-quality line parse as a genuine VOX sample. Whitespace and
+ * '=' are what a reader splits on, so neither may appear.
+ */
+function versionLabel(value) {
+    if (typeof value !== 'string') { return null; }
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || trimmed.length > 64) { return null; }
+    return /^[A-Za-z0-9._+-]+$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * The tallies a handset actually sent, and no others.
+ *
+ * count(undefined) is 0, so printing these unconditionally would make a build
+ * that predates them indistinguishable from one reporting a genuine zero.
+ * Everything downstream reads absence by whether the key is there, so an
+ * unconditional field turns "never measured" into "measured and found
+ * innocent" -- and that is the sentence that would justify moving the VOX
+ * threshold.
+ */
+function tallies(data, keys) {
+    return keys
+        .filter((key) => Object.prototype.hasOwnProperty.call(data, key))
+        .map((key) => ` ${key}=${count(data[key])}`)
+        .join('');
+}
+
 function count(value) {
     const n = Number(value);
     return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
@@ -369,11 +402,7 @@ function attachProtocol(server) {
                         && data.client_version_code > 0
                         ? data.client_version_code
                         : null;
-                    ws.clientVersionName = typeof data.client_version_name === 'string'
-                        && data.client_version_name.trim().length > 0
-                        && data.client_version_name.length <= 64
-                        ? data.client_version_name.trim()
-                        : null;
+                    ws.clientVersionName = versionLabel(data.client_version_name);
                     try {
                         const res = await pool.query(`
                             SELECT u.*, a.status as admin_status, a.expired_at as admin_expired_at,
@@ -576,11 +605,8 @@ function attachProtocol(server) {
                         + ` peak=${peak} threshold=${threshold}`
                         + ` would_trigger=${peak > threshold}`
                         + ` talking=${data.talking === true}`
-                        + ` blocked_others=${count(data.blocked_others)}`
-                        + ` blocked_playback=${count(data.blocked_playback)}`
-                        + ` blocked_tone=${count(data.blocked_tone)}`
-                        + ` blocked_interval=${count(data.blocked_interval)}`
-                        + ` mean=${count(data.mean)} floor=${count(data.floor)}`,
+                        + tallies(data, ['blocked_others', 'blocked_playback',
+                            'blocked_tone', 'blocked_interval', 'mean', 'floor']),
                     );
                     break;
                 }
