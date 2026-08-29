@@ -26,6 +26,22 @@ describe('vox_level', () => {
         }
     });
 
+    test('the sustained level is carried, not only the peak', () => {
+        // A peak decides nothing about where the floor belongs: a quiet room
+        // returned a peak of 427 against a threshold of 500, and one transient
+        // in three seconds is a door, not a noise floor. The mean and the
+        // minimum are the numbers that argument needs.
+        const body = handler();
+        for (const field of ['mean', 'floor']) {
+            assert.match(body, new RegExp(`${field}=`),
+                `${field} arrives from the handset and the relay discards it`);
+        }
+        assert.match(body, /count\(data\.mean\)/,
+            'the mean is printed without being coerced to a number');
+        assert.match(body, /count\(data\.floor\)/,
+            'the floor is printed without being coerced to a number');
+    });
+
     test('a count that is not a number is not printed as one', () => {
         // The client is not a trusted input. Every other numeric field here is
         // put through Number() and checked; these must be too, or a crafted

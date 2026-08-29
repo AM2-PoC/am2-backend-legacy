@@ -579,7 +579,8 @@ function attachProtocol(server) {
                         + ` blocked_others=${count(data.blocked_others)}`
                         + ` blocked_playback=${count(data.blocked_playback)}`
                         + ` blocked_tone=${count(data.blocked_tone)}`
-                        + ` blocked_interval=${count(data.blocked_interval)}`,
+                        + ` blocked_interval=${count(data.blocked_interval)}`
+                        + ` mean=${count(data.mean)} floor=${count(data.floor)}`,
                     );
                     break;
                 }
