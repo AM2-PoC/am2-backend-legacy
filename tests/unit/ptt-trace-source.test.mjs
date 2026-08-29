@@ -83,10 +83,11 @@ test('the relay records the level VOX measured, not only the frames it sent', ()
         'the level is received and never logged, which is the same as not having it');
 });
 
-test('the client reports the level it measured to the relay', () => {
-    const recorder = readFileSync(
-        new URL('../../../am2-android-client/app/src/main/java/com/am2/am2/AudioRecorder.kt', import.meta.url),
-        'utf8');
-    assert.match(recorder, /emit\(\s*"vox_level"/,
-        'the level is written to logcat only, where nobody but the handset can read it');
-});
+/*
+ * The client half of this is asserted in the client repository, not here.
+ *
+ * The first version of this file read AudioRecorder.kt through a relative path
+ * into a sibling checkout. That exists on a machine where both repositories sit
+ * side by side and on no CI runner, so it passed locally and failed in CI --
+ * which is the worst direction for a test to be wrong in.
+ */
