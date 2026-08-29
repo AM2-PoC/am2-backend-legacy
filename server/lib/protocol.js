@@ -380,7 +380,32 @@ function attachProtocol(server) {
                             const user = res.rows[0];
                             const uid = String(user.id);
 
-                            if (!(await bcrypt.compare(data.password?.trim() || "", user.password))) {
+                            /*
+                             * A token, if the handset has one; the password
+                             * only until it does.
+                             *
+                             * The field app stored the operator's password so
+                             * it could sign in again after a restart. That is
+                             * the same password they use everywhere else, it
+                             * works from any device, and it cannot be taken
+                             * back -- a lost handset meant changing it for the
+                             * person rather than for the phone.
+                             *
+                             * A refused token is a refusal, not a fall-through
+                             * to the password: a handset whose token was
+                             * revoked has to be told, and has nothing else to
+                             * offer by then anyway.
+                             */
+                            const presentedToken = typeof data.token === 'string' ? data.token.trim() : '';
+                            if (presentedToken) {
+                                const tokenUser = await userForDeviceToken(presentedToken);
+                                if (tokenUser === null || tokenUser !== uid) {
+                                    return ws.send(JSON.stringify({
+                                        type: 'login_error',
+                                        data: { message: "Sesi perangkat ini sudah dicabut. Masuk lagi dengan kata sandi.", code: 'token_revoked' },
+                                    }));
+                                }
+                            } else if (!(await bcrypt.compare(data.password?.trim() || "", user.password))) {
                                 return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password" } }));
                             }
 
@@ -469,10 +494,31 @@ function attachProtocol(server) {
                                 JOIN public.user_channels uc ON c.id = uc.channel_id
                                 WHERE uc.user_id = $1`, [uid]);
 
+                            /*
+                             * The credential the handset keeps from here on.
+                             *
+                             * Issued on a password login so the password can be
+                             * deleted from the device, and re-issued on a token
+                             * login so a handset that has one never has to fall
+                             * back to a password it no longer holds.
+                             *
+                             * A failure to issue is not a failure to sign in.
+                             * The operator is already authenticated; the worst
+                             * case is that this handset asks for the password
+                             * once more next time.
+                             */
+                            let deviceToken = null;
+                            try {
+                                deviceToken = await issueDeviceToken(uid, providedDeviceId);
+                            } catch (err) {
+                                console.error(`event=token_issue_failed user=${uid} reason=${err.message}`);
+                            }
+
                             ws.send(JSON.stringify({
                                 type: 'login_success',
                                 data: {
                                     id: uid, username: user.name,
+                                    device_token: deviceToken,
                                     enable_maps: ws.enable_maps, enable_p2p: ws.enable_p2p, enable_ptt_video: ws.enable_ptt_video,
                                     duplex_mode: ws.duplex_mode,
                                     last_channel_id: user.last_channel_id,

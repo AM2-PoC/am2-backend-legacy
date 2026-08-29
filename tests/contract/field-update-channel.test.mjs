@@ -219,3 +219,29 @@ describe('the field update channel', () => {
         }
     });
 });
+
+/*
+ * A token that cannot be taken back is a password with extra steps.
+ *
+ * The handset now keeps a device token instead of the operator's password. The
+ * whole reason that is an improvement is revocation: a lost handset is a token
+ * an admin deletes, where a password had to be changed for the person and kept
+ * working everywhere until they did.
+ *
+ * So the two places that already end a unit's access have to end its tokens.
+ */
+describe('device tokens can be taken back', () => {
+    test('changing a password revokes what was issued under it', () => {
+        const rules = fs.readFileSync(path.join(SRC, 'user_rules.php'), 'utf8');
+        const update = rules.slice(rules.indexOf('function am2_update_user'), rules.indexOf('function am2_delete_user'));
+        assert.match(update, /device_tokens/,
+            'a new password leaves every handset signed in on the old one');
+    });
+
+    test('removing a unit removes its tokens', () => {
+        const rules = fs.readFileSync(path.join(SRC, 'user_rules.php'), 'utf8');
+        const remove = rules.slice(rules.indexOf('function am2_delete_user'));
+        assert.match(remove, /device_tokens/,
+            'a deleted unit leaves rows that still name it');
+    });
+});
