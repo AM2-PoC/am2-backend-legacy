@@ -61,3 +61,32 @@ test('binary audio records received and forwarded frame metadata', () => {
     assert.match(source, /tracePtt\('frame_forwarded'/);
     assert.match(source, /frameBytes: message\.length/);
 });
+
+/*
+ * The one number three rounds of VOX work were argued without.
+ *
+ * A microphone returning near-silence and a threshold set too high produce the
+ * same thing on the wire: transmissions that last exactly the silence timeout,
+ * because the timer is set at the trigger and never refreshed. Telling them
+ * apart needs the amplitude VOX measured, and the amplitude lived only in the
+ * handset's logcat -- which since Android 4.1 no other app may read, so without
+ * a PC and adb it was locked on the device.
+ *
+ * The relay already receives telemetry from every client and logs it. This is
+ * the same road, for the number that actually decides.
+ */
+test('the relay records the level VOX measured, not only the frames it sent', () => {
+    const relay = readFileSync(new URL('../../server/lib/protocol.js', import.meta.url), 'utf8');
+    assert.match(relay, /case 'vox_level'/,
+        'the relay drops the level report, so it can only be read on the handset');
+    assert.match(relay, /event=vox_level/,
+        'the level is received and never logged, which is the same as not having it');
+});
+
+test('the client reports the level it measured to the relay', () => {
+    const recorder = readFileSync(
+        new URL('../../../am2-android-client/app/src/main/java/com/am2/am2/AudioRecorder.kt', import.meta.url),
+        'utf8');
+    assert.match(recorder, /emit\(\s*"vox_level"/,
+        'the level is written to logcat only, where nobody but the handset can read it');
+});
