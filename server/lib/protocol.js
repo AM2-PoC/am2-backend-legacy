@@ -605,6 +605,34 @@ function attachProtocol(server) {
                  * Logged, not stored: it is a diagnostic for a fault being
                  * chased now, not a metric anything reports on.
                  */
+                /*
+                 * Why a handset could not take an update.
+                 *
+                 * A refusal lived in a Toast on a radio in somebody's hand, so
+                 * a handset that cannot update was a handset nobody could
+                 * diagnose -- and one spent a day being blamed on the build it
+                 * was refusing, while the certificate, the digest, the served
+                 * bytes and the trusted signer were all proven identical to the
+                 * build already installed.
+                 *
+                 * The reason is a short identifier the handset chose, so it is
+                 * held to the same shape as a version name: anything else could
+                 * write its own journal line.
+                 */
+                case 'update_refused': {
+                    if (!ws.sessionUser) break;
+                    const reason = versionLabel(data.reason);
+                    if (reason === null) break;
+                    console.log(
+                        `event=update_refused user=${ws.sessionUser.id}`
+                        + ` client_version=${ws.clientVersionName || 'unknown'}`
+                        + ` reason=${reason}`
+                        + tallies(data, ['offered', 'installed', 'sdk_int'])
+                        + ` device=${versionLabel(String(data.device || '').replace(/\s+/g, '_')) || 'unknown'}`,
+                    );
+                    break;
+                }
+
                 case 'vox_level': {
                     if (!ws.sessionUser) break;
                     const peak = Number(data.peak);
