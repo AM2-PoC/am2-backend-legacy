@@ -95,4 +95,73 @@ if [[ $ready -ne 1 ]]; then
     exit 1
 fi
 
+# A release must not go live ahead of its own schema.
+#
+# 80ab744 shipped the device-token login and 005_device_tokens.sql together,
+# and nothing tied them: whether the table existed came down to somebody
+# remembering apply-migrations.sh. A relay that starts without it does not
+# complain -- the issuing call is wrapped in a try that logs and continues,
+# and the verifying call leaves through the login catch-all, which the handset
+# is told is a database timeout.
+#
+# This asks the database the relay itself will use, with the relay's own
+# credentials, because a superuser seeing the row proves nothing about the
+# account that has to read it. And it runs here rather than at ExecStartPre:
+# refusing to start has already stopped the release that was working, while
+# refusing to pass leaves it serving until the migration is run.
+(
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+    cd "$release_root/server"
+    RELEASE_ROOT="$release_root" node - <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const { Pool } = require('pg');
+
+const dir = path.join(process.env.RELEASE_ROOT, 'infra/migrations');
+const carried = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((name) => /^\d{3}_[a-z0-9_]+\.sql$/.test(name)).sort()
+    : [];
+if (carried.length === 0) {
+    console.log('release carries no migrations to check');
+    process.exit(0);
+}
+
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT || 5432,
+    connectionTimeoutMillis: 10000,
+});
+
+pool.query('SELECT filename FROM public.schema_migrations')
+    .then(({ rows }) => {
+        const applied = new Set(rows.map((row) => row.filename));
+        const missing = carried.filter((name) => !applied.has(name));
+        if (missing.length > 0) {
+            console.error(
+                `the database is behind this release: ${missing.join(', ')} `
+                + `${missing.length === 1 ? 'is' : 'are'} not applied to ${process.env.DB_NAME}.`);
+            console.error(
+                '  run: infra/scripts/apply-migrations.sh --db ' + process.env.DB_NAME);
+            console.error('  the release that is live now keeps serving until you do.');
+            process.exit(1);
+        }
+        console.log(`schema is current for this release (${carried.length} migrations)`);
+        process.exit(0);
+    })
+    .catch((err) => {
+        // A missing schema_migrations table is itself the answer: nothing has
+        // ever been applied here.
+        console.error(`cannot read the applied migrations from ${process.env.DB_NAME}: ${err.message}`);
+        console.error('  run: infra/scripts/apply-migrations.sh --db ' + process.env.DB_NAME);
+        process.exit(1);
+    });
+NODE
+) || exit 1
+
 printf 'isolated release smoke OK: %s\n' "$expected_sha"
