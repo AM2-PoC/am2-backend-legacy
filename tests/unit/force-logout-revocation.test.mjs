@@ -25,7 +25,7 @@ function database({ deviceId = 'device-a', failOnDelete = false } = {}) {
         async query(sql, params = []) {
             calls.push({ sql: String(sql).replace(/\s+/g, ' ').trim(), params });
             if (/SELECT current_device_id/i.test(sql)) {
-                return { rows: [{ current_device_id: deviceId }], rowCount: 1 };
+                return { rows: [{ current_device_id: deviceId, force_logout: false }], rowCount: 1 };
             }
             if (/DELETE FROM public\.device_tokens/i.test(sql)) {
                 if (failOnDelete) throw new Error('delete failed');

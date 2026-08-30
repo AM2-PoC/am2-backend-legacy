@@ -19,7 +19,7 @@ const bcrypt = require('bcryptjs');
 
 const {
     pool, redisClient, createLog, channelPermission,
-    issueDeviceToken, userForDeviceToken,
+    userForDeviceToken,
 } = require('./db');
 const MSG = require('./messages');
 const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
@@ -234,7 +234,10 @@ function tracePtt(event, { traceId, frameSequence, frameBytes } = {}) {
     console.info(`[PttTrace] ${fields.join(' ')}`);
 }
 
-function attachProtocol(server) {
+function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) {
+    if (typeof commitLoginSession !== 'function' || !LoginSessionError) {
+        throw new TypeError('attachProtocol requires login-session dependencies');
+    }
     const wss = new WebSocket.Server({ server });
 
     const interval = setInterval(() => {
@@ -522,7 +525,12 @@ function attachProtocol(server) {
 
                             activeConnections.set(uid, ws);
 
-                            await pool.query("UPDATE public.users SET status = 'online', updated_at = CURRENT_TIMESTAMP, current_device_id = $1, is_speaking = false WHERE id = $2", [providedDeviceId, uid]);
+                            const deviceToken = await commitLoginSession(pool, {
+                                userId: uid,
+                                deviceId: providedDeviceId,
+                                expectedForceLogout: user.force_logout === true,
+                                expectedCurrentDeviceId: user.current_device_id ?? null,
+                            });
                             await createLog(uid, user.last_channel_id, 'LOGIN');
                             console.log(
                                 `event=client_login user=${uid}`
@@ -539,24 +547,11 @@ function attachProtocol(server) {
                                 WHERE uc.user_id = $1`, [uid]);
 
                             /*
-                             * The credential the handset keeps from here on.
-                             *
-                             * Issued on a password login so the password can be
-                             * deleted from the device, and re-issued on a token
-                             * login so a handset that has one never has to fall
-                             * back to a password it no longer holds.
-                             *
-                             * A failure to issue is not a failure to sign in.
-                             * The operator is already authenticated; the worst
-                             * case is that this handset asks for the password
-                             * once more next time.
+                             * commitLoginSession issued and stored this while it
+                             * held the same users-row lock as force logout.
+                             * Nothing below may rotate it again outside that
+                             * transaction or a concurrent force logout can lose.
                              */
-                            let deviceToken = null;
-                            try {
-                                deviceToken = await issueDeviceToken(uid, providedDeviceId);
-                            } catch (err) {
-                                console.error(`event=token_issue_failed user=${uid} reason=${err.message}`);
-                            }
 
                             ws.send(JSON.stringify({
                                 type: 'login_success',
@@ -575,6 +570,15 @@ function attachProtocol(server) {
                             ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered", code: 'credential_rejected' } }));
                         }
                     } catch (err) {
+                        if (err.code === LoginSessionError.AUTH_STATE_CHANGED) {
+                            return ws.send(JSON.stringify({
+                                type: 'login_error',
+                                data: {
+                                    message: 'Login state changed. Please sign in again.',
+                                    code: 'credential_rejected',
+                                },
+                            }));
+                        }
                         /*
                          * Everything unexpected in the login block leaves here:
                          * bcrypt, the pool, a database being redeployed. None

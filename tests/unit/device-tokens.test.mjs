@@ -60,6 +60,7 @@ describe('device tokens', () => {
 import { readFileSync } from 'node:fs';
 
 const relay = readFileSync(new URL('../../server/lib/protocol.js', import.meta.url), 'utf8');
+const session = readFileSync(new URL('../../server/lib/login-session.js', import.meta.url), 'utf8');
 const login = relay.slice(relay.indexOf("case 'app_login'"), relay.indexOf("case 'update_location'"));
 
 describe('signing in', () => {
@@ -69,7 +70,9 @@ describe('signing in', () => {
     });
 
     test('a successful login hands one back', () => {
-        assert.match(login, /issueDeviceToken\(/,
+        assert.match(login, /commitLoginSession\(/,
+            'the login path never reaches token issuance');
+        assert.match(session, /newToken\(\)/,
             'nothing issues a token, so the handset has nothing to keep but the password');
     });
 
