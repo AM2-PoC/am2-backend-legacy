@@ -3,15 +3,15 @@
 -- it is. See infra/docker/seed/02-seed.sql for what actually populates
 -- this database: synthetic accounts, never a copy of anything real.
 --
--- Regenerate with: infra/scripts/refresh-docker-schema.sh
+-- Regenerated: 2026-08-30T02:52:19Z
 
 --
 -- PostgreSQL database dump
 --
 
 
--- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
--- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+-- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -68,6 +68,9 @@ BEGIN
         v_name := NEW.name;
     END IF;
 
+    -- An ON DELETE CASCADE may already have removed the referenced admin before
+    -- this AFTER DELETE trigger runs. Never let audit logging roll back the real
+    -- delete because its actor is now historical.
     IF (v_admin IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM public.admin WHERE id = v_admin)) THEN
         v_admin := NULL;
@@ -264,6 +267,19 @@ CREATE TABLE public.channels (
 
 
 --
+-- Name: device_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.device_tokens (
+    token_hash character(64) NOT NULL,
+    user_id character varying(50) NOT NULL,
+    device_id text,
+    issued_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    last_used_at timestamp without time zone
+);
+
+
+--
 -- Name: ptt_logs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -294,6 +310,17 @@ CREATE SEQUENCE public.ptt_logs_id_seq
 --
 
 ALTER SEQUENCE public.ptt_logs_id_seq OWNED BY public.ptt_logs.id;
+
+
+--
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schema_migrations (
+    filename text NOT NULL,
+    checksum text NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL
+);
 
 
 --
@@ -349,8 +376,22 @@ CREATE TABLE public.users (
     is_speaking boolean DEFAULT false,
     entity_type character varying(16) DEFAULT 'user'::character varying NOT NULL,
     location_updated_at timestamp with time zone,
-    CONSTRAINT users_entity_type_check CHECK (((entity_type)::text = ANY (ARRAY['user'::text, 'tracker'::text])))
+    CONSTRAINT users_entity_type_check CHECK (((entity_type)::text = ANY ((ARRAY['user'::character varying, 'tracker'::character varying])::text[])))
 );
+
+
+--
+-- Name: COLUMN users.entity_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.users.entity_type IS 'Operator-assigned LiveTrack identity: user or tracker; never inferred from id/device/GPS.';
+
+
+--
+-- Name: COLUMN users.location_updated_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.users.location_updated_at IS 'Server receipt time of the latest accepted location sample; account/session updates must not touch it.';
 
 
 --
@@ -431,6 +472,14 @@ ALTER TABLE ONLY public.channels
 
 
 --
+-- Name: device_tokens device_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.device_tokens
+    ADD CONSTRAINT device_tokens_pkey PRIMARY KEY (token_hash);
+
+
+--
 -- Name: channels name_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -444,6 +493,14 @@ ALTER TABLE ONLY public.channels
 
 ALTER TABLE ONLY public.ptt_logs
     ADD CONSTRAINT ptt_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (filename);
 
 
 --
@@ -482,6 +539,13 @@ CREATE INDEX idx_admin_activity_logs_waktu ON public.admin_activity_logs USING b
 --
 
 CREATE INDEX idx_amc_admin_id ON public.admin_managed_channels USING btree (admin_id);
+
+
+--
+-- Name: idx_device_tokens_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_device_tokens_user ON public.device_tokens USING btree (user_id);
 
 
 --
