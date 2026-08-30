@@ -118,7 +118,6 @@ fi
     RELEASE_ROOT="$release_root" node - <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
-const { Pool } = require('pg');
 
 const dir = path.join(process.env.RELEASE_ROOT, 'infra/migrations');
 const carried = fs.existsSync(dir)
@@ -128,6 +127,11 @@ if (carried.length === 0) {
     console.log('release carries no migrations to check');
     process.exit(0);
 }
+
+// After the early exit, not before: a release that carries no migrations has
+// nothing to ask the database, and the restart-safety fixture is exactly such
+// a release -- a bare entrypoint with no node_modules to require pg from.
+const { Pool } = require('pg');
 
 const pool = new Pool({
     user: process.env.DB_USER,
