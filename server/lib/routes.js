@@ -17,6 +17,7 @@ const path = require('node:path');
 const WebSocket = require('ws');
 
 const { pool, createLog } = require('./db');
+const { forceLogoutUser } = require('./force-logout');
 const { activeConnections } = require('./state');
 const { resolveReleaseNotes } = require('./release-notes');
 const { fieldUpdate } = require('./field-update');
@@ -148,11 +149,11 @@ function registerRoutes(app) {
                         const isInactive = row.admin_status !== 'active';
 
                         if (isExpired || isInactive) {
+                            await forceLogoutUser(pool, uid);
                             ws.send(JSON.stringify({
                                 type: 'force_logout',
                                 data: { message: "The agency/admin account has expired or been deactivated." }
                             }));
-                            await pool.query("UPDATE public.users SET status = 'offline', current_device_id = NULL WHERE id = $1", [uid]);
                             setTimeout(() => ws.terminate(), 500);
                             continue;
                         }
@@ -251,7 +252,7 @@ function registerRoutes(app) {
         const { userId } = req.body;
         const uid = String(userId);
         try {
-            await pool.query("UPDATE public.users SET status = 'offline', current_device_id = NULL WHERE id = $1", [uid]);
+            await forceLogoutUser(pool, uid);
             await createLog(uid, null, 'FORCE_LOGOUT');
             const targetWs = activeConnections.get(uid);
             if (targetWs) {

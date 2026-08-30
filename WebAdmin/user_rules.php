@@ -40,6 +40,30 @@ function am2_entity_type($value): string
     return $type;
 }
 
+/** End one device session and revoke only the token set that can resume it. */
+function am2_force_logout_user(PDO $pdo, string $userId): array
+{
+    am2_require_transaction($pdo, __FUNCTION__);
+
+    $stmt = $pdo->prepare('SELECT current_device_id FROM public.users WHERE id = ? FOR UPDATE');
+    $stmt->execute([$userId]);
+    $deviceId = $stmt->fetch(PDO::FETCH_ASSOC)['current_device_id'] ?? null;
+
+    $revoke = $pdo->prepare(
+        'DELETE FROM public.device_tokens WHERE user_id = ? AND device_id IS NOT DISTINCT FROM ?'
+    );
+    $revoke->execute([$userId, $deviceId]);
+
+    $offline = $pdo->prepare(
+        "UPDATE public.users
+         SET force_logout = TRUE, status = 'offline', current_device_id = NULL, is_speaking = false
+         WHERE id = ?"
+    );
+    $offline->execute([$userId]);
+
+    return ['device_id' => $deviceId];
+}
+
 function am2_create_user(PDO $pdo, string $id, string $name, string $password, $adminId, string $entityType): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
