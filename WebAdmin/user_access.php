@@ -27,17 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $stmtU->execute([$uid_to_kick]);
         $target_name = $stmtU->fetchColumn() ?: "ID: $uid_to_kick";
 
-        $sqlKick = "UPDATE public.users
-                    SET force_logout = TRUE,
-                        status = 'offline',
-                        current_device_id = NULL
-                    WHERE id = ?";
         // Written here rather than behind a helper, so the obligation is
         // declared here too: kicking a unit off is a change to that unit, and
         // the log is how anyone later finds out who did it.
         am2_audit_expect('force_logout');
-        $stmtKick = $pdo->prepare($sqlKick);
-        $stmtKick->execute([$uid_to_kick]);
+        am2_force_logout_user($pdo, (string) $uid_to_kick);
 
         am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
                 ['name' => $target_name], 'users', (string) $uid_to_kick);
