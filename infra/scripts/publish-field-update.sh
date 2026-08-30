@@ -17,21 +17,113 @@ set -euo pipefail
 
 usage() {
     echo "Usage: $0 --artifact /absolute/ci-artifact-dir [--update-dir /absolute/server/update]" >&2
+    echo "       $0 --verify-only [--update-dir /absolute/server/update] [--reader USER]" >&2
 }
 
 artifact=
 update_dir=
+reader=
+verify_only=
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --artifact)   [[ $# -ge 2 ]] || { usage; exit 64; }; artifact=$2; shift 2 ;;
-        --update-dir) [[ $# -ge 2 ]] || { usage; exit 64; }; update_dir=$2; shift 2 ;;
+        --artifact)    [[ $# -ge 2 ]] || { usage; exit 64; }; artifact=$2; shift 2 ;;
+        --update-dir)  [[ $# -ge 2 ]] || { usage; exit 64; }; update_dir=$2; shift 2 ;;
+        --reader)      [[ $# -ge 2 ]] || { usage; exit 64; }; reader=$2; shift 2 ;;
+        --verify-only) verify_only=1; shift ;;
         *) usage; exit 64 ;;
     esac
 done
 
-[[ -n $artifact && $artifact == /* ]] || { usage; exit 64; }
 update_dir=${update_dir:-/var/www/am2/current/server/update}
 [[ $update_dir == /* ]] || { usage; exit 64; }
+if [[ -z $verify_only ]]; then
+    [[ -n $artifact && $artifact == /* ]] || { usage; exit 64; }
+fi
+
+# Writing the files is not publishing them. The relay is a different process
+# and often a different user, and the one time that mattered -- a publish run
+# under sudo into a directory owned by the service account -- every check here
+# passed, the script said "published", and the endpoint answered "No version
+# info found" for a day. So the last thing this does is read the channel back
+# as the process that serves it.
+#
+# The reader defaults to whoever owns the update directory, which is the
+# account the relay runs as on every host this deploys to.
+verify_channel() {
+    local dir=$1 who=$2
+    python3 - "$dir" "$who" <<'PYTHON'
+import grp, json, hashlib, os, pwd, sys
+
+directory, who = sys.argv[1], sys.argv[2]
+
+if not who:
+    try:
+        who = pwd.getpwuid(os.stat(directory).st_uid).pw_name
+    except (OSError, KeyError) as err:
+        sys.exit(f"cannot tell who should be able to read {directory}: {err}")
+try:
+    account = pwd.getpwnam(who)
+except KeyError:
+    sys.exit(f"no such account to read the channel as: {who}")
+
+groups = {account.pw_gid}
+groups.update(g.gr_gid for g in grp.getgrall() if who in g.gr_mem)
+
+
+def permits(path, bit):
+    """Whether `who` holds `bit` (4 read, 1 traverse) on path."""
+    if account.pw_uid == 0:
+        return True
+    st = os.stat(path)
+    if st.st_uid == account.pw_uid:
+        return st.st_mode & (bit << 6)
+    if st.st_gid in groups:
+        return st.st_mode & (bit << 3)
+    return st.st_mode & bit
+
+
+problems = []
+if not permits(directory, 1):
+    problems.append(f"{who} cannot enter {directory}")
+
+manifest = os.path.join(directory, "version.json")
+if not os.path.exists(manifest):
+    problems.append(f"{manifest} is not there")
+elif not permits(manifest, 4):
+    problems.append(f"{who} cannot read {manifest}")
+else:
+    try:
+        published = json.load(open(manifest))
+    except Exception as err:
+        problems.append(f"{manifest} does not parse: {err}")
+    else:
+        name = str(published.get("update_url", "")).rsplit("/", 1)[-1]
+        apk = os.path.join(directory, name)
+        if not name.endswith(".apk"):
+            problems.append("the published manifest names no APK")
+        elif not os.path.exists(apk):
+            problems.append(f"{apk} is named by the manifest and is not there")
+        elif not permits(apk, 4):
+            problems.append(f"{who} cannot read {apk}")
+        else:
+            digest = hashlib.sha256(open(apk, "rb").read()).hexdigest()
+            if digest != published.get("sha256"):
+                problems.append(
+                    f"the published manifest describes {published.get('sha256')}, "
+                    f"the published APK is {digest}")
+
+if problems:
+    for problem in problems:
+        print(f"the channel is not usable: {problem}", file=sys.stderr)
+    sys.exit(1)
+PYTHON
+}
+
+if [[ -n $verify_only ]]; then
+    verify_channel "$update_dir" "$reader"
+    echo "channel at $update_dir is readable and coherent"
+    exit 0
+fi
 
 manifest=$artifact/version.json
 [[ -r $manifest ]] || { echo "no version.json in $artifact" >&2; exit 1; }
@@ -100,6 +192,34 @@ except Exception:
 fi
 
 install -d -m 0750 "$update_dir"
+
+# Keep whatever is published now, manifest AND the APK it names. If the new
+# pair turns out not to be readable, the field must be left on the build that
+# was working -- a channel answering nothing at all is worse than a channel
+# answering something older.
+#
+# Both, not just the manifest: they land under the same name, so restoring the
+# old manifest beside the new APK leaves a pair that does not agree, and a
+# handset refuses that install on the digest without saying why.
+rollback_manifest=
+rollback_apk=
+rollback_apk_name=
+if [[ -r $current ]]; then
+    rollback_manifest=$(mktemp)
+    cp -p "$current" "$rollback_manifest"
+    rollback_apk_name=$(python3 -c "
+import json
+try:
+    print(str(json.load(open('$current')).get('update_url') or '').rsplit('/', 1)[-1])
+except Exception:
+    print('')
+")
+    if [[ -n $rollback_apk_name && -r $update_dir/$rollback_apk_name ]]; then
+        rollback_apk=$(mktemp)
+        cp -p "$update_dir/$rollback_apk_name" "$rollback_apk"
+    fi
+fi
+
 # The APK first and the manifest second, both through a temporary name so a
 # reader never sees a half-written file. In the instant between them the
 # manifest still describes the previous build, which is the safe direction: a
@@ -109,5 +229,25 @@ install -m 0640 "$apk" "$update_dir/.$target_name.incoming"
 mv -f "$update_dir/.$target_name.incoming" "$update_dir/$target_name"
 install -m 0640 "$manifest" "$update_dir/.version.json.incoming"
 mv -f "$update_dir/.version.json.incoming" "$update_dir/version.json"
+
+if ! verify_channel "$update_dir" "$reader"; then
+    if [[ -n $rollback_manifest ]]; then
+        # The APK first and the manifest second, the same order as publishing,
+        # so no reader ever sees a manifest describing bytes that are not there.
+        if [[ -n $rollback_apk ]]; then
+            cp -p "$rollback_apk" "$update_dir/.$rollback_apk_name.incoming"
+            mv -f "$update_dir/.$rollback_apk_name.incoming" "$update_dir/$rollback_apk_name"
+        fi
+        cp -p "$rollback_manifest" "$update_dir/.version.json.incoming"
+        mv -f "$update_dir/.version.json.incoming" "$current"
+        echo "rolled back: the channel still serves the build it served before" >&2
+    else
+        rm -f "$current" "$update_dir/$target_name"
+        echo "removed the manifest: nothing was published here before" >&2
+    fi
+    rm -f "$rollback_manifest" "$rollback_apk"
+    exit 1
+fi
+rm -f "$rollback_manifest" "$rollback_apk"
 
 echo "published $version_name (build $version_code) as $update_dir/$target_name"

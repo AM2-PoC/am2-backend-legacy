@@ -158,10 +158,17 @@ describe('the field update channel', () => {
         return dir;
     }
 
-    function publish(from, into) {
+    function publish(from, into, ...extra) {
         return spawnSync('bash', [
             path.join(ROOT, 'infra/scripts/publish-field-update.sh'),
-            '--artifact', from, '--update-dir', into,
+            '--artifact', from, '--update-dir', into, ...extra,
+        ], { encoding: 'utf8' });
+    }
+
+    function verify(into, ...extra) {
+        return spawnSync('bash', [
+            path.join(ROOT, 'infra/scripts/publish-field-update.sh'),
+            '--verify-only', '--update-dir', into, ...extra,
         ], { encoding: 'utf8' });
     }
 
@@ -195,6 +202,54 @@ describe('the field update channel', () => {
         } finally {
             fs.rmSync(from, { recursive: true, force: true });
             fs.rmSync(into, { recursive: true, force: true });
+        }
+    });
+
+    test('a published channel the relay cannot read is not published', () => {
+        /*
+         * This is how the staging channel died, and nothing caught it: the
+         * publish ran under sudo, the files landed root:root 0640, and the
+         * relay runs as the directory's owner. The script printed "published"
+         * while the endpoint answered "No version info found" -- it had
+         * verified everything about the bytes it wrote and nothing about
+         * whether the one process that matters could read them back.
+         */
+        const from = artifact();
+        const into = fs.mkdtempSync(path.join(os.tmpdir(), 'am2-published-'));
+        try {
+            assert.equal(publish(from, into).status, 0);
+            assert.equal(verify(into).status, 0, 'a channel it just wrote does not verify');
+
+            fs.chmodSync(path.join(into, 'update.apk'), 0o000);
+            const result = verify(into);
+            assert.notEqual(result.status, 0, 'an unreadable APK verified clean');
+            assert.match(result.stderr, /cannot read/);
+        } finally {
+            fs.rmSync(from, { recursive: true, force: true });
+            fs.rmSync(into, { recursive: true, force: true });
+        }
+    });
+
+    test('a channel that fails its check keeps the build that was working', () => {
+        // Half-publishing is worse than not publishing: the field is left with
+        // a channel that answers nothing at all.
+        const into = fs.mkdtempSync(path.join(os.tmpdir(), 'am2-published-'));
+        const working = artifact({ code: 200 });
+        const broken = artifact({ code: 201, bytes: 'newer apk bytes' });
+        try {
+            assert.equal(publish(working, into).status, 0);
+            // 'nobody' is in no group of ours and the files are not
+            // world-readable, so this is a real refusal, not a contrivance.
+            const result = publish(broken, into, '--reader', 'nobody');
+            assert.notEqual(result.status, 0, 'it published something unreadable');
+            assert.match(result.stderr, /cannot read/);
+            assert.equal(
+                JSON.parse(fs.readFileSync(path.join(into, 'version.json'), 'utf8')).version_code, 200,
+                'a failed publish left the channel on the build it could not verify',
+            );
+            assert.equal(verify(into).status, 0, 'the channel it rolled back to does not verify');
+        } finally {
+            for (const dir of [working, broken, into]) fs.rmSync(dir, { recursive: true, force: true });
         }
     });
 
