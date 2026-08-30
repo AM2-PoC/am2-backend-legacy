@@ -13,12 +13,18 @@ const { commitLoginSession, LoginSessionError } = require('../../server/lib/logi
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-function concurrentDatabase({ initialDeviceId = null, initialForceLogout = false } = {}) {
+function concurrentDatabase({
+    initialDeviceId = null,
+    initialForceLogout = false,
+    initialPassword = 'hash-current',
+    initialTokens = [],
+} = {}) {
     let owner = null;
     const waiters = [];
-    const tokens = [];
+    const tokens = initialTokens.map((token) => ({ ...token }));
     let deviceId = initialDeviceId;
     let forceLogout = initialForceLogout;
+    let password = initialPassword;
 
     async function lock(client) {
         if (!owner) { owner = client; return; }
@@ -42,15 +48,22 @@ function concurrentDatabase({ initialDeviceId = null, initialForceLogout = false
                 if (/^BEGIN$/.test(q)) return { rows: [], rowCount: 0 };
                 if (/SELECT .*FROM public\.users.*FOR UPDATE/i.test(q)) {
                     await lock(this); locked = true;
-                    return { rows: [{ current_device_id: deviceId, force_logout: forceLogout }], rowCount: 1 };
+                    return { rows: [{ current_device_id: deviceId, force_logout: forceLogout, password }], rowCount: 1 };
+                }
+                if (/SELECT user_id, device_id FROM public\.device_tokens/i.test(q)) {
+                    const token = tokens.find((item) => item.tokenHash === params[0]);
+                    return { rows: token ? [{ user_id: token.userId, device_id: token.deviceId }] : [], rowCount: token ? 1 : 0 };
                 }
                 if (/INSERT INTO public\.device_tokens/i.test(q)) {
-                    tokens.push({ userId: params[1], deviceId: params[2] });
+                    tokens.push({ tokenHash: params[0], userId: params[1], deviceId: params[2] });
                     return { rows: [], rowCount: 1 };
                 }
                 if (/DELETE FROM public\.device_tokens/i.test(q)) {
                     for (let i = tokens.length - 1; i >= 0; i -= 1) {
-                        if (tokens[i].userId === params[0] && tokens[i].deviceId === params[1]) tokens.splice(i, 1);
+                        const byHash = /token_hash = \$1/i.test(q) && tokens[i].tokenHash === params[0];
+                        const byDevice = /user_id = \$1/i.test(q)
+                            && tokens[i].userId === params[0] && tokens[i].deviceId === params[1];
+                        if (byHash || byDevice) tokens.splice(i, 1);
                     }
                     return { rows: [], rowCount: 1 };
                 }
@@ -78,8 +91,9 @@ function concurrentDatabase({ initialDeviceId = null, initialForceLogout = false
     return {
         pool: { async connect() { return clients.shift(); } },
         tokens,
-        state: () => ({ deviceId, forceLogout }),
+        state: () => ({ deviceId, forceLogout, password }),
         waiting: () => waitUntil(() => waiters.length > 0),
+        changePassword: (next) => { password = next; },
     };
 }
 
@@ -122,5 +136,40 @@ test('a login authenticated before force logout cannot publish after it', async 
         (error) => error.code === LoginSessionError.AUTH_STATE_CHANGED,
     );
     assert.deepEqual(db.tokens, []);
-    assert.deepEqual(db.state(), { deviceId: null, forceLogout: true });
+    assert.deepEqual(db.state(), { deviceId: null, forceLogout: true, password: 'hash-current' });
+});
+
+test('a token migrated to another device consumes its source credential', async () => {
+    const sourceHash = 'b'.repeat(64);
+    const db = concurrentDatabase({
+        initialTokens: [{ tokenHash: sourceHash, userId: 'CT_A1', deviceId: 'device-a' }],
+    });
+    await commitLoginSession(db.pool, {
+        userId: 'CT_A1',
+        deviceId: 'device-b',
+        sourceTokenHash: sourceHash,
+        sourceDeviceId: 'device-a',
+        expectedForceLogout: false,
+        expectedCurrentDeviceId: null,
+    });
+    assert.equal(db.tokens.some((token) => token.tokenHash === sourceHash), false,
+        'the credential from device A survived migration to device B');
+    assert.equal(db.tokens.length, 1);
+    assert.equal(db.tokens[0].deviceId, 'device-b');
+});
+
+test('a password changed after bcrypt validation cannot mint a token', async () => {
+    const db = concurrentDatabase({ initialPassword: 'hash-new' });
+    await assert.rejects(
+        commitLoginSession(db.pool, {
+            userId: 'CT_A1',
+            deviceId: 'device-a',
+            expectedPasswordHash: 'hash-old',
+            expectedForceLogout: false,
+            expectedCurrentDeviceId: null,
+        }),
+        (error) => error.code === LoginSessionError.AUTH_STATE_CHANGED,
+    );
+    assert.deepEqual(db.tokens, []);
+    assert.equal(db.state().deviceId, null);
 });

@@ -22,6 +22,9 @@ async function commitLoginSession(pool, {
     deviceId,
     expectedForceLogout = false,
     expectedCurrentDeviceId = null,
+    expectedPasswordHash = null,
+    sourceTokenHash = null,
+    sourceDeviceId = null,
     beforeIssue = null,
 } = {}) {
     const uid = String(userId);
@@ -30,7 +33,7 @@ async function commitLoginSession(pool, {
     try {
         await client.query('BEGIN');
         const locked = await client.query(
-            'SELECT current_device_id, force_logout FROM public.users WHERE id = $1 FOR UPDATE',
+            'SELECT current_device_id, force_logout, password FROM public.users WHERE id = $1 FOR UPDATE',
             [uid],
         );
         if (locked.rows.length !== 1) throw authStateChanged();
@@ -38,10 +41,28 @@ async function commitLoginSession(pool, {
         const lockedDeviceId = row.current_device_id ?? null;
         const expectedDeviceId = expectedCurrentDeviceId ?? null;
         if (Boolean(row.force_logout) !== Boolean(expectedForceLogout)
-            || lockedDeviceId !== expectedDeviceId) {
+            || lockedDeviceId !== expectedDeviceId
+            || (expectedPasswordHash !== null && row.password !== expectedPasswordHash)) {
             throw authStateChanged();
         }
+        if (sourceTokenHash) {
+            const source = await client.query(
+                'SELECT user_id, device_id FROM public.device_tokens WHERE token_hash = $1 FOR UPDATE',
+                [sourceTokenHash],
+            );
+            if (source.rows.length !== 1
+                || String(source.rows[0].user_id) !== uid
+                || (source.rows[0].device_id ?? null) !== (sourceDeviceId ?? null)) {
+                throw authStateChanged();
+            }
+        }
         if (beforeIssue) await beforeIssue();
+        if (sourceTokenHash) {
+            await client.query(
+                'DELETE FROM public.device_tokens WHERE token_hash = $1',
+                [sourceTokenHash],
+            );
+        }
         await client.query(
             'DELETE FROM public.device_tokens WHERE user_id = $1 AND device_id IS NOT DISTINCT FROM $2',
             [uid, deviceId || null],

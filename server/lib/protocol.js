@@ -444,9 +444,10 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                              * offer by then anyway.
                              */
                             const presentedToken = typeof data.token === 'string' ? data.token.trim() : '';
+                            let authenticatedToken = null;
                             if (presentedToken) {
-                                const tokenUser = await userForDeviceToken(presentedToken);
-                                if (tokenUser === null || tokenUser !== uid) {
+                                authenticatedToken = await userForDeviceToken(presentedToken);
+                                if (authenticatedToken === null || authenticatedToken.userId !== uid) {
                                     return ws.send(JSON.stringify({
                                         type: 'login_error',
                                         data: { message: "Sesi perangkat ini sudah dicabut. Masuk lagi dengan kata sandi.", code: 'token_revoked' },
@@ -516,21 +517,23 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 console.log(`[Re-entry] User ${uid} reconnected before the grace period ended.`);
                             }
 
-                            ws.sessionUser = user;
                             ws.currentChannelId = user.last_channel_id;
                             ws.enable_maps = (user.enable_maps !== false) && (user.can_manage_maps !== false);
                             ws.enable_p2p = (user.enable_p2p !== false) && (user.can_manage_p2p !== false);
                             ws.enable_ptt_video = (user.enable_ptt_video === true) && (user.can_manage_video === true);
                             ws.duplex_mode = user.duplex_mode || 'HALF DUPLEX';
 
-                            activeConnections.set(uid, ws);
-
                             const deviceToken = await commitLoginSession(pool, {
                                 userId: uid,
                                 deviceId: providedDeviceId,
                                 expectedForceLogout: user.force_logout === true,
                                 expectedCurrentDeviceId: user.current_device_id ?? null,
+                                expectedPasswordHash: presentedToken ? null : user.password,
+                                sourceTokenHash: authenticatedToken?.tokenHash ?? null,
+                                sourceDeviceId: authenticatedToken?.deviceId ?? null,
                             });
+                            ws.sessionUser = user;
+                            activeConnections.set(uid, ws);
                             await createLog(uid, user.last_channel_id, 'LOGIN');
                             console.log(
                                 `event=client_login user=${uid}`
