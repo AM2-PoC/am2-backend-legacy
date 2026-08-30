@@ -82,8 +82,7 @@ elseif ($method == 'POST') {
 
             // Declared where the change is made, as on the panel's own path.
             am2_audit_expect('force_logout');
-            $sqlKick = "UPDATE public.users SET force_logout = TRUE, status = 'offline', current_device_id = NULL WHERE id = ?";
-            $pdo->prepare($sqlKick)->execute([$user_id]);
+            am2_force_logout_user($pdo, $user_id);
 
             /*
              * Same event as the panel's, with where it came from as a

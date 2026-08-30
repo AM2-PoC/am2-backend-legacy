@@ -35,7 +35,10 @@ const {
     clearPtpSession,
 } = require('./lib/state');
 
-const { pool, redisClient, connectRedis, startCleanup, resetSessions, createLog } = require('./lib/db');
+const {
+    resetSessions, pool, redisClient, connectRedis, startCleanup, createLog,
+} = require('./lib/db');
+const { commitLoginSession, LoginSessionError } = require('./lib/login-session');
 const { registerRoutes } = require('./lib/routes');
 const { attachProtocol } = require('./lib/protocol');
 const { installShutdown } = require('./lib/shutdown');
@@ -154,7 +157,7 @@ registerRoutes(app);
 // --- WEBSOCKET ENGINE ---
 // The protocol lives in lib/protocol.js: one connection that stays open,
 // against the endpoints in lib/routes.js that arrive and answer.
-const wss = attachProtocol(server);
+const wss = attachProtocol(server, { commitLoginSession, LoginSessionError });
 
 /*
  * A restart ends transmissions instead of severing them.

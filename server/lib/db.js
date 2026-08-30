@@ -135,7 +135,7 @@ const userForDeviceToken = async (token) => {
     if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
     const hash = hashToken(token);
     const res = await pool.query(
-        'SELECT user_id FROM public.device_tokens WHERE token_hash = $1',
+        'SELECT user_id, device_id FROM public.device_tokens WHERE token_hash = $1',
         [hash],
     );
     if (res.rows.length === 0) return null;
@@ -143,7 +143,11 @@ const userForDeviceToken = async (token) => {
         'UPDATE public.device_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1',
         [hash],
     );
-    return String(res.rows[0].user_id);
+    return {
+        userId: String(res.rows[0].user_id),
+        deviceId: res.rows[0].device_id ?? null,
+        tokenHash: hash,
+    };
 };
 
 /** Take them all back. What happens when a handset is lost. */
