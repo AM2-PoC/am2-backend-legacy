@@ -447,21 +447,21 @@ function attachProtocol(server) {
                                     }));
                                 }
                             } else if (!(await bcrypt.compare(data.password?.trim() || "", user.password))) {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password", code: 'credential_rejected' } }));
                             }
 
                             const now = new Date();
                             if (user.admin_status && user.admin_status !== 'active') {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency account is inactive" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency account is inactive", code: 'not_permitted' } }));
                             }
                             if (user.admin_expired_at && new Date(user.admin_expired_at) < now) {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency subscription has expired" } }));
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Agency subscription has expired", code: 'not_permitted' } }));
                             }
 
                             if (!user.last_channel_id || !user.last_channel_slug) {
                                 return ws.send(JSON.stringify({
                                     type: 'login_error',
-                                    data: { message: "Login failed: the admin has not set a default channel for you." }
+                                    data: { message: "Login failed: the admin has not set a default channel for you.", code: 'not_permitted' }
                                 }));
                             }
 
@@ -473,7 +473,7 @@ function attachProtocol(server) {
                             if (channelCheck.rows.length === 0) {
                                 return ws.send(JSON.stringify({
                                     type: 'login_error',
-                                    data: { message: "Login failed: you do not have access to that default channel." }
+                                    data: { message: "Login failed: you do not have access to that default channel.", code: 'not_permitted' }
                                 }));
                             }
 
@@ -487,7 +487,7 @@ function attachProtocol(server) {
                                 if (!isGracePeriod && user.current_device_id && user.current_device_id !== providedDeviceId) {
                                     return ws.send(JSON.stringify({
                                         type: 'login_error',
-                                        data: { message: "This account is signed in on another device. Please sign out there first." }
+                                        data: { message: "This account is signed in on another device. Please sign out there first.", code: 'not_permitted' }
                                     }));
                                 }
 
@@ -569,11 +569,19 @@ function attachProtocol(server) {
                                 }
                             }));
                         } else {
-                            ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered" } }));
+                            ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered", code: 'credential_rejected' } }));
                         }
                     } catch (err) {
+                        /*
+                         * Everything unexpected in the login block leaves here:
+                         * bcrypt, the pool, a database being redeployed. None
+                         * of it is a statement about the credential presented,
+                         * so it must never be classified as one -- a handset
+                         * that erases its token over a timeout has to be
+                         * reached physically to log in again.
+                         */
                         console.error("❌ Login Error:", err.message);
-                        ws.send(JSON.stringify({ type: 'login_error', data: { message: "Database Timeout / Connection Error" } }));
+                        ws.send(JSON.stringify({ type: 'login_error', data: { message: "Database Timeout / Connection Error", code: 'server_unavailable' } }));
                     }
                     break;
 
