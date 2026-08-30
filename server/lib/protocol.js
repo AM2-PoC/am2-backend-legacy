@@ -17,7 +17,10 @@
 const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 
-const { pool, redisClient, createLog, channelPermission } = require('./db');
+const {
+    pool, redisClient, createLog, channelPermission,
+    issueDeviceToken, userForDeviceToken,
+} = require('./db');
 const MSG = require('./messages');
 const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
 const {
