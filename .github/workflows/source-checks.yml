@@ -209,7 +209,11 @@ jobs:
           # The password is the one in the seed, which is the source of truth
           # for a container that exists for the length of this job.
           printf 'CT_PTT_PASS=devpassword123\nCT_NODE_URL=%s\n' "$CT_NODE_URL" > "$RUNNER_TEMP/ct.env"
-          CT_ENV_FILE="$RUNNER_TEMP/ct.env" bash tests/run-protocol.sh
+          # The admin routes need the relay's own key. The container reads it
+          # from .env, which this job copied from .env.example, so that file is
+          # the source of truth here the same way the seed password is.
+          CT_RELAY_ENV_FILE="$GITHUB_WORKSPACE/.env" \
+            CT_ENV_FILE="$RUNNER_TEMP/ct.env" bash tests/run-protocol.sh
       - name: Relay log on failure
         if: failure()
         run: docker compose logs --no-color relay | tail -100
