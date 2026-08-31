@@ -42,6 +42,12 @@ test('the shared edge rules cover everything that used to differ', () => {
         assert.match(snippet, new RegExp(`\\b${ext}\\b`),
             `the shared deny list no longer covers .${ext}`);
     }
+    assert.match(
+        snippet,
+        /\(\?:\[\._-\]\[\^\/\]\*\)\?\$/,
+        'backup deny only recognizes dot suffixes; names such as '
+            + 'admin_version.json.bak-20260816 remain publicly downloadable',
+    );
     for (const header of ['X-Frame-Options', 'X-Content-Type-Options',
                           'Referrer-Policy', 'Permissions-Policy']) {
         assert.match(snippet, new RegExp(header), `${header} is no longer set for either vhost`);
