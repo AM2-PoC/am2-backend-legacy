@@ -550,7 +550,26 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                  * resets either way and the table cannot separate a
                                  * resumed session from a retyped password.
                                  */
-                                + ` auth=${presentedToken ? 'token' : 'password'}`,
+                                + ` auth=${presentedToken ? 'token' : 'password'}`
+                                /*
+                                 * Which Android, and which handset.
+                                 *
+                                 * The acceptance plan asks for evidence on API
+                                 * 16, 19, 25, 26 and 34 from one APK digest,
+                                 * and nothing on this line could say which API
+                                 * had signed in. "It passed on KitKat" was a
+                                 * sentence somebody had to be believed about,
+                                 * which is not what an acceptance record is for.
+                                 *
+                                 * tallies() so a build that predates this shows
+                                 * nothing rather than a zero it never sent, and
+                                 * versionLabel() on the name because it is free
+                                 * text a handset chooses.
+                                 */
+                                + tallies(data, ['client_sdk_int'])
+                                + (typeof data.client_device === 'string'
+                                    ? ` device=${versionLabel(data.client_device.trim().replace(/\s+/g, '_')) || 'unnamed'}`
+                                    : ''),
                             );
 
                             if (data.latitude && data.longitude) await updateUserLocation(uid, data.latitude, data.longitude, data.accuracy, data.address);
