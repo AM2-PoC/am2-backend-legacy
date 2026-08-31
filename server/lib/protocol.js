@@ -538,7 +538,19 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             console.log(
                                 `event=client_login user=${uid}`
                                 + ` client_version=${ws.clientVersionName || 'unknown'}`
-                                + ` client_version_code=${ws.clientVersionCode === null ? 'na' : ws.clientVersionCode}`,
+                                + ` client_version_code=${ws.clientVersionCode === null ? 'na' : ws.clientVersionCode}`
+                                /*
+                                 * Which credential arrived, not which one left.
+                                 *
+                                 * "The session is not kept after an update" could
+                                 * not be answered from here: this line recorded
+                                 * only the version, and commitLoginSession issues
+                                 * a fresh token on every login -- rotating the one
+                                 * that arrived by token -- so device_tokens.issued_at
+                                 * resets either way and the table cannot separate a
+                                 * resumed session from a retyped password.
+                                 */
+                                + ` auth=${presentedToken ? 'token' : 'password'}`,
                             );
 
                             if (data.latitude && data.longitude) await updateUserLocation(uid, data.latitude, data.longitude, data.accuracy, data.address);
