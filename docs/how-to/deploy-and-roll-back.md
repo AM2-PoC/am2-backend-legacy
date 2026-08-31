@@ -152,6 +152,21 @@ The radio app's update channel is one manifest and one APK: `server/update/versi
 
 It refuses a manifest that does not describe the APK shipped beside it, a build that does not advance past the published one, and an artifact holding more than one APK. `public.app_versions` is deliberately not touched: nothing reads it, and it was a second hand-written copy of this channel that drifted three builds behind.
 
+The administrator app uses a separate package, signer, directory, manifest name,
+and endpoint. Publish that coherent pair through its own validator:
+
+```bash
+"$REL/infra/scripts/publish-admin-update.sh" \
+  --artifact /path/to/downloaded/admin-ci-artifact \
+  --update-dir /var/www/am2/shared/webadmin-update
+```
+
+It requires production package `com.am2.admin`, the canonical production HTTPS
+URL, exact APK digest, signer/source metadata, and a strictly increasing build.
+On failed read-back it restores the previous APK and manifest together. Do not
+copy `admin.apk` and `admin_version.json` separately or reuse the field-app
+publisher: these are independent channels.
+
 ## Preflight, smoke, migration
 
 Install the host-owned preflight helper before loading either relay unit. Keeping `ExecStartPre` outside the release means a pre-P0 rollback target can still be started and validated:
