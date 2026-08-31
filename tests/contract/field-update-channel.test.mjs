@@ -205,6 +205,41 @@ describe('the field update channel', () => {
         }
     });
 
+    test('republishing the same release name is called out', () => {
+        /*
+         * The version name is a decision a person makes; the build number is
+         * not. version.properties said 1.1.0 for every build from the day it
+         * was written, through device tokens and four rounds of fixes, because
+         * nothing ever asked. Semantic Versioning rule 10 is why it can drift
+         * unnoticed: build metadata "MUST be ignored when determining version
+         * precedence", so 1.1.0+184 and 1.1.0+233 are the same version and the
+         * channel accepts both without complaint.
+         *
+         * A warning, not a refusal. Shipping two builds under one release name
+         * is sometimes right -- a rebuild of the same source, a signing
+         * change -- and a channel that refuses it would be worse than one that
+         * says so.
+         */
+        const into = fs.mkdtempSync(path.join(os.tmpdir(), 'am2-published-'));
+        const first = artifact({ code: 300 });
+        const again = artifact({ code: 301, bytes: 'a different build' });
+        try {
+            assert.equal(publish(first, into).status, 0);
+            const result = publish(again, into);
+            assert.equal(result.status, 0, 'the same release name was refused outright');
+            // The warning itself, not the ordinary "published ..." line, which
+            // also contains the version name and made this pass while nothing
+            // had been implemented.
+            assert.match(
+                result.stderr,
+                /same release name as the build it replaces/,
+                'a second build under the same release name is published in silence',
+            );
+        } finally {
+            for (const dir of [first, again, into]) fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     test('a published channel the relay cannot read is not published', () => {
         /*
          * This is how the staging channel died, and nothing caught it: the
