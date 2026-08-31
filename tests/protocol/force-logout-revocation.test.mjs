@@ -9,7 +9,26 @@ const require = createRequire(process.env.CT_SERVER_JS || '/var/www/am2/staging/
 const WebSocket = require('ws');
 const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const API_URL = process.env.CT_NODE_URL || NODE_URL;
-const API_KEY = process.env.AM2_API_KEY || 'dev-local-key';
+/*
+ * No fallback key.
+ *
+ * This used to read `process.env.AM2_API_KEY || 'dev-local-key'`. Run without
+ * the key -- which is how the suite runs unless something supplies it -- the
+ * relay answered 401 and two tests failed with "expected 200, actual 401".
+ * That reads as force logout being broken, and it was reported that way and
+ * believed, while the feature worked perfectly.
+ *
+ * A missing fixture must say it is missing. The runner supplies the key; this
+ * refuses to invent one.
+ */
+const API_KEY = process.env.AM2_API_KEY;
+if (!API_KEY) {
+    throw new Error(
+        'AM2_API_KEY is not set: run this through tests/run-protocol.sh, which '
+        + 'reads it from the relay environment. Without it every admin call '
+        + 'answers 401 and reads as a broken feature.',
+    );
+}
 const TIMEOUT = 8000;
 const UNIT = 'CT_A1';
 const sockets = [];
