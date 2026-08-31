@@ -64,6 +64,19 @@ test('every WebAdmin vhost includes them', () => {
     }
 });
 
+test('stable admin update URLs cannot cache one half of a release set', () => {
+    const guard = /location\s+~\s+\^\/update\/\(\?:admin\\\.apk\|admin_version\\\.json\)\$\s*\{[\s\S]*?\}/;
+    for (const f of VHOSTS) {
+        const match = read(f).match(guard);
+        assert.ok(match, `${f} has no dedicated cache guard for the admin update set`);
+        assert.match(match[0],
+            /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+            `${f} lets a stable update URL retain stale bytes`);
+        assert.match(match[0], /expires\s+off/,
+            `${f} inherits an expiry for a mutable update URL`);
+    }
+});
+
 test('every WebAdmin root redirects explicitly to login', () => {
     for (const f of VHOSTS) {
         assert.match(read(f), /location = \/\s*\{\s*return 302 \/login\.php;\s*\}/s,
