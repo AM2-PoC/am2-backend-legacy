@@ -146,14 +146,21 @@ if [[ -r $update_dir/admin.apk ]]; then rollback_apk=$(mktemp); cp -p "$update_d
 cleanup() { rm -f "${rollback_manifest:-}" "${rollback_apk:-}"; }
 trap cleanup EXIT
 
-install -m 0640 "$apk" "$update_dir/.admin.apk.incoming"
-mv -f "$update_dir/.admin.apk.incoming" "$update_dir/admin.apk"
-install -m 0640 "$manifest" "$update_dir/.admin_version.json.incoming"
-mv -f "$update_dir/.admin_version.json.incoming" "$update_dir/admin_version.json"
+install_owner=$(stat -c '%U' "$update_dir")
+install_group=$(stat -c '%G' "$update_dir")
+
+publish_file() {
+    local source=$1 temporary=$2 final=$3
+    install -o "$install_owner" -g "$install_group" -m 0640 "$source" "$temporary"
+    mv -f "$temporary" "$final"
+}
+
+publish_file "$apk" "$update_dir/.admin.apk.incoming" "$update_dir/admin.apk"
+publish_file "$manifest" "$update_dir/.admin_version.json.incoming" "$update_dir/admin_version.json"
 
 if ! verify_channel "$update_dir" "$reader"; then
-    if [[ -n $rollback_apk ]]; then install -m 0640 "$rollback_apk" "$update_dir/.admin.apk.rollback"; mv -f "$update_dir/.admin.apk.rollback" "$update_dir/admin.apk"; else rm -f "$update_dir/admin.apk"; fi
-    if [[ -n $rollback_manifest ]]; then install -m 0640 "$rollback_manifest" "$update_dir/.admin_version.json.rollback"; mv -f "$update_dir/.admin_version.json.rollback" "$update_dir/admin_version.json"; else rm -f "$update_dir/admin_version.json"; fi
+    if [[ -n $rollback_apk ]]; then publish_file "$rollback_apk" "$update_dir/.admin.apk.rollback" "$update_dir/admin.apk"; else rm -f "$update_dir/admin.apk"; fi
+    if [[ -n $rollback_manifest ]]; then publish_file "$rollback_manifest" "$update_dir/.admin_version.json.rollback" "$update_dir/admin_version.json"; else rm -f "$update_dir/admin_version.json"; fi
     echo "Admin publication failed; previous coherent pair restored" >&2
     exit 1
 fi

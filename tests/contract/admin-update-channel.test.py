@@ -67,6 +67,18 @@ class AdminPublisherTest(unittest.TestCase):
             self.assertNotEqual(older.returncode, 0)
             self.assertEqual(json.loads((channel / "admin_version.json").read_text())["version_code"], 74)
 
+    def test_preserves_channel_owner_for_runtime_reader(self):
+        with tempfile.TemporaryDirectory() as raw:
+            base = Path(raw)
+            channel = base / "channel"
+            channel.mkdir(mode=0o750)
+            first = run("--artifact", str(artifact(base, code=74)), "--update-dir", str(channel))
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual((channel / "admin.apk").stat().st_uid, channel.stat().st_uid)
+            self.assertEqual((channel / "admin_version.json").stat().st_uid, channel.stat().st_uid)
+            self.assertEqual((channel / "admin.apk").stat().st_gid, channel.stat().st_gid)
+            self.assertEqual((channel / "admin_version.json").stat().st_gid, channel.stat().st_gid)
+
     def test_failed_post_publish_readback_restores_the_previous_pair(self):
         if os.geteuid() == 0:
             self.skipTest("permission fixture requires a non-root publisher")
