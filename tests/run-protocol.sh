@@ -29,4 +29,16 @@ if [ -z "${CT_ENV_FILE:-}" ] && [ -f /etc/am2/contract-test.env ]; then
     ./infra/scripts/ptt-harness-fixtures.sh   > /dev/null
 fi
 
+# The admin routes are reached with the relay's own key, so the suite needs it
+# for the same reason it needs the fixture rows: without it those routes answer
+# 401 and the failure reads as a broken feature rather than a missing input.
+# One file, one variable, never echoed.
+if [ -z "${AM2_API_KEY:-}" ]; then
+    for candidate in "${CT_RELAY_ENV_FILE:-}" /etc/am2/api.staging.env; do
+        [ -n "$candidate" ] && [ -r "$candidate" ] || continue
+        AM2_API_KEY=$(sed -ne 's/^AM2_API_KEY=//p' "$candidate" | head -1)
+        [ -n "$AM2_API_KEY" ] && export AM2_API_KEY && break
+    done
+fi
+
 exec node --test --test-concurrency=1 tests/protocol/*.test.mjs
