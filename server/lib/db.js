@@ -131,12 +131,34 @@ const issueDeviceToken = async (userId, deviceId) => {
  * because a token nobody has presented in months is the one worth asking
  * about.
  */
+/*
+ * A token nobody has used for this long stops being one.
+ *
+ * Revocation is what makes a permanently stored token acceptable: a lost
+ * handset costs an admin one click rather than a password change for the
+ * person. But revocation is somebody noticing and acting, and a radio that
+ * quietly disappears -- left in a vehicle, in a drawer, sold with the phone --
+ * is never reported. Its token would stay valid for as long as the row exists.
+ *
+ * So there is a backstop that needs nobody to notice. last_used_at is written
+ * on every token login, so a handset in daily use never approaches this; only
+ * one that has stopped being used does.
+ *
+ * Ninety days, because a spare radio left in a drawer between deployments has
+ * to start when it is picked up. A limit measured in hours or days would make
+ * this the thing that takes radios off the air, which is the failure it exists
+ * to prevent.
+ */
+const TOKEN_MAX_IDLE_DAYS = 90;
+
 const userForDeviceToken = async (token) => {
     if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
     const hash = hashToken(token);
     const res = await pool.query(
-        'SELECT user_id, device_id FROM public.device_tokens WHERE token_hash = $1',
-        [hash],
+        `SELECT user_id, device_id FROM public.device_tokens
+          WHERE token_hash = $1
+            AND last_used_at > CURRENT_TIMESTAMP - ($2 || ' days')::interval`,
+        [hash, String(TOKEN_MAX_IDLE_DAYS)],
     );
     if (res.rows.length === 0) return null;
     await pool.query(
