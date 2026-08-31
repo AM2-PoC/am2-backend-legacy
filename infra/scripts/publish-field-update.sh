@@ -189,6 +189,30 @@ except Exception:
         echo "build $version_code does not advance past the published $published" >&2
         exit 1
     }
+
+    # The release name is a decision a person makes; the build number is not.
+    # version.properties said 1.1.0 for every build from the day it was
+    # written, through device tokens and four rounds of fixes, because nothing
+    # ever asked. Semantic Versioning rule 10 is why that drifts unnoticed:
+    # build metadata "MUST be ignored when determining version precedence", so
+    # 1.1.0+184 and 1.1.0+233 are the same version and this channel took both
+    # without a word.
+    #
+    # A warning, not a refusal. Two builds under one release name is sometimes
+    # right -- a rebuild of the same source, a signing change -- and a channel
+    # that refused it would be worse than one that says so.
+    published_name=$(python3 -c "
+import json
+try:
+    print(json.load(open('$current')).get('version_name') or '')
+except Exception:
+    print('')
+")
+    if [[ -n $published_name && ${published_name%%+*} == "${version_name%%+*}" ]]; then
+        echo "note: $version_name carries the same release name as the build it replaces" >&2
+        echo "      (${published_name}); only the build metadata differs." >&2
+        echo "      If this shipped new behaviour, app/version.properties is due a bump." >&2
+    fi
 fi
 
 install -d -m 0750 "$update_dir"
