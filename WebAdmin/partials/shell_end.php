@@ -175,11 +175,24 @@
         const q = input.value.trim().toLowerCase();
         const matched = COMMANDS.filter(
             (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q));
+        /*
+         * The unit search is the fallback, so it goes last.
+         *
+         * It used to be prepended, and the cursor starts at 0, so the
+         * highlighted row was always "find a unit" no matter what had been
+         * typed: "dashboard" then Enter landed on the user list searching for
+         * the word dashboard, and the Dashboard row sitting right underneath
+         * could only be reached by arrowing down to it or clicking. Every page
+         * the palette knew about was unreachable by the key everyone presses.
+         */
         results = q
-            ? [{ id: 's-units', group: UNITS_LABEL, label: input.value.trim(),
-                 href: 'users.php?search=' + encodeURIComponent(input.value.trim()) }, ...matched]
+            ? [...matched,
+               { id: 's-units', group: UNITS_LABEL, label: input.value.trim(),
+                 href: 'users.php?search=' + encodeURIComponent(input.value.trim()) }]
             : matched;
-        if (cursor >= results.length) cursor = 0;
+        // A new query is a new list; the row under the cursor a keystroke ago
+        // has nothing to do with the row at that index now.
+        cursor = 0;
         render();
     }
 
@@ -192,6 +205,7 @@
             list.appendChild(li);
             return;
         }
+        let selected = null;
         results.forEach((item, i) => {
             const li = document.createElement('li');
             li.role = 'option';
@@ -213,7 +227,26 @@
             li.addEventListener('mouseenter', () => { cursor = i; render(); });
             li.addEventListener('click', () => run(i));
             list.appendChild(li);
+            if (i === cursor) selected = li;
         });
+
+        /*
+         * Follow the cursor down the list.
+         *
+         * The list is 320px of an up-to-500px column, so from the eighth row
+         * the highlight was outside the box and scrollTop stayed at 0 no matter
+         * how far the arrow key went: the selection was somewhere below, off
+         * screen, with nothing on screen moving. Measured before the fix --
+         * row 7 at 316px against a 320px box, row 10 at 448px, scrollTop 0
+         * throughout.
+         *
+         * 'nearest' rather than a computed scrollTop: it moves the list by the
+         * least amount that makes the row visible, does nothing when the row
+         * already is -- which is every hover, since the pointer cannot be on a
+         * row it cannot see -- and does not drag the overlay or the page behind
+         * it along with it.
+         */
+        selected?.scrollIntoView({ block: 'nearest' });
     }
 
     function run(i) {
