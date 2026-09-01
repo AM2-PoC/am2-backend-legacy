@@ -494,15 +494,12 @@ $pageActions = '<span class="hidden rounded-control border border-edge px-2.5 py
     . ($is_super ? 'border-bad/40 text-bad' : 'text-ink-muted') . '">'
     . htmlspecialchars(strtoupper($role_user)) . '</span>';
 
-// The command palette can reach the sections of this page, which is the
-// fuzzy-search affordance the shell already owns rather than a second one.
-$pageCommands = array_values(array_filter([
-    ['id' => 's-account', 'group' => t('set.heading'), 'label' => t('set.account'),    'target' => '#am2-card-account'],
-    ['id' => 's-quota',   'group' => t('set.heading'), 'label' => t('set.licence'),    'target' => '#am2-card-licence'],
-    $is_super ? ['id' => 's-apk', 'group' => t('set.heading'), 'label' => t('set.distribution'), 'target' => '#am2-card-shelf'] : null,
-    ['id' => 's-export',  'group' => t('set.heading'), 'label' => t('set.export'),     'target' => '#am2-card-danger'],
-    $is_super ? ['id' => 's-restore', 'group' => t('set.heading'), 'label' => t('set.restore'), 'target' => '#am2-card-danger'] : null,
-]));
+// These sections used to be declared here, which is why they were in the
+// palette only while this page was open. They live in the shell's own list now
+// -- partials/shell_end.php -- as destinations with a fragment, so "distribusi"
+// finds this card from the dashboard. Landing here from the palette still
+// scrolls rather than reloads; run() handles a destination naming the page it
+// is already on.
 
 include 'partials/head.php';
 include 'partials/shell.php';

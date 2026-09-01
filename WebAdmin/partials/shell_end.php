@@ -147,22 +147,69 @@
     if (!document.hidden) startStatus();
 
     /* ---- Command palette --------------------------------------------- */
-    // A page may add its own sections; the shell owns the search, so this
-    // stays one list rather than a second one appearing per page.
+    /*
+     * One list, and it is the shell's.
+     *
+     * The sections of Settings used to be added by that page, which meant they
+     * existed in the palette only once you were already looking at them:
+     * "distribusi" from the dashboard matched nothing at all. They are ordinary
+     * destinations with a fragment now, and run() turns one that names the page
+     * you are on back into an in-page jump, so being there still scrolls rather
+     * than reloads. A page may still contribute its own, and nothing does.
+     *
+     * `keys` are search aliases -- never drawn, only matched. They are
+     * deliberately not translated: an operator switching an interface between
+     * two languages does not switch which words come to mind, and "settings"
+     * has to find Pengaturan the same way "keluar" has to find Logout. The
+     * labels are what the palette shows; these are what it hears.
+     */
     const COMMANDS = <?= json_encode(array_merge(array_values(array_filter([
-        ['id' => 'p-dash',     'group' => t('nav.home'),       'label' => t('nav.dashboard'),      'href' => 'dashboard.php'],
-        ['id' => 'p-users',    'group' => t('nav.management'), 'label' => t('nav.users'),          'href' => 'users.php'],
-        ['id' => 'p-chan',     'group' => t('nav.management'), 'label' => t('nav.channels'),       'href' => 'channels.php'],
-        ['id' => 'p-access',   'group' => t('nav.management'), 'label' => t('nav.channel_access'), 'href' => 'user_access.php'],
-        ['id' => 'p-track',    'group' => t('nav.monitoring'), 'label' => t('nav.live_track'),     'href' => 'livetrack.php'],
-        ['id' => 'p-logs',     'group' => t('nav.monitoring'), 'label' => t('nav.activity_log'),   'href' => 'logs.php'],
-        ['id' => 'p-settings', 'group' => t('nav.system'),     'label' => t('nav.settings'),       'href' => 'settings.php'],
+        ['id' => 'p-dash',     'group' => t('nav.home'),       'label' => t('nav.dashboard'),      'href' => 'dashboard.php',
+         'keys' => 'dashboard beranda home ringkasan overview'],
+        ['id' => 'p-users',    'group' => t('nav.management'), 'label' => t('nav.users'),          'href' => 'users.php',
+         'keys' => 'user users pengguna unit anggota member akun account'],
+        ['id' => 'p-chan',     'group' => t('nav.management'), 'label' => t('nav.channels'),       'href' => 'channels.php',
+         'keys' => 'channel channels kanal saluran grup group frekuensi'],
+        ['id' => 'p-access',   'group' => t('nav.management'), 'label' => t('nav.channel_access'), 'href' => 'user_access.php',
+         'keys' => 'akses access hak izin permission role peta maps ptp'],
+        ['id' => 'p-track',    'group' => t('nav.monitoring'), 'label' => t('nav.live_track'),     'href' => 'livetrack.php',
+         'keys' => 'live track tracking peta map lokasi location gps posisi'],
+        ['id' => 'p-logs',     'group' => t('nav.monitoring'), 'label' => t('nav.activity_log'),   'href' => 'logs.php',
+         'keys' => 'log logs aktivitas activity riwayat history audit jejak event'],
+        ['id' => 'p-settings', 'group' => t('nav.system'),     'label' => t('nav.settings'),       'href' => 'settings.php',
+         'keys' => 'setting settings pengaturan konfigurasi config sistem system preferensi'],
         $isSuper
-            ? ['id' => 'p-admin', 'group' => t('nav.administrator'), 'label' => t('nav.admin_panel'), 'href' => 'admin_panel.php']
+            ? ['id' => 'p-admin', 'group' => t('nav.administrator'), 'label' => t('nav.admin_panel'), 'href' => 'admin_panel.php',
+               'keys' => 'admin administrator panel superadmin operator']
             : null,
-        ['id' => 'a-theme', 'group' => t('search.action'), 'label' => t('pref.theme'),    'action' => 'theme'],
-        ['id' => 'a-lang',  'group' => t('search.action'), 'label' => t('pref.language'), 'action' => 'lang'],
-        ['id' => 'a-out',   'group' => t('search.action'), 'label' => t('nav.logout'),    'href'   => 'logout.php'],
+
+        // The sections of Settings, reachable from anywhere.
+        ['id' => 's-account', 'group' => t('set.heading'), 'label' => t('set.account'),
+         'href' => 'settings.php#am2-card-account',
+         'keys' => 'akun account password sandi kata sandi profil profile'],
+        ['id' => 's-quota',   'group' => t('set.heading'), 'label' => t('set.licence'),
+         'href' => 'settings.php#am2-card-licence',
+         'keys' => 'lisensi licence license kuota quota limit batas'],
+        $isSuper
+            ? ['id' => 's-apk', 'group' => t('set.heading'), 'label' => t('set.distribution'),
+               'href' => 'settings.php#am2-card-shelf',
+               'keys' => 'apk aplikasi app distribusi distribution update pembaruan versi version qr rak shelf']
+            : null,
+        ['id' => 's-export',  'group' => t('set.heading'), 'label' => t('set.export'),
+         'href' => 'settings.php#am2-card-danger',
+         'keys' => 'ekspor export dump basis data database backup cadangan unduh download'],
+        $isSuper
+            ? ['id' => 's-restore', 'group' => t('set.heading'), 'label' => t('set.restore'),
+               'href' => 'settings.php#am2-card-danger',
+               'keys' => 'pulihkan restore backup cadangan import impor kembalikan']
+            : null,
+
+        ['id' => 'a-theme', 'group' => t('search.action'), 'label' => t('pref.theme'),    'action' => 'theme',
+         'keys' => 'tema theme dark light gelap terang mode'],
+        ['id' => 'a-lang',  'group' => t('search.action'), 'label' => t('pref.language'), 'action' => 'lang',
+         'keys' => 'bahasa language lang indonesia english inggris'],
+        ['id' => 'a-out',   'group' => t('search.action'), 'label' => t('nav.logout'),    'href'   => 'logout.php',
+         'keys' => 'logout keluar sign out signout exit log out'],
     ])), array_values(is_array($pageCommands ?? null) ? $pageCommands : []))) ?>;
     const UNITS_LABEL = <?= json_encode(t('search.units')) ?>;
     const NO_RESULTS = <?= json_encode(t('search.no_results')) ?>;
@@ -174,7 +221,8 @@
     function compute() {
         const q = input.value.trim().toLowerCase();
         const matched = COMMANDS.filter(
-            (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q));
+            (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
+                || (c.keys || '').includes(q));
         /*
          * The unit search is the fallback, so it goes last.
          *
@@ -249,29 +297,45 @@
         selected?.scrollIntoView({ block: 'nearest' });
     }
 
+    /**
+     * A section of the page that is already open.
+     *
+     * Closing the overlay while the Enter key was still travelling had Preline
+     * re-open it 53ms later, with no click on any trigger -- traced, not
+     * guessed. The fix is in the keydown handler below, which lets the key
+     * event finish first; this only has to avoid fighting the focus restore.
+     */
+    function jumpTo(selector) {
+        const el = document.querySelector(selector);
+        window.HSOverlay?.close(document.getElementById('am2-palette'));
+        // Preline restores focus as part of closing; landing after it has
+        // settled means the two are not competing for the same element.
+        setTimeout(() => {
+            el?.setAttribute('tabindex', '-1');
+            el?.focus({ preventScroll: true });
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 220);
+    }
+
+    /** The file this page is, as the command list spells it. */
+    const HERE = window.location.pathname.split('/').pop() || 'dashboard.php';
+
     function run(i) {
         const item = results[i ?? cursor];
         if (!item) return;
-        if (item.href) { window.location.href = item.href; return; }
-        if (item.target) {
+        if (item.href) {
             /*
-             * A section of the page that is already open. Closing the overlay
-             * while the Enter key was still travelling had Preline re-open it
-             * 53ms later, with no click on any trigger -- traced, not guessed.
-             * The fix is in the keydown handler below, which lets the key event
-             * finish first; this only has to avoid fighting the focus restore.
+             * A destination naming the page you are already on is a jump, not a
+             * navigation. Assigning the same path with a fragment does not
+             * reload -- it changes the fragment and leaves the overlay sitting
+             * open over the section it was asked to show.
              */
-            const el = document.querySelector(item.target);
-            window.HSOverlay?.close(document.getElementById('am2-palette'));
-            // Preline restores focus as part of closing; landing after it has
-            // settled means the two are not competing for the same element.
-            setTimeout(() => {
-                el?.setAttribute('tabindex', '-1');
-                el?.focus({ preventScroll: true });
-                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 220);
+            const [path, hash] = item.href.split('#');
+            if (hash && (path === '' || path === HERE)) { jumpTo('#' + hash); return; }
+            window.location.href = item.href;
             return;
         }
+        if (item.target) { jumpTo(item.target); return; }
         if (item.action === 'theme') {
             window.HSOverlay?.close(document.getElementById('am2-palette'));
             document.getElementById('themeToggle')?.click();
