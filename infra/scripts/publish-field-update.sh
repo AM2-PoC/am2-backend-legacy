@@ -216,6 +216,14 @@ except Exception:
 fi
 
 install -d -m 0750 "$update_dir"
+install_owner=$(stat -c '%U' "$update_dir")
+install_group=$(stat -c '%G' "$update_dir")
+
+publish_file() {
+    local source=$1 temporary=$2 final=$3
+    install -o "$install_owner" -g "$install_group" -m 0640 "$source" "$temporary"
+    mv -f "$temporary" "$final"
+}
 
 # Keep whatever is published now, manifest AND the APK it names. If the new
 # pair turns out not to be readable, the field must be left on the build that
@@ -249,21 +257,17 @@ fi
 # manifest still describes the previous build, which is the safe direction: a
 # handset is offered something older, never something whose digest will not
 # match.
-install -m 0640 "$apk" "$update_dir/.$target_name.incoming"
-mv -f "$update_dir/.$target_name.incoming" "$update_dir/$target_name"
-install -m 0640 "$manifest" "$update_dir/.version.json.incoming"
-mv -f "$update_dir/.version.json.incoming" "$update_dir/version.json"
+publish_file "$apk" "$update_dir/.$target_name.incoming" "$update_dir/$target_name"
+publish_file "$manifest" "$update_dir/.version.json.incoming" "$update_dir/version.json"
 
 if ! verify_channel "$update_dir" "$reader"; then
     if [[ -n $rollback_manifest ]]; then
         # The APK first and the manifest second, the same order as publishing,
         # so no reader ever sees a manifest describing bytes that are not there.
         if [[ -n $rollback_apk ]]; then
-            cp -p "$rollback_apk" "$update_dir/.$rollback_apk_name.incoming"
-            mv -f "$update_dir/.$rollback_apk_name.incoming" "$update_dir/$rollback_apk_name"
+            publish_file "$rollback_apk" "$update_dir/.$rollback_apk_name.incoming" "$update_dir/$rollback_apk_name"
         fi
-        cp -p "$rollback_manifest" "$update_dir/.version.json.incoming"
-        mv -f "$update_dir/.version.json.incoming" "$current"
+        publish_file "$rollback_manifest" "$update_dir/.version.json.incoming" "$current"
         echo "rolled back: the channel still serves the build it served before" >&2
     else
         rm -f "$current" "$update_dir/$target_name"

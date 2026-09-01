@@ -288,6 +288,22 @@ describe('the field update channel', () => {
         }
     });
 
+    test('publication preserves the channel ownership policy', () => {
+        /*
+         * Production is published by root but served by the relay account.
+         * Bare `install -m 0640` creates root:root files and turns a coherent
+         * release into an unreadable channel. The Admin publisher already
+         * preserves the directory owner/group; the field publisher must use
+         * the same release-set property for both forward and rollback writes.
+         */
+        const source = fs.readFileSync(
+            path.join(ROOT, 'infra/scripts/publish-field-update.sh'), 'utf8');
+        assert.match(source, /install_owner=.*stat -c ['"]%U['"]/, 'publisher never resolves channel owner');
+        assert.match(source, /install_group=.*stat -c ['"]%G['"]/, 'publisher never resolves channel group');
+        assert.match(source, /install -o "\$install_owner" -g "\$install_group" -m 0640/,
+            'published files inherit the publisher account instead of the channel policy');
+    });
+
     test('it refuses a build that does not advance past the published one', () => {
         // A handset compares version codes, so republishing something older
         // makes the channel answer "already current" forever to anyone who
