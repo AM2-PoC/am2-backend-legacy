@@ -59,6 +59,51 @@ export function playExit(el) {
 }
 
 /**
+ * How long after a close to check that the close actually finished.
+ *
+ * Preline defers the callback that marks an overlay open by 50ms, so a close
+ * arriving inside that window is overtaken by it: the close hides the element
+ * and the deferred callback then puts `open`/`opened` back on it. The longest
+ * exit in this console is the drawer's, so 400ms is past both and past nothing
+ * that is still legitimately in flight.
+ */
+const SETTLE = 400;
+
+/**
+ * Put right an overlay that was closed while it was still opening.
+ *
+ * Preline builds one backdrop per open under a fixed id -- `<overlay>-backdrop`
+ * -- and removes it on close by looking that id up. Close and open overlapping
+ * leaves two elements sharing the id, and the deferred open callback then
+ * re-marks a hidden element as opened. What is left is an element that is
+ * `hidden` but still says `opened`, and a spare backdrop: `fixed inset-0`,
+ * faded to nothing, and on top of the page. Nothing to see, every click
+ * swallowed, and the trigger toggles the wrong way because the element claims
+ * to be open already.
+ *
+ * Measured on an ordinary overlay: closing at the same moment as the reopen
+ * left one backdrop behind on every attempt, still there three seconds later,
+ * with the link underneath no longer the element at its own coordinates.
+ *
+ * This runs only when the overlay really is closed. Reopened inside the window,
+ * it is a live overlay and none of this applies to it.
+ */
+function reconcile(el) {
+    if (!el?.classList.contains('hidden')) return;
+
+    el.classList.remove('open', 'opened');
+    if (el.id) {
+        document.querySelectorAll(`[id="${CSS.escape(el.id)}-backdrop"]`)
+            .forEach((backdrop) => backdrop.remove());
+    }
+    // The scroll lock belongs to whichever overlay is still open. With none
+    // left, a lock still on the body is one that was never handed back.
+    if (!document.querySelector('.hs-overlay.opened')) {
+        document.body.style.removeProperty('overflow');
+    }
+}
+
+/**
  * Every overlay leaves this way.
  *
  * close.hs.overlay fires as Preline begins closing -- the moment the element is
@@ -67,6 +112,6 @@ export function playExit(el) {
 export function watchOverlays() {
     document.addEventListener('close.hs.overlay', (e) => {
         const el = e.target?.closest?.('.hs-overlay') ?? e.target;
-        playExit(el);
+        playExit(el).then(() => setTimeout(() => reconcile(el), SETTLE));
     });
 }
