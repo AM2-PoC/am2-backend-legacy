@@ -12,9 +12,32 @@
     users.php?search= — the parameter that page has always accepted, so nothing
     new had to be exposed for it.
 -->
+<!--
+    No Preline backdrop, deliberately.
+
+    This overlay is already a full-screen scrim -- it is `fixed inset-0` with a
+    background of its own -- so Preline's was a second sheet of grey underneath
+    it, drawing nothing that was not already drawn. It was also the thing that
+    left the screen unusable: Preline builds one backdrop per open under a fixed
+    id, `am2-palette-backdrop`, and removes it on close by looking that id up.
+    Close and open overlapping -- which is what a keystroke landing while the
+    palette is still leaving does -- leaves two elements sharing that id, the
+    lookup finds the dying one, and the live one is never removed. It ends up
+    over the page at opacity 0: nothing to see, and every click swallowed.
+
+    Reproduced before the fix by reopening 30ms into a close and closing again
+    straight after: one backdrop left behind, and the link underneath was no
+    longer the element at its own coordinates.
+
+    The scrim's alpha absorbs the one that is gone, so the page behind it is as
+    dark as it was: 0.4 over Preline's 0.5 came to 0.7.
+
+    Closing by clicking outside does not depend on it either -- that is the
+    handler at the foot of this file, on this element.
+-->
 <div id="am2-palette" role="dialog" tabindex="-1" aria-labelledby="am2-palette-label"
-     class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
-            bg-slate-950/40 backdrop-blur-sm">
+     class="hs-overlay [--overlay-backdrop:false] fixed inset-0 z-80 hidden size-full
+            overflow-y-auto bg-slate-950/70 backdrop-blur-sm">
     <div data-am2-panel
          class="pointer-events-auto mx-auto mt-[12vh] w-[92%] max-w-xl overflow-hidden
                 am2-surface rounded-card">
