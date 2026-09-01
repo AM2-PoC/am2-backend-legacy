@@ -407,7 +407,7 @@ return [
     'set.folder_missing'        => 'Update storage is unavailable. Contact the system administrator.',
     'set.folder_readonly'       => 'Update storage is read-only. Contact the system administrator.',
     'set.on_shelf'              => 'In the update folder',
-    'set.publish_via_release'   => 'Releases are published by the release pipeline. The panel does not accept uploads.',
+    'set.publish_via_release'   => 'This storage is intentionally read-only to the panel. Releases are published by the release pipeline.',
     'set.shelf_empty'           => 'No .apk files yet.',
     'set.served'                => 'Served',
     'set.drop_sql'              => 'Drop a .sql file here, or choose one from this device.',
