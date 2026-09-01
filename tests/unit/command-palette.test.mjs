@@ -112,3 +112,95 @@ test('the highlighted row is scrolled into the box it lives in', () => {
     assert.match(body, /if \(i === cursor\) selected = li/,
         'the row being revealed is not the row that is selected');
 });
+
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The command set, read out of the page rather than retyped here.
+ *
+ * A copy of the list in this file would pass while the real one lost an entry,
+ * which is the failure this whole file exists to avoid. `t('key')` is resolved
+ * against the Indonesian strings, because that is the locale the panel is used
+ * in and the one where an English alias has to do the work.
+ */
+function shippedCommands() {
+    const strings = readFileSync(join(ROOT, 'WebAdmin/lang/id.php'), 'utf8');
+    const say = (key) => {
+        const m = strings.match(new RegExp(`'${key.replace('.', '\\.')}'\\s*=>\\s*'([^']*)'`));
+        assert.ok(m, `lang/id.php has no ${key}`);
+        return m[1];
+    };
+
+    const from = shell.indexOf('const COMMANDS =');
+    const to = shell.indexOf('const UNITS_LABEL');
+    assert.ok(from !== -1 && to !== -1 && from < to, 'the command list moved');
+
+    return shell.slice(from, to).split("'id' =>").slice(1).map((entry) => {
+        const pick = (field) => entry.match(new RegExp(`'${field}' => '([^']*)'`))?.[1];
+        const said = (field) => entry.match(new RegExp(`'${field}' => t\\('([^']*)'\\)`))?.[1];
+        return {
+            id: entry.match(/^\s*'([^']+)'/)[1],
+            group: said('group') ? say(said('group')) : '',
+            label: said('label') ? say(said('label')) : '',
+            href: pick('href'),
+            action: pick('action'),
+            keys: pick('keys') ?? '',
+        };
+    });
+}
+
+test('every command carries search aliases', () => {
+    // A command with no aliases is findable only by its own label, in one
+    // language, spelled the way the panel spells it.
+    for (const c of shippedCommands()) {
+        assert.notEqual(c.keys, '', `${c.id} has no aliases`);
+    }
+});
+
+test('a word in either language finds the thing it names', () => {
+    const ask = paletteFrom(shippedCommands());
+    for (const [typed, id] of [
+        ['settings',   'p-settings'],   // the label is Pengaturan
+        ['pengaturan', 'p-settings'],
+        ['keluar',     'a-out'],        // the label is Logout
+        ['logout',     'a-out'],
+        ['apk',        's-apk'],
+        ['distribusi', 's-apk'],
+        ['password',   's-account'],
+        ['gelap',      'a-theme'],
+        ['history',    'p-logs'],
+    ]) {
+        assert.equal(ask(typed).selected.id, id, `"${typed}" does not reach ${id}`);
+    }
+
+    // "backup" is both cards in the danger section -- making one and restoring
+    // from one -- and they share an anchor, so the destination is what matters
+    // rather than which of the two wins the tie.
+    assert.equal(ask('backup').selected.href, 'settings.php#am2-card-danger');
+    assert.equal(ask('cadangan').selected.href, 'settings.php#am2-card-danger');
+});
+
+test('the sections of Settings are reachable from any page', () => {
+    // They used to be declared by settings.php, so they were in the palette
+    // only once you were already looking at them.
+    assert.doesNotMatch(readFileSync(join(ROOT, 'WebAdmin/settings.php'), 'utf8'),
+        /\$pageCommands\s*=/, 'the section commands are page-local again');
+
+    const shelf = shippedCommands().find((c) => c.id === 's-apk');
+    assert.equal(shelf.href, 'settings.php#am2-card-shelf');
+});
+
+test('a destination naming the page you are on jumps instead of navigating', () => {
+    // Assigning the same path with a fragment does not reload; it would leave
+    // the overlay open over the section it was asked to show.
+    const body = shell.slice(shell.indexOf('    function run(i) {'),
+                             shell.indexOf("if (item.target)"));
+    assert.match(body, /const \[path, hash\] = item\.href\.split\('#'\)/);
+    assert.match(body, /if \(hash && \(path === '' \|\| path === HERE\)\) \{ jumpTo/);
+});
+
+test('aliases are matched, never drawn', () => {
+    const render = shell.slice(shell.indexOf('    function render() {'),
+                               shell.indexOf('    /**'));
+    assert.doesNotMatch(render, /item\.keys/, 'the alias list is on screen');
+});
