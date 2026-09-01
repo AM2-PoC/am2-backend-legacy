@@ -267,8 +267,37 @@
         render();
     }
 
+    /*
+     * Building the list and painting the selection are two different jobs.
+     *
+     * They used to be one, and hovering a row set the cursor and rebuilt the
+     * whole list from scratch. The row under the pointer was therefore replaced
+     * by a new element, which -- with the pointer still resting on it -- took
+     * `mouseenter` in its turn and rebuilt the list again. Measured with a real
+     * pointer resting on the list and nothing else happening: about four
+     * rebuilds a second, indefinitely.
+     *
+     * That is both faults reported. A click needs its mousedown and its mouseup
+     * on the same element, and the element was being swapped out underneath
+     * them -- Playwright, driving a real mouse, reported "element was detached
+     * from the DOM" twelve times over and never landed the hover at all. And
+     * every arrow key was undone: pressing Down moved the selection to Live
+     * Track, and 400ms later it was back on the row under the mouse, because
+     * the loop was re-running `cursor = i` several times a second.
+     *
+     * So the rows are built when the results change, and the selection is
+     * painted onto the rows that are already there. Nothing is detached to move
+     * the highlight. What the pointer contributes is below, and it is keyed off
+     * movement rather than off which element happens to be underneath.
+     */
+    let rows = [];
+
+    const ROW = 'mx-2 flex h-11 cursor-pointer items-center gap-3 rounded-control px-3 text-sm ';
+    const GROUP = 'shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] ';
+
     function render() {
         list.textContent = '';
+        rows = [];
         if (!results.length) {
             const li = document.createElement('li');
             li.className = 'px-5 py-6 text-center text-sm text-ink-muted';
@@ -276,17 +305,11 @@
             list.appendChild(li);
             return;
         }
-        let selected = null;
         results.forEach((item, i) => {
             const li = document.createElement('li');
             li.role = 'option';
-            li.setAttribute('aria-selected', i === cursor ? 'true' : 'false');
-            li.className = 'mx-2 flex h-11 cursor-pointer items-center gap-3 rounded-control px-3 text-sm '
-                + (i === cursor ? 'bg-brand/10 text-ink' : 'text-ink-muted');
 
             const g = document.createElement('span');
-            g.className = 'shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] '
-                + (i === cursor ? 'text-brand' : 'text-ink-subtle');
             // textContent, not innerHTML: `label` is whatever was typed.
             g.textContent = item.group;
 
@@ -295,16 +318,26 @@
             l.textContent = item.label;
 
             li.append(g, l);
-            li.addEventListener('mouseenter', () => { cursor = i; render(); });
             li.addEventListener('click', () => run(i));
             list.appendChild(li);
-            if (i === cursor) selected = li;
+            rows.push(li);
+        });
+        paint();
+    }
+
+    /** Move the highlight, and nothing else. */
+    function paint() {
+        rows.forEach((li, i) => {
+            const on = i === cursor;
+            li.setAttribute('aria-selected', on ? 'true' : 'false');
+            li.className = ROW + (on ? 'bg-brand/10 text-ink' : 'text-ink-muted');
+            li.firstChild.className = GROUP + (on ? 'text-brand' : 'text-ink-subtle');
         });
 
         /*
          * Follow the cursor down the list.
          *
-         * The list is 320px of an up-to-500px column, so from the eighth row
+         * The list is 320px of an up-to-720px column, so from the eighth row
          * the highlight was outside the box and scrollTop stayed at 0 no matter
          * how far the arrow key went: the selection was somewhere below, off
          * screen, with nothing on screen moving. Measured before the fix --
@@ -317,8 +350,36 @@
          * row it cannot see -- and does not drag the overlay or the page behind
          * it along with it.
          */
-        selected?.scrollIntoView({ block: 'nearest' });
+        rows[cursor]?.scrollIntoView({ block: 'nearest' });
     }
+
+    /** The one way the cursor moves. */
+    function select(i) {
+        if (i === cursor || i < 0 || i >= results.length) return;
+        cursor = i;
+        paint();
+    }
+
+    /*
+     * The pointer moves the cursor by moving, not by being somewhere.
+     *
+     * This was `mouseenter` on each row, and `mouseenter` does not mean the
+     * pointer moved -- it means the element under it changed, which also
+     * happens when the list scrolls beneath a pointer that is sitting perfectly
+     * still. So arrowing down scrolled a new row under the resting pointer,
+     * that row claimed the cursor, and the keyboard was fought for every press:
+     * fifteen arrows from the top landed on the fourth row with the pointer
+     * over the list, and on the sixteenth -- the right one -- with the pointer
+     * anywhere else.
+     *
+     * `mousemove` fires only when the pointer actually moves, which is the
+     * thing this was always meant to react to. One listener on the list rather
+     * than one per row, because the row is in the event.
+     */
+    list.addEventListener('mousemove', (e) => {
+        const li = e.target.closest?.('li');
+        if (li) select(rows.indexOf(li));
+    });
 
     /**
      * A section of the page that is already open.
@@ -373,8 +434,8 @@
 
     input?.addEventListener('input', compute);
     input?.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowDown') { e.preventDefault(); cursor = (cursor + 1) % results.length; render(); }
-        if (e.key === 'ArrowUp')   { e.preventDefault(); cursor = (cursor - 1 + results.length) % results.length; render(); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); select((cursor + 1) % results.length); }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); select((cursor - 1 + results.length) % results.length); }
         if (e.key === 'Enter') {
             // Deferred, and kept off the document: closing the overlay while
             // the Enter key was still travelling had Preline re-open it 53ms
