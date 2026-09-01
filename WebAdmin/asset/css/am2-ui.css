@@ -130,13 +130,22 @@ html {
     overflow-x: hidden;
 }
 
+/*
+ * No overflow-x here, deliberately. html above already clips the horizontal
+ * axis, and its value is the one that propagates to the viewport. Repeating it
+ * on body does not clip anything twice -- it turns body itself into a scroll
+ * container (overflow-y computes to auto), and a scroll container that is as
+ * tall as its own content never scrolls. Every position:sticky inside it,
+ * including the header in partials/shell.php, then has nothing to stick to and
+ * scrolls away with the page. Measured: header top went to -800px after an
+ * 800px scroll with this line present, and held at 0 without it.
+ */
 body {
     background: var(--color-bg) !important;
     color: var(--color-text);
     font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0;
     max-width: 100%;
-    overflow-x: hidden;
     width: 100%;
 }
 

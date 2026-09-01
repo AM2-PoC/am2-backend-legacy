@@ -775,7 +775,17 @@ include 'partials/shell.php';
 
         <div id="am2-shelf-version" class="grid gap-5 border-b border-edge p-5 lg:grid-cols-2">
             <?php foreach ($channels as $ch): ?>
-                <section class="rounded-control border border-edge p-4">
+                <!--
+                    min-w-0, because a grid item's automatic minimum size is its
+                    min-content width, and the URL row below is a flex line whose
+                    min-content is the whole URL. Without this the card sizes
+                    itself to that URL and grows wider than the column it sits
+                    in -- 451px inside a 406px column, measured at a 480px
+                    viewport -- which is what pushed its contents over the card
+                    edge. With it the code element truncates, as it was written
+                    to.
+                -->
+                <section class="min-w-0 rounded-control border border-edge p-4">
                     <header class="flex items-baseline justify-between gap-3">
                         <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink">
                             <?= htmlspecialchars($ch['label']) ?>
@@ -790,12 +800,25 @@ include 'partials/shell.php';
                     <p class="mt-1 text-xs text-ink-muted"><?= htmlspecialchars($ch['note']) ?></p>
 
                     <?php if ($ch['version'] !== null && $ch['version'] !== ''): ?>
-                        <div class="mt-4 flex items-start gap-4">
+                        <!--
+                            Version beside the code, until there is no room for
+                            beside. The QR is a fixed 104px square that cannot
+                            shrink, and the version name is one unbreakable
+                            token -- "1.2.0-staging+240.g783e817" is 26
+                            characters of 24px mono. Under about 485px those two
+                            demands add up to more than the card is wide, and
+                            the text ran under the code. Below that width they
+                            stack, and the token is allowed to break so it wraps
+                            instead of overflowing.
+                        -->
+                        <div class="mt-4 flex flex-col gap-4
+                                    min-[485px]:flex-row min-[485px]:items-start">
                             <div class="min-w-0 flex-1">
                                 <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                                     <?= e('set.current_version') ?>
                                 </p>
-                                <p class="mt-1 font-mono text-2xl font-semibold leading-none text-ink">
+                                <p class="mt-1 break-all font-mono text-xl font-semibold leading-tight
+                                          text-ink min-[485px]:text-2xl min-[485px]:leading-none">
                                     <?= htmlspecialchars((string) $ch['version']) ?>
                                 </p>
                                 <?php if ($ch['build'] !== null): ?>
@@ -907,11 +930,11 @@ include 'partials/shell.php';
                 signed on an isolated runner, so the panel has no part in
                 putting a file on the shelf. It shows what is published.
             -->
-            <div class="self-start rounded-control border border-edge px-4 py-3">
+            <div class="min-w-0 self-start rounded-control border border-edge px-4 py-3">
                 <p class="text-sm text-ink-muted"><?= e('set.publish_via_release') ?></p>
             </div>
 
-            <div id="am2-shelf-list" class="self-start rounded-control border border-edge">
+            <div id="am2-shelf-list" class="min-w-0 self-start rounded-control border border-edge">
             <p class="px-4 pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <?= e('set.on_shelf') ?>
             </p>
@@ -920,7 +943,9 @@ include 'partials/shell.php';
             <?php else: ?>
                 <ul class="mt-1 divide-y divide-edge">
                     <?php foreach ($shelf['files'] as $f): ?>
-                        <li class="flex items-center justify-between gap-3 px-4 py-2.5">
+                        <li class="flex flex-col gap-1 px-4 py-2.5
+                                   min-[485px]:flex-row min-[485px]:items-center
+                                   min-[485px]:justify-between min-[485px]:gap-3">
                             <span class="flex min-w-0 items-center gap-2">
                                 <span class="truncate font-mono text-sm text-ink">
                                     <?= htmlspecialchars($f['name']) ?>
