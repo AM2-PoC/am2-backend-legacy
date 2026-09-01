@@ -39,13 +39,37 @@ const AM2_LOG_PAGE = 20;
             <?php endforeach; ?>
         </div>
 
-        <div class="relative min-w-0 flex-1 sm:max-w-xs">
+        <!--
+            Search, folded to its icon on a narrow screen.
+
+            Under about 600px the toolbar cannot hold three category buttons, a
+            text field and the freshness readout on one line, and the field was
+            the piece that wrapped and then squeezed to a few characters wide.
+            The icon is the affordance at that width; asking for it gives the
+            field a row of its own rather than a share of a crowded one. The
+            input keeps its id, which is the contract the script below and the
+            table filter are written against.
+        -->
+        <div id="logSearch" data-log-search
+             class="group relative min-w-0 flex-1 sm:max-w-xs
+                    max-[602px]:flex-none max-[602px]:data-[expanded=true]:flex-[1_0_100%]">
+            <button type="button" id="logSearchToggle"
+                    aria-label="<?= e('logs.search') ?>" title="<?= e('logs.search') ?>"
+                    aria-expanded="false" aria-controls="logSearchInput"
+                    class="hidden h-11 w-11 place-items-center rounded-control border border-edge
+                           text-ink-subtle transition-colors duration-[var(--duration-micro)]
+                           hover:border-brand hover:text-brand focus:outline-none
+                           focus-visible:ring-2 focus-visible:ring-brand/60
+                           max-[602px]:grid max-[602px]:group-data-[expanded=true]:hidden">
+                <?= am2_icon('search', 'h-4 w-4') ?>
+            </button>
             <input id="logSearchInput" type="search" autocomplete="off"
                    aria-label="<?= e('logs.search') ?>"
                    class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink
                           transition-colors duration-[var(--duration-micro)]
                           hover:border-edge-strong focus:border-brand focus:outline-none
-                          focus:ring-2 focus:ring-brand/25"
+                          focus:ring-2 focus:ring-brand/25
+                          max-[602px]:hidden max-[602px]:group-data-[expanded=true]:block"
                    placeholder="<?= e('logs.search') ?>">
         </div>
 
@@ -503,6 +527,45 @@ const AM2_LOG_PAGE = 20;
         page = 1;
         window.AM2?.filtered(body);
         render();
+    });
+
+    /*
+     * Opening and closing the folded search.
+     *
+     * data-expanded is the whole state; the two elements are shown and hidden
+     * from it in CSS, so nothing here has to know which classes are involved.
+     * It collapses again only when the field is empty -- a field holding a term
+     * that is filtering the table must stay visible, or the operator is left
+     * looking at a filtered log with no sign of what filtered it. Wide screens
+     * never read the attribute, so leaving it set costs nothing there.
+     */
+    const searchBox = $('logSearch');
+    const searchToggle = $('logSearchToggle');
+    const searchInput = $('logSearchInput');
+
+    function openSearch() {
+        searchBox.dataset.expanded = 'true';
+        searchToggle.setAttribute('aria-expanded', 'true');
+        searchInput.focus();
+    }
+
+    function closeSearch() {
+        if (searchInput.value !== '') return;
+        delete searchBox.dataset.expanded;
+        searchToggle.setAttribute('aria-expanded', 'false');
+    }
+
+    searchToggle.addEventListener('click', openSearch);
+    searchInput.addEventListener('blur', closeSearch);
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        searchInput.value = '';
+        query = '';
+        page = 1;
+        window.AM2?.filtered(body);
+        render();
+        closeSearch();
+        searchToggle.focus();
     });
 
     /*
