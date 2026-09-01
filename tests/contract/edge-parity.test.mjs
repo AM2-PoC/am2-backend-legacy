@@ -86,6 +86,27 @@ test('stable admin update URLs cannot cache one half of a release set', () => {
     }
 });
 
+test('stable Client update URLs cannot cache one half of a release set', () => {
+    const source = read('infra/nginx/am2-api.conf');
+    assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
+        'generic API proxying owns the Client update release set');
+    for (const name of ['version.json', 'update.apk']) {
+        const escaped = name.replace('.', '\\.');
+        const match = source.match(new RegExp(
+            `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
+        assert.ok(match, `production API has no exact cache guard for ${name}`);
+        assert.match(match[0],
+            /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+            `${name} can remain stale while its release-set peer changes`);
+        assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
+            `${name} returns conflicting upstream and edge cache policies`);
+        assert.match(match[0], /expires\s+off/, `${name} inherits an expiry`);
+    }
+    assert.match(source,
+        /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
+        'non-canonical Client update files remain public');
+});
+
 test('every WebAdmin root redirects explicitly to login', () => {
     for (const f of VHOSTS) {
         assert.match(read(f), /location = \/\s*\{\s*return 302 \/login\.php;\s*\}/s,
