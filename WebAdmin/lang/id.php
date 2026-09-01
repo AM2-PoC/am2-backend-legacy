@@ -407,7 +407,7 @@ return [
     'set.folder_missing'        => 'Penyimpanan pembaruan tidak tersedia. Hubungi administrator sistem.',
     'set.folder_readonly'       => 'Penyimpanan pembaruan hanya-baca. Hubungi administrator sistem.',
     'set.on_shelf'              => 'Di folder update',
-    'set.publish_via_release'   => 'Rilis diterbitkan oleh pipeline rilis. Panel tidak menerima unggahan.',
+    'set.publish_via_release'   => 'Penyimpanan ini sengaja hanya-baca bagi panel. Rilis diterbitkan oleh pipeline rilis.',
     'set.shelf_empty'           => 'Belum ada berkas .apk.',
     'set.served'                => 'Disajikan',
     'set.drop_sql'              => 'Lepas berkas .sql di sini, atau pilih dari perangkat.',

@@ -892,11 +892,11 @@ include 'partials/shell.php';
                 </section>
             <?php endforeach; ?>
 
-            <?php if (!$shelf['exists'] || !$shelf['writable']): ?>
+            <?php if (!$shelf['exists']): ?>
                 <p class="flex items-start gap-2 rounded-control border border-bad/40
                           bg-bad/5 px-3 py-2.5 text-xs text-bad lg:col-span-2">
                     <?= am2_icon('alert', 'h-4 w-4') ?>
-                    <span><?= !$shelf['exists'] ? e('set.folder_missing') : e('set.folder_readonly') ?></span>
+                    <span><?= e('set.folder_missing') ?></span>
                 </p>
             <?php endif; ?>
         </div>
