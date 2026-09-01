@@ -1,0 +1,261 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * The command palette, exercised rather than read.
+ *
+ * `compute()` needs nothing but a value, a list and a callback, so it is lifted
+ * out of the page verbatim and run here against the real command set. A test
+ * that quoted the source back at itself would have agreed with both of the
+ * behaviours below, including the broken ones.
+ *
+ * Two faults, both reported from the field:
+ *
+ *   - Enter never reached a page. The unit-search row was prepended and the
+ *     cursor starts at 0, so the highlighted row was always "find a unit":
+ *     typing "dashboard" and pressing Enter opened the user list searching for
+ *     the word dashboard, and the Dashboard row directly beneath it could only
+ *     be had by arrowing down or clicking.
+ *   - Arrowing down did not follow the list. The box is 320px of an up-to-500px
+ *     column; measured in a browser, row 7 sat at 316px, row 10 at 448px, and
+ *     scrollTop stayed 0 the whole way -- the selection was below the fold with
+ *     nothing on screen moving.
+ */
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const shell = readFileSync(join(ROOT, 'WebAdmin/partials/shell_end.php'), 'utf8');
+
+/** The shipped compute(), lifted out of the page and made callable. */
+function paletteFrom(commands) {
+    const from = shell.indexOf('    function compute() {');
+    const to = shell.indexOf('    function render() {');
+    assert.ok(from !== -1 && to !== -1 && from < to, 'compute() is no longer where this test looks');
+
+    return new Function('COMMANDS', 'UNITS_LABEL', `
+        const input = { value: '' };
+        let cursor = 0, results = [];
+        const render = () => {};
+        ${shell.slice(from, to)}
+        return (typed) => {
+            input.value = typed;
+            compute();
+            return { rows: results, selected: results[cursor] };
+        };
+    `)(commands, 'Cari unit');
+}
+
+/** What the shell actually offers, in the locale an operator here reads. */
+const COMMANDS = [
+    { id: 'p-dash',     group: 'Home',          label: 'Dashboard',     href: 'dashboard.php' },
+    { id: 'p-users',    group: 'Manajemen',     label: 'User',          href: 'users.php' },
+    { id: 'p-chan',     group: 'Manajemen',     label: 'Channels',      href: 'channels.php' },
+    { id: 'p-logs',     group: 'Monitoring',    label: 'Aktivitas Log', href: 'logs.php' },
+    { id: 'p-settings', group: 'Sistem',        label: 'Pengaturan',    href: 'settings.php' },
+    { id: 'a-out',      group: 'Aksi',          label: 'Logout',        href: 'logout.php' },
+];
+
+test('Enter goes to the page that was typed, not to a unit search', () => {
+    const ask = paletteFrom(COMMANDS);
+    for (const [typed, href] of [
+        ['dashboard',  'dashboard.php'],
+        ['log',        'logs.php'],
+        ['pengaturan', 'settings.php'],
+    ]) {
+        assert.equal(ask(typed).selected.href, href,
+            `"${typed}" still selects something other than the page it names`);
+    }
+});
+
+test('unit search is what is left when no page matches', () => {
+    const ask = paletteFrom(COMMANDS);
+    const { selected, rows } = ask('budi');
+    assert.equal(selected.id, 's-units');
+    assert.equal(selected.href, 'users.php?search=budi');
+    assert.equal(rows.length, 1, 'a name that matches no page should offer one thing');
+});
+
+test('the unit row is offered on every query, last', () => {
+    // It is the fallback, not the answer: a name can look like a page name.
+    const { rows } = paletteFrom(COMMANDS)('log');
+    assert.equal(rows.at(-1).id, 's-units');
+    assert.ok(rows.length > 1);
+});
+
+test('an empty box lists everything and offers no unit search', () => {
+    const { rows, selected } = paletteFrom(COMMANDS)('');
+    assert.equal(rows.length, COMMANDS.length);
+    assert.equal(selected.id, 'p-dash');
+});
+
+test('a new query starts at the top of its own list', () => {
+    // The row under the cursor a keystroke ago has nothing to do with the row
+    // at that index now.
+    const from = shell.indexOf('    function compute() {');
+    const body = shell.slice(from, shell.indexOf('    function render() {'));
+    assert.doesNotMatch(body, /if \(cursor >= results\.length\) cursor = 0;/,
+        'the cursor is carried across into a list it was never measured against');
+    assert.match(body, /cursor = 0;/);
+});
+
+test('the highlighted row is scrolled into the box it lives in', () => {
+    // No DOM here, so this is the one thing asserted against the source. The
+    // behaviour it stands for was measured in a browser: before, scrollTop held
+    // at 0 through ten arrow presses; after, it stepped 40, 84, 128, 172 and
+    // the selection stayed visible, with the overlay and the page behind it
+    // unmoved.
+    const paint = shell.slice(shell.indexOf('    function paint() {'),
+                              shell.indexOf('    /** The one way the cursor moves. */'));
+    assert.match(paint, /rows\[cursor\]\?\.scrollIntoView\(\{ block: 'nearest' \}\)/,
+        'nothing follows the cursor down a list taller than its box');
+});
+
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The command set, read out of the page rather than retyped here.
+ *
+ * A copy of the list in this file would pass while the real one lost an entry,
+ * which is the failure this whole file exists to avoid. `t('key')` is resolved
+ * against the Indonesian strings, because that is the locale the panel is used
+ * in and the one where an English alias has to do the work.
+ */
+function shippedCommands() {
+    const strings = readFileSync(join(ROOT, 'WebAdmin/lang/id.php'), 'utf8');
+    const say = (key) => {
+        const m = strings.match(new RegExp(`'${key.replace('.', '\\.')}'\\s*=>\\s*'([^']*)'`));
+        assert.ok(m, `lang/id.php has no ${key}`);
+        return m[1];
+    };
+
+    const from = shell.indexOf('const COMMANDS =');
+    const to = shell.indexOf('const UNITS_LABEL');
+    assert.ok(from !== -1 && to !== -1 && from < to, 'the command list moved');
+
+    return shell.slice(from, to).split("'id' =>").slice(1).map((entry) => {
+        const pick = (field) => entry.match(new RegExp(`'${field}' => '([^']*)'`))?.[1];
+        const said = (field) => entry.match(new RegExp(`'${field}' => t\\('([^']*)'\\)`))?.[1];
+        return {
+            id: entry.match(/^\s*'([^']+)'/)[1],
+            group: said('group') ? say(said('group')) : '',
+            label: said('label') ? say(said('label')) : '',
+            href: pick('href'),
+            action: pick('action'),
+            keys: pick('keys') ?? '',
+        };
+    });
+}
+
+test('every command carries search aliases', () => {
+    // A command with no aliases is findable only by its own label, in one
+    // language, spelled the way the panel spells it.
+    for (const c of shippedCommands()) {
+        assert.notEqual(c.keys, '', `${c.id} has no aliases`);
+    }
+});
+
+test('a word in either language finds the thing it names', () => {
+    const ask = paletteFrom(shippedCommands());
+    for (const [typed, id] of [
+        ['settings',   'p-settings'],   // the label is Pengaturan
+        ['pengaturan', 'p-settings'],
+        ['keluar',     'a-out'],        // the label is Logout
+        ['logout',     'a-out'],
+        ['apk',        's-apk'],
+        ['distribusi', 's-apk'],
+        ['password',   's-account'],
+        ['gelap',      'a-theme'],
+        ['history',    'p-logs'],
+    ]) {
+        assert.equal(ask(typed).selected.id, id, `"${typed}" does not reach ${id}`);
+    }
+
+    // "backup" is both cards in the danger section -- making one and restoring
+    // from one -- and they share an anchor, so the destination is what matters
+    // rather than which of the two wins the tie.
+    assert.equal(ask('backup').selected.href, 'settings.php#am2-card-danger');
+    assert.equal(ask('cadangan').selected.href, 'settings.php#am2-card-danger');
+});
+
+test('the sections of Settings are reachable from any page', () => {
+    // They used to be declared by settings.php, so they were in the palette
+    // only once you were already looking at them.
+    assert.doesNotMatch(readFileSync(join(ROOT, 'WebAdmin/settings.php'), 'utf8'),
+        /\$pageCommands\s*=/, 'the section commands are page-local again');
+
+    const shelf = shippedCommands().find((c) => c.id === 's-apk');
+    assert.equal(shelf.href, 'settings.php#am2-card-shelf');
+});
+
+test('a destination naming the page you are on jumps instead of navigating', () => {
+    // Assigning the same path with a fragment does not reload; it would leave
+    // the overlay open over the section it was asked to show.
+    const body = shell.slice(shell.indexOf('    function run(i) {'),
+                             shell.indexOf("if (item.target)"));
+    assert.match(body, /const \[path, hash\] = item\.href\.split\('#'\)/);
+    assert.match(body, /if \(hash && \(path === '' \|\| path === HERE\)\) \{ jumpTo/);
+});
+
+test('aliases are matched, never drawn', () => {
+    const render = shell.slice(shell.indexOf('    function render() {'),
+                               shell.indexOf('    /**'));
+    assert.doesNotMatch(render, /item\.keys/, 'the alias list is on screen');
+});
+
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Why clicking a row and arrowing down worked only sometimes.
+ *
+ * Two mechanisms, one family: the list reacted to the pointer being somewhere
+ * rather than to the pointer doing something.
+ *
+ *   1. Hover set the cursor and rebuilt the whole list. The row under the
+ *      pointer was replaced by a new element, which -- pointer still on it --
+ *      took `mouseenter` in its turn and rebuilt again. Measured with a real
+ *      pointer resting on the list: about four rebuilds a second, forever.
+ *      A click needs its mousedown and its mouseup on the same element, and
+ *      the element kept being swapped out between them; Playwright, driving a
+ *      real mouse, reported "element was detached from the DOM" twelve times
+ *      and never landed the hover at all.
+ *
+ *   2. `mouseenter` does not mean the pointer moved. It means the element
+ *      under it changed -- which also happens when the list scrolls under a
+ *      pointer sitting perfectly still. So each arrow key scrolled a new row
+ *      under the resting pointer and that row took the cursor back. Fifteen
+ *      arrows from the top landed on the fourth row with the pointer over the
+ *      list, and on the sixteenth with the pointer anywhere else.
+ *
+ * After: 0 rebuilds a second, one click event per click, and fifteen arrows
+ * landing on the sixteenth row with the pointer resting on the list.
+ */
+test('moving the highlight does not rebuild the list', () => {
+    const paint = shell.slice(shell.indexOf('    function paint() {'),
+                              shell.indexOf('    /** The one way the cursor moves. */'));
+    assert.doesNotMatch(paint, /list\.textContent = ''|createElement/,
+        'painting the selection still tears the rows down and builds them again');
+    assert.match(paint, /aria-selected/, 'the selection is not painted onto the rows that exist');
+
+    const select = shell.slice(shell.indexOf('    function select(i) {'),
+                               shell.indexOf('    function select(i) {') + 260);
+    assert.match(select, /paint\(\)/);
+    assert.doesNotMatch(select, /render\(\)/, 'a cursor move still goes through a full render');
+});
+
+test('the pointer moves the cursor by moving', () => {
+    // mouseenter fires when the element underneath changes, which a scroll does
+    // to a pointer that is holding still. mousemove fires when the pointer
+    // moves, and nothing else does.
+    assert.doesNotMatch(shell.replace(/\/\*[\s\S]*?\*\//g, ''), /addEventListener\('mouseenter'/,
+        'the list still takes its cursor from where the pointer happens to be');
+    assert.match(shell, /list\.addEventListener\('mousemove'/);
+});
+
+test('rows are built once per result set, and remembered', () => {
+    // paint() needs the rows that are on screen; rebuilding to find them is the
+    // thing being removed.
+    assert.match(shell, /rows\.push\(li\)/);
+    assert.match(shell, /rows\[cursor\]\?\.scrollIntoView\(\{ block: 'nearest' \}\)/,
+        'the scroll-into-view no longer follows the painted cursor');
+});
