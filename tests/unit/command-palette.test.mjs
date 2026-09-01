@@ -105,12 +105,10 @@ test('the highlighted row is scrolled into the box it lives in', () => {
     // at 0 through ten arrow presses; after, it stepped 40, 84, 128, 172 and
     // the selection stayed visible, with the overlay and the page behind it
     // unmoved.
-    const from = shell.indexOf('    function render() {');
-    const body = shell.slice(from, shell.indexOf('    function run(i) {'));
-    assert.match(body, /selected\?\.scrollIntoView\(\{ block: 'nearest' \}\)/,
+    const paint = shell.slice(shell.indexOf('    function paint() {'),
+                              shell.indexOf('    /** The one way the cursor moves. */'));
+    assert.match(paint, /rows\[cursor\]\?\.scrollIntoView\(\{ block: 'nearest' \}\)/,
         'nothing follows the cursor down a list taller than its box');
-    assert.match(body, /if \(i === cursor\) selected = li/,
-        'the row being revealed is not the row that is selected');
 });
 
 /* ------------------------------------------------------------------------ */
@@ -203,4 +201,61 @@ test('aliases are matched, never drawn', () => {
     const render = shell.slice(shell.indexOf('    function render() {'),
                                shell.indexOf('    /**'));
     assert.doesNotMatch(render, /item\.keys/, 'the alias list is on screen');
+});
+
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Why clicking a row and arrowing down worked only sometimes.
+ *
+ * Two mechanisms, one family: the list reacted to the pointer being somewhere
+ * rather than to the pointer doing something.
+ *
+ *   1. Hover set the cursor and rebuilt the whole list. The row under the
+ *      pointer was replaced by a new element, which -- pointer still on it --
+ *      took `mouseenter` in its turn and rebuilt again. Measured with a real
+ *      pointer resting on the list: about four rebuilds a second, forever.
+ *      A click needs its mousedown and its mouseup on the same element, and
+ *      the element kept being swapped out between them; Playwright, driving a
+ *      real mouse, reported "element was detached from the DOM" twelve times
+ *      and never landed the hover at all.
+ *
+ *   2. `mouseenter` does not mean the pointer moved. It means the element
+ *      under it changed -- which also happens when the list scrolls under a
+ *      pointer sitting perfectly still. So each arrow key scrolled a new row
+ *      under the resting pointer and that row took the cursor back. Fifteen
+ *      arrows from the top landed on the fourth row with the pointer over the
+ *      list, and on the sixteenth with the pointer anywhere else.
+ *
+ * After: 0 rebuilds a second, one click event per click, and fifteen arrows
+ * landing on the sixteenth row with the pointer resting on the list.
+ */
+test('moving the highlight does not rebuild the list', () => {
+    const paint = shell.slice(shell.indexOf('    function paint() {'),
+                              shell.indexOf('    /** The one way the cursor moves. */'));
+    assert.doesNotMatch(paint, /list\.textContent = ''|createElement/,
+        'painting the selection still tears the rows down and builds them again');
+    assert.match(paint, /aria-selected/, 'the selection is not painted onto the rows that exist');
+
+    const select = shell.slice(shell.indexOf('    function select(i) {'),
+                               shell.indexOf('    function select(i) {') + 260);
+    assert.match(select, /paint\(\)/);
+    assert.doesNotMatch(select, /render\(\)/, 'a cursor move still goes through a full render');
+});
+
+test('the pointer moves the cursor by moving', () => {
+    // mouseenter fires when the element underneath changes, which a scroll does
+    // to a pointer that is holding still. mousemove fires when the pointer
+    // moves, and nothing else does.
+    assert.doesNotMatch(shell.replace(/\/\*[\s\S]*?\*\//g, ''), /addEventListener\('mouseenter'/,
+        'the list still takes its cursor from where the pointer happens to be');
+    assert.match(shell, /list\.addEventListener\('mousemove'/);
+});
+
+test('rows are built once per result set, and remembered', () => {
+    // paint() needs the rows that are on screen; rebuilding to find them is the
+    // thing being removed.
+    assert.match(shell, /rows\.push\(li\)/);
+    assert.match(shell, /rows\[cursor\]\?\.scrollIntoView\(\{ block: 'nearest' \}\)/,
+        'the scroll-into-view no longer follows the painted cursor');
 });
