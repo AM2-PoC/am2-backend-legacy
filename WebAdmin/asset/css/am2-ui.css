@@ -1625,11 +1625,10 @@ video {
         width: 100% !important;
     }
 
-    .channel-item {
-        align-items: flex-start !important;
-        min-width: 0;
-    }
-
+    /* min-width:0 the row and its children, so a long channel name truncates
+       instead of pushing RX and DEFAULT off the edge. The alignment override
+       went with the grid rule above: the row centres its own contents. */
+    .channel-item,
     .channel-item > * {
         min-width: 0;
     }
@@ -1728,16 +1727,17 @@ video {
         width: 100%;
     }
 
-    .channel-item {
-        display: grid !important;
-        grid-template-columns: 1fr;
-        gap: 10px;
-        align-items: start !important;
-    }
-
-    .channel-item .form-check.form-switch {
-        justify-self: start;
-    }
+    /*
+     * No .channel-item rule here any more.
+     *
+     * It stacked the row into one column below 576px -- checkbox, name, RX and
+     * DEFAULT each on its own line -- which was right for the Bootstrap markup
+     * it was written for, `.form-check.form-switch` and all. That markup is
+     * gone: the row is a flex line whose name truncates and whose two controls
+     * are already small enough to sit beside it. Left in place with
+     * `display: grid !important` it beat those classes, and a list of twenty
+     * channels became eighty lines on a phone.
+     */
 }
 
 @media (max-width: 991.98px) {
