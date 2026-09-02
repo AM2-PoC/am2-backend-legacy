@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "application": "am2-backend",
+  "artifact": "am2-backend-runtime.tar.gz",
+  "manifest": "artifact-manifest.json",
+  "checksums": "SHA256SUMS",
+  "source_visibility": "temporary-public-github-repository",
+  "ci_builder": "github-actions-ephemeral-runner",
+  "transit": {
+    "source": "github-actions-artifact",
+    "maximum_retention_days": 90,
+    "purpose": "bounded-handoff-only"
+  },
+  "durable_store": {
+    "kind": "self-hosted-private-artifact-cache",
+    "visibility": "private",
+    "public_webroot": false,
+    "retention_policy": "accepted-plus-verified-rollback"
+  },
+  "publication": {
+    "model": "ci-push",
+    "identity": "dedicated-restricted-ci-publisher",
+    "forbidden": [
+      "public-github-release-assets",
+      "runtime-github-token",
+      "runtime-source-repository-credential"
+    ]
+  },
+  "deployment": {
+    "identity": "dedicated-bounded-deploy-interface",
+    "selection": "immutable-archive-sha256",
+    "no_rebuild": true
+  }
+}

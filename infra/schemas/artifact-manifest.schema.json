@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AM2 backend runtime artifact manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "application",
+    "source_sha",
+    "payload_sha256",
+    "archive_sha256",
+    "runtime",
+    "lockfiles"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "application": { "const": "am2-backend" },
+    "source_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "payload_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "php"],
+      "properties": {
+        "node": { "type": "string", "pattern": "^[0-9]+$" },
+        "php": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "lockfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_package_lock_sha256", "webadmin_package_lock_sha256"],
+      "properties": {
+        "server_package_lock_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "webadmin_package_lock_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

@@ -66,7 +66,7 @@ for shared in "$webadmin_update" "$server_update"; do
         exit 1
     fi
 done
-if [[ ! -d $repo/.git ]]; then
+if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     echo "Git repository is missing: $repo" >&2
     exit 1
 fi
