@@ -399,6 +399,8 @@ return [
     'set.current_version'       => 'Versi yang diumumkan',
     'set.copy_url'              => 'Salin alamat unduhan',
     'set.copied'                => 'Alamat unduhan disalin.',
+    'set.exporting'             => 'Menyiapkan berkas ekspor. Unduhan akan mulai sebentar lagi.',
+    'set.copy_selected'         => 'Papan klip tidak tersedia di sini. Alamatnya sudah dipilih, tinggal disalin.',
     'set.scan_to_install'       => 'Pindai untuk pasang',
     'set.version_missing'       => 'Berkas rilis :file tidak tersedia. Unggah APK yang dipublikasikan atau publikasikan rilis lain.',
     'set.no_version'            => 'Belum ada rilis aplikasi administrator yang dipublikasikan.',
