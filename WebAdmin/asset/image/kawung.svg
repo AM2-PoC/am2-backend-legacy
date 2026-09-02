@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<title>Kawung</title>
+<desc>
+  Four ellipses interlocking around a point, repeated on a square lattice with
+  quarter rosettes at the corners so the tile meets itself on every edge. One of
+  the oldest Javanese batik patterns, and the one that is purely geometric,
+  which is why it survives being drawn as a 1.25px stroke at this size and sits
+  beside the console grid without fighting it.
+
+  Black on transparent on purpose. This is a CSS mask, not an image: a mask
+  reads alpha, so the colour comes from the console line token and the pattern
+  follows the theme and the contrast preference on its own. Any other colour
+  here would break that, and currentColor never resolves inside a mask url.
+
+  Drawn rather than taken from the web: no licence to carry, it tiles exactly,
+  and the geometry can be edited in place.
+
+  Note for anyone editing this file: a comment may not contain two hyphens in a
+  row, which is why this is a desc element. As a comment naming a CSS custom
+  property it was malformed XML, Chrome failed to decode it, and a mask that
+  will not decode is treated as fully opaque, so the pattern silently became a
+  solid block.
+</desc>
+<g fill="none" stroke="#000" stroke-width="1.25"><ellipse cx="32.0" cy="16.5" rx="8" ry="15.5"/><ellipse cx="32.0" cy="47.5" rx="8" ry="15.5"/><ellipse cx="16.5" cy="32.0" rx="15.5" ry="8"/><ellipse cx="47.5" cy="32.0" rx="15.5" ry="8"/><circle cx="32.0" cy="32.0" r="1.6" fill="#000" stroke="none"/><ellipse cx="0" cy="-15.5" rx="8" ry="15.5"/><ellipse cx="0" cy="15.5" rx="8" ry="15.5"/><ellipse cx="-15.5" cy="0" rx="15.5" ry="8"/><ellipse cx="15.5" cy="0" rx="15.5" ry="8"/><circle cx="0" cy="0" r="1.6" fill="#000" stroke="none"/><ellipse cx="64" cy="-15.5" rx="8" ry="15.5"/><ellipse cx="64" cy="15.5" rx="8" ry="15.5"/><ellipse cx="48.5" cy="0" rx="15.5" ry="8"/><ellipse cx="79.5" cy="0" rx="15.5" ry="8"/><circle cx="64" cy="0" r="1.6" fill="#000" stroke="none"/><ellipse cx="0" cy="48.5" rx="8" ry="15.5"/><ellipse cx="0" cy="79.5" rx="8" ry="15.5"/><ellipse cx="-15.5" cy="64" rx="15.5" ry="8"/><ellipse cx="15.5" cy="64" rx="15.5" ry="8"/><circle cx="0" cy="64" r="1.6" fill="#000" stroke="none"/><ellipse cx="64" cy="48.5" rx="8" ry="15.5"/><ellipse cx="64" cy="79.5" rx="8" ry="15.5"/><ellipse cx="48.5" cy="64" rx="15.5" ry="8"/><ellipse cx="79.5" cy="64" rx="15.5" ry="8"/><circle cx="64" cy="64" r="1.6" fill="#000" stroke="none"/></g>
+</svg>
