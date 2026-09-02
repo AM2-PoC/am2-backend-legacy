@@ -7,6 +7,11 @@
     --color-surface-elevated: #ffffff;
     --color-border: #e2d9c6;
     --color-border-strong: #cabda3;
+    /* The hairline the console ground and the sidebar foot are drawn in.
+       Derived from the brand hue so the geometry belongs to the product,
+       and carried at low alpha because it is a 1px grid behind working
+       content -- it has to be found rather than noticed. */
+    --color-console-line: color-mix(in srgb, var(--color-primary) 16%, transparent);
     --color-text: #0f172a;
     --color-text-muted: #475569;
     --color-text-subtle: #6b6357;
@@ -80,6 +85,11 @@
     --color-surface-elevated: #111827;
     --color-border: #334155;
     --color-border-strong: #475569;
+    /* The hairline the console ground and the sidebar foot are drawn in.
+       Derived from the brand hue so the geometry belongs to the product,
+       and carried at low alpha because it is a 1px grid behind working
+       content -- it has to be found rather than noticed. */
+    --color-console-line: color-mix(in srgb, var(--color-primary) 20%, transparent);
     --color-text: #e5e7eb;
     --color-text-muted: #94a3b8;
     --color-text-subtle: #64748b;
@@ -141,7 +151,15 @@ html {
  * 800px scroll with this line present, and held at 0 without it.
  */
 body {
-    background: var(--color-bg) !important;
+    /*
+     * background-color, not the background shorthand.
+     *
+     * The shorthand reset every layer, and !important made that reset beat the
+     * console ground -- which is a background-image on this same element and is
+     * declared in the sheet loaded after this one. The colour is what needed
+     * defending from the legacy rules; the image layer was collateral.
+     */
+    background-color: var(--color-bg) !important;
     color: var(--color-text);
     font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0;
