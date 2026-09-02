@@ -13,6 +13,9 @@ const channelPath = resolve(ROOT, 'infra/contracts/artifact-channel.json');
 const packagerPath = resolve(ROOT, 'infra/scripts/package-runtime-artifact.sh');
 const verifierPath = resolve(ROOT, 'infra/scripts/verify-runtime-artifact.sh');
 const manifestSchemaPath = resolve(ROOT, 'infra/schemas/artifact-manifest.schema.json');
+const deployIdentityPath = resolve(ROOT, 'infra/contracts/deploy-identity.json');
+const cacheReceiverPath = resolve(ROOT, 'infra/scripts/am2-artifact-cache-receive.py');
+const cacheSshWrapperPath = resolve(ROOT, 'infra/scripts/am2-artifact-cache-ssh-wrapper.py');
 
 function tempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -184,6 +187,135 @@ test('runtime packager refuses an incomplete transitive production dependency', 
   }
 });
 
+test('cache SSH wrapper rejects any command outside immutable stdin ingress', () => {
+  assert.ok(existsSync(cacheSshWrapperPath), 'cache SSH wrapper is missing');
+  const root = tempDir('am2-cache-wrapper-');
+  try {
+    for (const command of ['', 'bash', 'am2-artifact-cache-receive --source /tmp/x --destination latest', `am2-artifact-cache-receive --stdin --destination ${'a'.repeat(40)}/latest`]) {
+      const run = spawnSync('python3', [cacheSshWrapperPath, '--root', join(root, 'cache')], { encoding: 'utf8', env: { ...process.env, SSH_ORIGINAL_COMMAND: command } });
+      assert.notEqual(run.status, 0, `cache SSH wrapper accepted ${command || 'empty command'}`);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cache SSH wrapper receives only a verified immutable stdin bundle', { timeout: 120_000 }, () => {
+  const base = tempDir('am2-cache-wrapper-positive-');
+  try {
+    const output = packageFixture(base);
+    const manifest = JSON.parse(readFileSync(join(output, 'artifact-manifest.json'), 'utf8'));
+    const files = ['am2-backend-runtime.tar.gz', 'artifact-manifest.json', 'SHA256SUMS', 'lockfiles/server-package-lock.json', 'lockfiles/webadmin-package-lock.json'];
+    const bundle = spawnSync('tar', ['-C', output, '-cf', '-', ...files], { encoding: null, maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(bundle.status, 0, bundle.stderr?.toString());
+    const cache = join(base, 'cache');
+    const destination = `${manifest.source_sha}/${manifest.archive_sha256}`;
+    const run = spawnSync('python3', [cacheSshWrapperPath, '--root', cache], {
+      encoding: 'utf8',
+      input: bundle.stdout,
+      env: { ...process.env, SSH_ORIGINAL_COMMAND: `am2-artifact-cache-receive --stdin --destination ${destination}` },
+    });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    assert.ok(existsSync(join(cache, destination, 'am2-backend-runtime.tar.gz')));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('cache receiver rejects a mutable or malformed artifact destination', () => {
+  assert.ok(existsSync(cacheReceiverPath), 'cache receiver is missing');
+  const root = tempDir('am2-cache-receiver-');
+  try {
+    const source = join(root, 'source');
+    mkdirSync(source);
+    writeFileSync(join(source, 'placeholder'), 'x\n');
+    for (const destination of ['latest', '../escape', `${'a'.repeat(40)}/${'b'.repeat(64)}/extra`]) {
+      const run = spawnSync('python3', [cacheReceiverPath, '--root', join(root, 'cache'), '--source', source, '--destination', destination], { encoding: 'utf8' });
+      assert.notEqual(run.status, 0, `receiver accepted ${destination}`);
+    }
+    const sourceLink = join(root, 'source-link');
+    const link = spawnSync('ln', ['-s', source, sourceLink], { encoding: 'utf8' });
+    assert.equal(link.status, 0, link.stderr);
+    const run = spawnSync('python3', [cacheReceiverPath, '--root', join(root, 'cache'), '--source', sourceLink, '--destination', `${'a'.repeat(40)}/${'b'.repeat(64)}`], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'receiver accepted a symlinked artifact ingress');
+    assert.match(run.stderr, /symlink|regular artifact/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cache receiver stores one verified immutable artifact bundle', { timeout: 120_000 }, () => {
+  const base = tempDir('am2-cache-receiver-positive-');
+  try {
+    const output = packageFixture(base);
+    const manifest = JSON.parse(readFileSync(join(output, 'artifact-manifest.json'), 'utf8'));
+    const cache = join(base, 'cache');
+    const destination = `${manifest.source_sha}/${manifest.archive_sha256}`;
+    const run = spawnSync('python3', [cacheReceiverPath, '--root', cache, '--source', output, '--destination', destination], { encoding: 'utf8' });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    const stored = join(cache, destination);
+    assert.equal(readFileSync(join(stored, 'artifact-manifest.json'), 'utf8'), readFileSync(join(output, 'artifact-manifest.json'), 'utf8'));
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(stored, 'am2-backend-runtime.tar.gz'),
+      '--manifest', join(stored, 'artifact-manifest.json'),
+      '--checksums', join(stored, 'SHA256SUMS')], { encoding: 'utf8' });
+    assert.equal(verify.status, 0, `${verify.stdout}\n${verify.stderr}`);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('cache receiver stores a verified immutable bundle from standard input', { timeout: 120_000 }, () => {
+  const base = tempDir('am2-cache-receiver-stdin-');
+  try {
+    const output = packageFixture(base);
+    const manifest = JSON.parse(readFileSync(join(output, 'artifact-manifest.json'), 'utf8'));
+    const files = ['am2-backend-runtime.tar.gz', 'artifact-manifest.json', 'SHA256SUMS', 'lockfiles/server-package-lock.json', 'lockfiles/webadmin-package-lock.json'];
+    const bundle = spawnSync('tar', ['-C', output, '-cf', '-', ...files], { encoding: null, maxBuffer: 64 * 1024 * 1024 });
+    assert.equal(bundle.status, 0, bundle.stderr?.toString());
+    const cache = join(base, 'cache');
+    const destination = `${manifest.source_sha}/${manifest.archive_sha256}`;
+    const run = spawnSync('python3', [cacheReceiverPath, '--root', cache, '--stdin', '--destination', destination], { encoding: 'utf8', input: bundle.stdout });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    assert.ok(existsSync(join(cache, destination, 'am2-backend-runtime.tar.gz')));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('cache receiver never overwrites an existing immutable artifact bundle', { timeout: 120_000 }, () => {
+  const base = tempDir('am2-cache-receiver-overwrite-');
+  try {
+    const output = packageFixture(base);
+    const manifest = JSON.parse(readFileSync(join(output, 'artifact-manifest.json'), 'utf8'));
+    const cache = join(base, 'cache');
+    const destination = `${manifest.source_sha}/${manifest.archive_sha256}`;
+    const first = spawnSync('python3', [cacheReceiverPath, '--root', cache, '--source', output, '--destination', destination], { encoding: 'utf8' });
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`);
+    const second = spawnSync('python3', [cacheReceiverPath, '--root', cache, '--source', output, '--destination', destination], { encoding: 'utf8' });
+    assert.notEqual(second.status, 0);
+    assert.match(second.stderr, /already exists|immutable/i);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('deploy identity remains bounded to immutable artifacts', () => {
+  assert.ok(existsSync(deployIdentityPath), 'deploy identity contract is missing');
+  const identity = JSON.parse(readFileSync(deployIdentityPath, 'utf8'));
+  assert.equal(identity.schema_version, 1);
+  assert.equal(identity.identity, 'dedicated-bounded-deploy-interface');
+  assert.equal(identity.artifact.selection, 'immutable-archive-sha256');
+  assert.equal(identity.artifact.mutable_references_allowed, false);
+  assert.equal(identity.source_repository.access, 'none');
+  assert.equal(identity.privileges.arbitrary_shell, false);
+  assert.equal(identity.privileges.broad_sudo, false);
+  assert.equal(identity.privileges.runtime_secret_write, false);
+  assert.equal(identity.privileges.rollback_artifact_delete, false);
+  assert.deepEqual(identity.services.may_restart, ['am2-api', 'am2-api-staging']);
+  assert.deepEqual(identity.services.may_reload, ['apache2', 'nginx']);
+});
+
 test('artifact manifest schema makes the release identity exact', () => {
   assert.ok(existsSync(manifestSchemaPath), 'artifact manifest schema is missing');
   const schema = JSON.parse(readFileSync(manifestSchemaPath, 'utf8'));
@@ -314,19 +446,25 @@ test('artifact verifier rejects an external same-basename manifest', { timeout: 
   }
 });
 
-test('CI packages a checksumed candidate only after source checks succeed', () => {
+test('CI packages an explicit exact-main candidate only after source checks succeed', () => {
   assert.ok(existsSync(workflowPath), 'no CI runtime-artifact publisher exists');
   const workflow = readFileSync(workflowPath, 'utf8');
-  assert.match(workflow, /workflow_run:/,
-    'CI artifact publisher is not gated on source checks');
-  assert.match(workflow, /workflows:\s*\[\s*['"]source checks['"]\s*\]/,
-    'CI artifact publisher is not gated on the source-check workflow');
-  assert.match(workflow, /conclusion\s*==\s*['"]success['"]|conclusion == 'success'/,
-    'CI artifact publisher accepts a failed source-check run');
+  assert.match(workflow, /workflow_dispatch:/,
+    'CI artifact publication is not an explicit operator action');
+  assert.match(workflow, /source_sha:/,
+    'CI artifact publisher does not require an exact source SHA');
+  assert.doesNotMatch(workflow, /workflow_run:/,
+    'CI artifact publisher would spend quota automatically after every main push');
+  assert.match(workflow, /actions\/workflows\/source-checks\.yml\/runs/,
+    'CI artifact publisher does not verify source-check workflow evidence');
+  assert.match(workflow, /conclusion.*success|success.*conclusion/s,
+    'CI artifact publisher accepts a source SHA without successful checks');
+  assert.match(workflow, /head_branch.*main|main.*head_branch/s,
+    'CI artifact publisher accepts a source SHA outside main');
   assert.match(workflow, /actions\/checkout@v4/,
     'CI artifact publisher does not checkout source');
-  assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\|\|\s*inputs\.source_sha\s*\}\}/,
-    'CI artifact publisher does not checkout the exact checked source SHA');
+  assert.match(workflow, /ref:\s*\$\{\{\s*inputs\.source_sha\s*\}\}/,
+    'CI artifact publisher does not checkout the explicit exact source SHA');
   assert.match(workflow, /npm --prefix server ci --omit=dev --ignore-scripts/,
     'CI artifact publisher does not install the locked production dependency tree');
   assert.match(workflow, /package-runtime-artifact\.sh/,
