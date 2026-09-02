@@ -39,21 +39,26 @@ try {
                     ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - u.location_updated_at))))::bigint
                 END AS location_age_seconds,
                 c.display_name as channel_name,
-                COALESCE(last_log.speaking_state, 0) as is_speaking
+                /*
+                 * Who is transmitting, from the column the relay maintains.
+                 *
+                 * This was derived from the newest ptt_logs row inside a
+                 * seven-second window, which meant a transmission stopped
+                 * being shown as one at its eighth second. Over thirty days of
+                 * real traffic that is 38.9% of transmissions -- the median is
+                 * 4.4s, the 90th percentile 26.2s, the longest 899s. And the
+                 * ordering below is by this value, so at second eight the unit
+                 * also jumped out of the top of the list while being watched.
+                 *
+                 * users.is_speaking is set true on PUSH and false on RELEASE,
+                 * on channel change, on disconnect and at relay start, so it is
+                 * the live answer rather than an inference from a log. It also
+                 * removes a per-row scan of a 122k-row table from a query that
+                 * runs every three seconds for every open map.
+                 */
+                CASE WHEN u.is_speaking THEN 1 ELSE 0 END as is_speaking
             FROM public.users u 
             LEFT JOIN public.channels c ON u.current_channel = c.name
-            LEFT JOIN LATERAL (
-                SELECT 
-                    CASE 
-                        WHEN l.event_type IN ('PUSH', 'PUSH_PRIVATE') 
-                             AND l.event_time > (NOW() - INTERVAL '7 seconds') THEN 1 
-                        ELSE 0 
-                    END as speaking_state
-                FROM public.ptt_logs l
-                WHERE l.user_id = u.id
-                ORDER BY l.event_time DESC
-                LIMIT 1
-            ) last_log ON TRUE
             WHERE u.status = 'online'";
 
     if (!$is_superadmin && $current_admin_id) {
