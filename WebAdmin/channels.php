@@ -97,9 +97,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_channel'])) {
     try {
         $stmt = $pdo->prepare("INSERT INTO public.channels (name, display_name, category, created_by) VALUES (?, ?, ?, ?)");
         $stmt->execute([$name, $display_name, $category, $current_admin_id]);
-        $success_msg = "Channel $display_name berhasil dibuat.";
+        $success_msg = t('msg.channel_added', ['name' => $display_name]);
     } catch (PDOException $e) {
-        $error_msg = ($e->getCode() == 23505) ? "Gagal: Nama channel sudah terdaftar." : "Error: " . am2_safe_error($e, 'channels');
+        $error_msg = $e->getCode() == 23505
+            ? t('msg.channel_name_taken')
+            : t('msg.channel_add_failed', ['detail' => am2_safe_error($e, 'channels')]);
     }
 }
 
@@ -188,13 +190,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
         if ($ajax) {
             am2_ch_json(['success' => true]);
         }
-        $success_msg = "Izin akses channel berhasil diperbarui.";
+        $success_msg = t('msg.access_saved');
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         if ($ajax) {
             am2_ch_json(['success' => false, 'msg' => am2_safe_error($e, 'channels')]);
         }
-        $error_msg = "Gagal menyimpan akses: " . am2_safe_error($e, 'channels');
+        $error_msg = t('msg.access_save_failed', ['detail' => am2_safe_error($e, 'channels')]);
     }
 }
 
@@ -211,9 +213,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_channel'])) {
             $stmt = $pdo->prepare("UPDATE public.channels SET display_name = ?, category = ? WHERE id = ? AND created_by = ?");
             $stmt->execute([$edit_display, $edit_category, $edit_id, $current_admin_id]);
         }
-        $success_msg = "Perubahan channel berhasil disimpan.";
+        $success_msg = t('msg.channel_saved');
     } catch (PDOException $e) {
-        $error_msg = "Gagal memperbarui channel: " . am2_safe_error($e, 'channels');
+        $error_msg = t('msg.channel_save_failed', ['detail' => am2_safe_error($e, 'channels')]);
     }
 }
 
@@ -260,7 +262,7 @@ if (isset($_POST['delete_channel'])) {
         if ($ajax) {
             am2_ch_json(['success' => false, 'msg' => am2_safe_error($e, 'channels')]);
         }
-        $error_msg = "Gagal menghapus: " . am2_safe_error($e, 'channels');
+        $error_msg = t('msg.delete_failed', ['detail' => am2_safe_error($e, 'channels')]);
     }
 }
 
@@ -750,6 +752,20 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             <p data-access-mode class="mt-1 text-xs text-ink-muted"></p>
         </header>
 
+        <!--
+            Search, because this is every unit the account manages and the
+            dialogue is used by looking for one of them.
+        -->
+        <div class="border-b border-edge px-5 py-2.5">
+            <input type="search" data-unit-filter autocomplete="off"
+                   placeholder="<?= e('ch.search_units') ?>"
+                   aria-label="<?= e('ch.search_units') ?>"
+                   class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink
+                          transition-colors duration-[var(--duration-micro)]
+                          hover:border-edge-strong focus:border-brand focus:outline-none
+                          focus:ring-2 focus:ring-brand/25">
+        </div>
+
         <div class="flex items-center justify-between gap-3 border-b border-edge px-5 py-2.5">
             <label class="flex cursor-pointer items-center gap-2 text-sm text-ink">
                 <input type="checkbox" data-access-all
@@ -768,6 +784,9 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                 <p class="py-8 text-center text-sm text-ink-muted"><?= e('ch.no_units_available') ?></p>
             <?php else: ?>
                 <p data-unit-status class="py-8 text-center text-sm text-ink-muted"><?= e('ch.loading_units') ?></p>
+                <p data-filter-empty hidden class="py-8 text-center text-sm text-ink-muted">
+                    <?= e('ch.no_match') ?>
+                </p>
                 <ul data-unit-list class="space-y-1"></ul>
             <?php endif; ?>
         </div>
@@ -890,6 +909,9 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
      * awaits this first, so nothing can tick a box that is not there yet.
      */
     const unitList = document.querySelector('[data-unit-list]');
+
+    /** Only the rows a filter has left on screen. */
+    const shownPicks = () => [...unitList?.querySelectorAll('li:not([hidden]) [data-unit-pick]') ?? []];
     let unitsReady = null;
 
     function loadUnits() {
@@ -923,10 +945,14 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
                 label.append(box, name, id);
                 li.appendChild(label);
+                // The searchable text, decided once here rather than read back
+                // out of the DOM on every keystroke.
+                li.dataset.unitSearch = `${u.name ?? ''} ${u.id}`.toLowerCase();
                 frag.appendChild(li);
             }
             unitList.appendChild(frag);
             document.querySelector('[data-unit-status]')?.remove();
+            applyUnitFilter();
         })().catch(() => {
             // Let the next open try again rather than leaving a dialogue that
             // is permanently empty and says nothing about why.
@@ -937,18 +963,68 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         return unitsReady;
     }
     const recount = () => {
+        // The count is every unit ticked, filtered or not: that is what the
+        // save will act on, and hiding a row does not un-choose it.
         const n = picks().filter((c) => c.checked).length;
         const out = document.querySelector('[data-access-count]');
         if (out) out.textContent = String(n);
+
+        // The box, though, describes the rows in front of the operator, since
+        // that is what pressing it will do. Filtered to three and all three
+        // ticked, it reads ticked -- against the whole roster it would have sat
+        // there half-lit with nothing left to press it for.
         const all = document.querySelector('[data-access-all]');
         if (all) {
-            all.checked = n > 0 && n === picks().length;
-            all.indeterminate = n > 0 && n < picks().length;
+            const shown = shownPicks();
+            const picked = shown.filter((c) => c.checked).length;
+            all.checked = shown.length > 0 && picked === shown.length;
+            all.indeterminate = picked > 0 && picked < shown.length;
         }
     };
 
+    /*
+     * Filtering the roster.
+     *
+     * Rows are hidden, not removed: a unit ticked before the filter was typed
+     * is still ticked and still counted, so the count can read 12 while three
+     * rows are on screen -- which is the honest number, and the one the save
+     * will act on.
+     */
+    const unitFilter = document.querySelector('[data-unit-filter]');
+    const unitNoMatch = document.querySelector('[data-filter-empty]');
+
+
+    function applyUnitFilter() {
+        const q = (unitFilter?.value ?? '').trim().toLowerCase();
+        const rows = [...unitList?.children ?? []];
+        let shown = 0;
+        for (const li of rows) {
+            const on = !q || (li.dataset.unitSearch ?? '').includes(q);
+            li.hidden = !on;
+            if (on) shown += 1;
+        }
+        if (unitNoMatch) unitNoMatch.hidden = shown > 0 || rows.length === 0;
+        recount();
+    }
+
+    unitFilter?.addEventListener('input', applyUnitFilter);
+
+    // Opened fresh each time: a filter left over from the last channel would
+    // hide units the operator is about to be asked about.
+    document.getElementById('am2-channel-access')?.addEventListener('open.hs.overlay', () => {
+        if (unitFilter) unitFilter.value = '';
+        applyUnitFilter();
+    });
+
+    /*
+     * Select-all means the rows in front of you.
+     *
+     * It used to tick every box in the roster, filtered or not, so filtering to
+     * "Alpha" and pressing it granted access to units the operator could not
+     * see. With nothing typed the two are the same thing.
+     */
     document.querySelector('[data-access-all]')?.addEventListener('change', (e) => {
-        picks().forEach((c) => { c.checked = e.target.checked; });
+        shownPicks().forEach((c) => { c.checked = e.target.checked; });
         recount();
     });
     // Delegated: the boxes do not exist when this runs.

@@ -34,10 +34,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         
         am2_audit_complete();
         $pdo->commit();
-        $success_msg = "User $name (User: $id) berhasil didaftarkan.";
+        $success_msg = t('msg.user_added', ['name' => $name, 'id' => $id]);
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-        $error_msg = ($e->getCode() == '23505') ? "ID $id sudah terdaftar." : "Database Error: " . am2_safe_error($e, 'users');
+        $error_msg = $e->getCode() === '23505'
+            ? t('msg.user_id_taken', ['id' => $id])
+            : t('msg.user_add_failed', ['detail' => am2_safe_error($e, 'users')]);
     }
 }
 
@@ -81,7 +83,7 @@ if (isset($_POST['update_feature'])) {
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])
         && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['edit_id'] ?? '')) {
-    $error_msg = "Akses ditolak.";
+    $error_msg = t('msg.denied');
     unset($_POST['edit_user']);
 }
 
@@ -108,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
 
         am2_audit_complete();
         $pdo->commit();
-        $success_msg = "Data $edit_id diperbarui.";
+        $success_msg = t('msg.user_updated', ['id' => $edit_id]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
         $error_msg = am2_safe_error($e, 'users');
@@ -117,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
 
 if (isset($_POST['delete_user'])
         && !am2_admin_owns_user($pdo, $current_admin_id, $admin_role, $_POST['delete_user'])) {
-    $error_msg = "Akses ditolak.";
+    $error_msg = t('msg.denied');
     unset($_POST['delete_user']);
 }
 
@@ -142,7 +144,7 @@ if (isset($_POST['delete_user'])) {
         header("Location: users.php?success=deleted"); exit;
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-        $error_msg = "Gagal menghapus user.";
+        $error_msg = t('msg.user_delete_failed');
     }
 }
 

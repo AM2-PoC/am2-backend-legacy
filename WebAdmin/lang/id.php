@@ -301,6 +301,48 @@ return [
     'nav.channels'        => 'Channels',
     'nav.channel_access'  => 'Akses Channel',
     'nav.live_track'      => 'Live Track',
+
+    /*
+     * The result of a write.
+     *
+     * These were written straight into four pages in Indonesian and never went
+     * through t(), so an English interface answered an action in Indonesian.
+     * The banner made that easy to miss; the toast does not.
+     *
+     * Values arrive as placeholders rather than by concatenation -- the pieces
+     * of a sentence do not sit in the same order in both languages -- and
+     * ':detail' carries whatever am2_safe_error() decided is safe to show.
+     */
+    'msg.user_added'             => 'User :name (User: :id) berhasil didaftarkan.',
+    'msg.user_updated'           => 'Data :id diperbarui.',
+    'msg.user_delete_failed'     => 'Gagal menghapus user.',
+    'msg.denied'                 => 'Akses ditolak.',
+    'msg.channel_added'          => 'Channel :name berhasil dibuat.',
+    'msg.channel_saved'          => 'Perubahan channel berhasil disimpan.',
+    'msg.channel_save_failed'    => 'Gagal memperbarui channel: :detail',
+    'msg.access_saved'           => 'Izin akses channel berhasil diperbarui.',
+    'msg.access_save_failed'     => 'Gagal menyimpan akses: :detail',
+    'msg.delete_failed'          => 'Gagal menghapus: :detail',
+    'msg.authority_saved'        => 'Otoritas akses user berhasil diperbarui.',
+    'msg.db_update_failed'       => 'Gagal memperbarui database: :detail',
+    'msg.admin_not_found'        => 'Admin tidak ditemukan.',
+    'msg.admin_deleted'          => 'Akun admin cabang berhasil dihapus.',
+    'msg.admin_saved'            => 'Konfigurasi admin berhasil disimpan.',
+    'msg.save_failed'            => 'Gagal menyimpan: :detail',
+    'msg.delegation_saved'       => 'Delegasi channel berhasil diperbarui.',
+    'msg.delegation_failed'      => 'Gagal delegasi: :detail',
+
+    'ch.search_units'            => 'Cari unit…',
+    'ch.no_match'                => 'Tidak ada yang cocok.',
+    'acc.search_channels'        => 'Cari channel…',
+    'acc.no_match'               => 'Tidak ada yang cocok.',
+
+    'msg.channel_name_taken'     => 'Gagal: nama channel sudah terdaftar.',
+    'msg.channel_add_failed'     => 'Gagal membuat channel: :detail',
+    'msg.user_id_taken'          => 'ID :id sudah terdaftar.',
+    'msg.user_add_failed'        => 'Gagal mendaftarkan unit: :detail',
+    'msg.db_error'               => 'Kesalahan basis data: :detail',
+
     'nav.activity_log'    => 'Aktivitas Log',
     'nav.settings'        => 'Pengaturan',
     'nav.admin_panel'     => 'Admin Panel',
