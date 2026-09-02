@@ -48,7 +48,6 @@ return [
     'status.checking' => 'Memeriksa relay',
     'status.relay_up' => 'Relay aktif',
     'status.stale'           => 'Relay tidak menjawab',
-    'nav.build'              => 'Build',
     'status.transmitting' => 'memancar',
     'common.retry' => 'Coba lagi',
     'state.error_title' => 'Gagal memuat data',

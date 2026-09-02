@@ -48,7 +48,6 @@ return [
     'status.checking' => 'Checking relay',
     'status.relay_up' => 'Relay up',
     'status.stale'           => 'Relay not answering',
-    'nav.build'              => 'Build',
     'status.transmitting' => 'transmitting',
     'common.retry' => 'Try again',
     'state.error_title' => 'Could not load this',

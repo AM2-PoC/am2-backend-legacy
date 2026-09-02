@@ -686,35 +686,57 @@ body {
     background-attachment: fixed;
 }
 
-.am2-rail-geometry {
+.am2-rail-batik {
     /*
-     * One line, not a second grid.
+     * Kawung at the foot of the sidebar.
      *
-     * The grid was tried here first and it was the wrong instrument twice over:
-     * repeated below the console's own grid it stops being a signature and
-     * becomes a pattern, and at this size the squares ran straight through the
-     * build stamp, reading as a table someone had left behind.
+     * A mask, not an image: the SVG is drawn in solid black and the colour
+     * comes from the token below it, so the pattern follows light and dark, and
+     * the contrast rule that hides the console ground hides this too without a
+     * second declaration.
      *
-     * So the foot takes the other half of the login drawing -- the sweep, at
-     * the same -34deg -- anchored to the corner and passing under the text
-     * rather than across it. One line is enough to say the panel ends here.
+     * Two masks composited: the tile, and a vertical fade so the pattern is
+     * whole along the bottom edge and gone before it reaches the navigation.
+     * Anchored bottom-left, because the column is 272px and a patch in one
+     * corner of it reads as an accident rather than as a border.
+     *
+     * A 64px tile gives four across the column -- large enough that the
+     * interlocking reads as kawung rather than as texture, small enough that
+     * the rail at 72px still shows a whole rosette.
      */
-    position: absolute;
-    right: -12%;
-    bottom: 34%;
-    width: 78%;
-    height: 1px;
-    pointer-events: none;
-    background: linear-gradient(270deg, var(--color-console-line), transparent);
-    opacity: 0.85;
-    transform: rotate(-34deg);
-    transform-origin: right center;
+    height: 10rem;
+    background-color: var(--color-console-line);
+    -webkit-mask-image: url("../image/kawung.svg"),
+        linear-gradient(to top, #000 0%, #000 26%, #0000 88%);
+    mask-image: url("../image/kawung.svg"),
+        linear-gradient(to top, #000 0%, #000 26%, #0000 88%);
+    -webkit-mask-size: 64px 64px, 100% 100%;
+    mask-size: 64px 64px, 100% 100%;
+    -webkit-mask-position: left bottom, 0 0;
+    mask-position: left bottom, 0 0;
+    -webkit-mask-repeat: repeat, no-repeat;
+    mask-repeat: repeat, no-repeat;
+    /*
+     * One value per layer, and only the top one intersects.
+     *
+     * `intersect` alone applies to both, and the bottom layer has nothing
+     * beneath it to intersect with -- an empty backdrop. Chrome answered that
+     * by dropping the tile and keeping the fade, so the batik rendered as a
+     * solid block of amber. The fade is the bottom layer and composites with
+     * the empty backdrop the ordinary way; the tile above it intersects.
+     *
+     * Safari spells the same two operators differently and ignores a mask layer
+     * whose keywords it cannot read, so both spellings are given.
+     */
+    -webkit-mask-composite: source-in, source-over;
+    mask-composite: intersect, add;
+    opacity: 0.8;
 }
 
 @media (prefers-contrast: more) {
     /* Scenery is the first thing to go when someone has asked for contrast. */
     body { background-image: none; }
-    .am2-rail-geometry { display: none; }
+    .am2-rail-batik { display: none; }
 }
 
 [data-theme="dark"] .am2-brand-geometry {
