@@ -376,6 +376,18 @@
 .am2-js [data-reveal] { opacity: 0; }
 
 /*
+ * A page's own message, hidden only while script is known to be working.
+ *
+ * The result of a write used to be a paragraph at the top of the page, and it
+ * is a toast now. That trade is only safe if a browser which never runs the
+ * bundle still sees something: the server renders the sentence into the markup
+ * either way, this hides it while the bundle is expected to turn it into a
+ * toast, and the head's expiry timer -- the same one behind [data-reveal] --
+ * clears .am2-js and hands the paragraph back if the bundle never arrives.
+ */
+.am2-js .am2-notice { display: none; }
+
+/*
  * Reduced motion. Transform, stagger and looping animation go; colour changes
  * stay, because they carry state rather than movement, and removing them makes
  * hover and focus harder to see rather than calmer.

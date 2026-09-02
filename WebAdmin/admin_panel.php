@@ -262,12 +262,17 @@ include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
-<?php if ($success_msg !== ''): ?>
-    <p role="status" class="mb-5 rounded-control border-l-2 border-ok bg-ok/5 py-3 pl-3 pr-3 text-sm"><?= $success_msg ?></p>
-<?php endif; ?>
-<?php if ($error_msg !== ''): ?>
-    <p role="alert" class="mb-5 rounded-control border-l-2 border-bad bg-bad/5 py-3 pl-3 pr-3 text-sm"><?= htmlspecialchars($error_msg) ?></p>
-<?php endif; ?>
+<?php
+/*
+ * One sentence, one place. The shared partial renders it for a browser with no
+ * script and the bundle turns it into a toast for everyone else; a failure is
+ * the one that waits to be dismissed. An error outranks a success when both
+ * are somehow set -- the thing that went wrong is the thing to read.
+ */
+$noticeText = $error_msg !== '' ? $error_msg : $success_msg;
+$noticeOk   = $error_msg === '';
+include 'partials/notice.php';
+?>
 
 <?php include 'partials/table_open.php'; ?>
 
@@ -875,10 +880,18 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             }
         }
         window.HSOverlay?.close(document.querySelector('#am2-bulk-delete'));
-        window.AM2?.toast(
+        /*
+         * Handed to the page that replaces this one, not raised into this one.
+         *
+         * A toast stands for four seconds. This reloaded 900ms after raising
+         * one, so the confirmation for the commonest write in the console was a
+         * flash lasting under a quarter of its life, and the fresh page carried
+         * no trace of it. The reload can stay as quick as it likes now.
+         */
+        window.AM2?.handoff(
             T.done.replace(':ok', String(ok)).replace(':failed', String(failed.length)),
             failed.length === 0);
-        setTimeout(() => window.location.reload(), failed.length ? 2600 : 900);
+        window.location.reload();
     });
 
     /* ── the sheet ────────────────────────────────────────────────────── */

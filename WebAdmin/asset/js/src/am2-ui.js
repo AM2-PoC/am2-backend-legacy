@@ -309,17 +309,103 @@ function toast(what, ok = true) {
     body.textContent = text;
 
     el.append(mark, body);
+
+    /*
+     * A failure waits to be dismissed.
+     *
+     * These carry the database's own words -- a constraint name, a duplicate
+     * key, a refusal with a reason -- and four seconds is not long enough to
+     * read one, let alone act on it. It used to be a banner that stayed on the
+     * page, and turning every banner into a toast would have thrown that away.
+     * A success is different: it says the thing you asked for happened, which
+     * is read at a glance and wanted gone.
+     */
+    if (!ok) {
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'ms-1 shrink-0 rounded px-1 font-mono text-xs text-ink-subtle '
+            + 'transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 '
+            + 'focus-visible:ring-bad/60';
+        close.textContent = '\u00d7';
+        close.setAttribute('aria-label', toastRoot().dataset.dismiss || 'Dismiss');
+        close.addEventListener('click', () => dismiss(el));
+        el.append(close);
+    }
+
     toastRoot().appendChild(el);
 
     if (reduced) {
-        setTimeout(() => el.remove(), 4200);
+        if (ok) setTimeout(() => el.remove(), 4200);
         return;
     }
     animate(el, { opacity: [0, 1], y: [10, 0] }, { duration: T.pop, ease: EASE.enter });
-    setTimeout(() => {
-        animate(el, { opacity: 0, y: 6 }, { duration: T.exit, ease: EASE.exit })
-            .finished.then(() => el.remove());
-    }, 4000);
+    if (ok) dismissAfter(el, 4000);
+}
+
+/** Fade a toast out and take it off the page. */
+function dismiss(el) {
+    if (el.dataset.leaving) return;
+    el.dataset.leaving = '1';
+    if (reduced) { el.remove(); return; }
+    animate(el, { opacity: 0, y: 6 }, { duration: T.exit, ease: EASE.exit })
+        .finished.then(() => el.remove());
+}
+
+function dismissAfter(el, ms) {
+    setTimeout(() => dismiss(el), ms);
+}
+
+/**
+ * Hand a message to the page that is about to replace this one.
+ *
+ * A toast raised immediately before `location.reload()` is destroyed by the
+ * reload -- the bulk actions raised one and reloaded 900ms later, so the only
+ * confirmation an operator got for the commonest write in the console was a
+ * flash lasting under a quarter of the time it was built to stand. Stashing it
+ * means the reload can stay as quick as it likes and the message is still read.
+ *
+ * sessionStorage rather than a query parameter: the message never enters a URL
+ * that could be copied, shared or replayed, and it is gone once shown.
+ */
+const HANDOFF = 'am2:notice';
+
+function handoff(text, ok = true) {
+    try {
+        sessionStorage.setItem(HANDOFF, JSON.stringify({ text: String(text ?? ''), ok: !!ok }));
+    } catch {
+        // A private window can refuse storage. The write is a convenience, and
+        // losing it must not stop the action that raised it.
+    }
+}
+
+/**
+ * Everything a page has to say, said once, on arrival.
+ *
+ * Two sources reach the same place: a message the server rendered into the
+ * page, and one the previous page stashed on its way out. The server's is in
+ * the markup rather than in a script so that a browser which never runs this
+ * bundle still shows it -- `.am2-js .am2-notice` hides it only while script is
+ * known to be working, and the head's expiry timer hands it back if this file
+ * never arrives.
+ */
+function drainNotices() {
+    try {
+        const held = sessionStorage.getItem(HANDOFF);
+        if (held) {
+            sessionStorage.removeItem(HANDOFF);
+            const { text, ok } = JSON.parse(held);
+            if (text) toast(text, ok);
+        }
+    } catch {
+        // Unreadable or malformed: there is nothing to say, which is the same
+        // as having nothing to say.
+    }
+
+    document.querySelectorAll('[data-notice]').forEach((el) => {
+        const text = el.textContent.trim();
+        el.remove();
+        if (text) toast(text, el.dataset.notice !== 'bad');
+    });
 }
 
 /**
@@ -395,7 +481,9 @@ window.addEventListener('pageshow', () => {
     document.documentElement.classList.remove(NAVIGATING);
 });
 
+drainNotices();
+
 window.AM2 = {
-    enterOnce, countTo, revealOnScroll, filtered, toast, emit, qr, initTables,
+    enterOnce, countTo, revealOnScroll, filtered, toast, handoff, emit, qr, initTables,
     prefersReducedMotion, move, playExit, T, EASE, STAGGER,
 };
