@@ -125,10 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_multi_access'])
             am2_audit_complete();
             $pdo->commit();
             syncUserChannels($user_id);
-            $success_msg = "Otoritas akses user berhasil diperbarui.";
+            $success_msg = t('msg.authority_saved');
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-            $error_msg = "Gagal memperbarui database: " . am2_safe_error($e, 'user_access');
+            $error_msg = t('msg.db_update_failed', ['detail' => am2_safe_error($e, 'user_access')]);
         }
     }
 }
@@ -506,7 +506,25 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
             <p class="border-b border-edge px-5 py-2 text-xs text-ink-muted"><?= e('acc.modal_note') ?></p>
 
-            <div class="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+            <!--
+                Search, because this list is every channel the account can see
+                and it is read by looking for one name in it.
+            -->
+            <div class="border-b border-edge px-5 py-2.5">
+                <input type="search" data-channel-filter autocomplete="off"
+                       aria-controls="am2-access-list"
+                       placeholder="<?= e('acc.search_channels') ?>"
+                       aria-label="<?= e('acc.search_channels') ?>"
+                       class="h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink
+                              transition-colors duration-[var(--duration-micro)]
+                              hover:border-edge-strong focus:border-brand focus:outline-none
+                              focus:ring-2 focus:ring-brand/25">
+            </div>
+
+            <div id="am2-access-list" class="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+                <p data-filter-empty hidden class="py-8 text-center text-sm text-ink-muted">
+                    <?= e('acc.no_match') ?>
+                </p>
                 <?php if (!$all_channels): ?>
                     <p class="py-8 text-center text-sm text-ink-muted"><?= e('usr.no_channels_available') ?></p>
                 <?php endif; ?>
@@ -640,6 +658,31 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     const items = [...document.querySelectorAll('[data-item]')];
 
+    /*
+     * Filtering the list.
+     *
+     * Hidden rather than removed: a channel that is ticked and then filtered
+     * out is still ticked, and its checkbox is still in the form, so what is
+     * saved is what was chosen rather than what happened to be on screen when
+     * Save was pressed.
+     */
+    const filterBox = document.querySelector('[data-channel-filter]');
+    const noMatch = document.querySelector('[data-filter-empty]');
+
+    function applyFilter() {
+        const q = (filterBox?.value ?? '').trim().toLowerCase();
+        let shown = 0;
+        for (const item of items) {
+            const name = item.querySelector('label')?.textContent.trim().toLowerCase() ?? '';
+            const on = !q || name.includes(q);
+            item.hidden = !on;
+            if (on) shown += 1;
+        }
+        if (noMatch) noMatch.hidden = shown > 0 || items.length === 0;
+    }
+
+    filterBox?.addEventListener('input', applyFilter);
+
     function paintAccess() {
         for (const item of items) {
             const cid = item.dataset.item;
@@ -676,6 +719,13 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         document.querySelector('[data-default-warning]').textContent = missing ? T.pick_default : '';
         document.querySelector('[data-access-save]').disabled = missing;
     }
+
+    // A dialogue opens showing everything; a filter left over from the last
+    // unit would hide channels this one holds.
+    $('am2-access-edit')?.addEventListener('open.hs.overlay', () => {
+        if (filterBox) filterBox.value = '';
+        applyFilter();
+    });
 
     document.querySelectorAll('[data-pick]').forEach((box) => {
         box.addEventListener('change', () => {

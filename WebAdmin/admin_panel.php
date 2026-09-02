@@ -42,16 +42,16 @@ if (isset($_POST['delete_admin_id'])) {
         $target = $stmt_check->fetch();
 
         if (!$target) {
-            $error_msg = "Admin tidak ditemukan.";
+            $error_msg = t('msg.admin_not_found');
         } elseif (($why = am2_adm_undeletable($target, $my_id)) !== '') {
             $error_msg = t($why);
         } else {
             $stmt = $pdo->prepare("DELETE FROM public.admin WHERE id = ? AND id != ?");
             $stmt->execute([$id_to_delete, $my_id]);
-            $success_msg = "Akun admin cabang berhasil dihapus.";
+            $success_msg = t('msg.admin_deleted');
         }
     } catch (PDOException $e) {
-        $error_msg = "Gagal menghapus: " . am2_safe_error($e, 'admin_panel');
+        $error_msg = t('msg.delete_failed', ['detail' => am2_safe_error($e, 'admin_panel')]);
     }
 
     if ($ajax) {
@@ -112,9 +112,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_admin'])) {
             $stmt->execute([$username, $password, $role, $u_quota, $c_quota, $expired_at,
                             $can_maps, $can_p2p, $can_video]);
         }
-        $success_msg = "Konfigurasi admin berhasil disimpan.";
+        $success_msg = t('msg.admin_saved');
     } catch (PDOException $e) {
-        $error_msg = "Gagal menyimpan: " . am2_safe_error($e, 'admin_panel');
+        $error_msg = t('msg.save_failed', ['detail' => am2_safe_error($e, 'admin_panel')]);
     }
 }
 
@@ -133,10 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_delegation'])) 
             }
         }
         $pdo->commit();
-        $success_msg = "Delegasi channel berhasil diperbarui.";
+        $success_msg = t('msg.delegation_saved');
     } catch (PDOException $e) {
         $pdo->rollBack();
-        $error_msg = "Gagal delegasi: " . am2_safe_error($e, 'admin_panel');
+        $error_msg = t('msg.delegation_failed', ['detail' => am2_safe_error($e, 'admin_panel')]);
     }
 }
 
