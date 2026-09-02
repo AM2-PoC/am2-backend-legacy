@@ -125,29 +125,6 @@ function am2_asset_url(string $path): string
     return $path . '?v=' . $version;
 }
 
-/**
- * The release this panel is being served from, short enough to read aloud.
- *
- * `.release-sha` is written by the builder at the root of every release, so a
- * deploy answers "which build is this?" without the panel having to be told.
- * A checkout that is not a release -- a developer's working copy -- has no such
- * file, and gets nothing rather than a guess.
- *
- * Read once per request and memoised: it is asked for on every page render and
- * the answer cannot change while the request is running.
- */
-function am2_release_build(): string
-{
-    static $build = null;
-    if ($build !== null) {
-        return $build;
-    }
-    $sha = @file_get_contents(__DIR__ . '/../.release-sha');
-    $sha = is_string($sha) ? trim($sha) : '';
-    $build = preg_match('/^[0-9a-f]{7,40}$/', $sha) === 1 ? substr($sha, 0, 8) : '';
-    return $build;
-}
-
 /** Whether the sidebar is collapsed to an icon rail. */
 function am2_sidebar_collapsed(): bool
 {

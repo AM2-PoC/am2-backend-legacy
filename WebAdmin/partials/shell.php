@@ -222,36 +222,21 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
     <!--
         The foot.
 
-        The account menu used to live here and moved to the header, which left a
-        column of nothing under the navigation. What sits here now is the two
-        facts an operator asks for when something is wrong and nobody can say
-        why: whether the relay is answering, and which build they are looking
-        at. One poll paints this and the strip under the header, so the two can
-        never disagree.
+        The account menu used to live here and moved to the header, which left
+        a column of nothing under the navigation. It carries kawung now -- one
+        of the oldest Javanese batik patterns, and the one that is purely
+        geometric, so it survives being drawn as a hairline and sits beside the
+        console's own grid without fighting it.
 
-        The geometry is the login panel's, quieter and fading upward, so the
-        space reads as the foot of the panel rather than as a panel that ran
-        out. In the rail the words go and the dot stays: an icon-width column
-        can still say whether the network is up.
+        Decoration, and only that. It was briefly a relay dot and a build stamp;
+        the space reads better as pattern, and the relay readout it duplicated
+        is still in the strip under the header where it always was.
+
+        The pattern is a mask rather than an image, so its colour is the same
+        token the console ground uses -- it follows the theme and disappears
+        under prefers-contrast: more without a second rule.
     -->
-    <div class="relative shrink-0 overflow-hidden border-t border-edge px-3 py-3.5">
-        <span class="am2-rail-geometry" aria-hidden="true"></span>
-
-        <div class="relative flex flex-col gap-1.5 font-mono text-[11px] uppercase tracking-[0.15em]">
-            <p class="flex items-center gap-2">
-                <span data-relay-dot class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-subtle"></span>
-                <span data-relay-text class="am2-rail-hide truncate text-ink-subtle">
-                    <?= e('status.checking') ?>
-                </span>
-            </p>
-            <?php $build = am2_release_build(); if ($build !== ''): ?>
-                <!-- Absent in a working copy, which has no release to name. -->
-                <p class="am2-rail-hide truncate text-ink-subtle">
-                    <?= e('nav.build') ?> <span class="text-ink-muted"><?= htmlspecialchars($build) ?></span>
-                </p>
-            <?php endif; ?>
-        </div>
-    </div>
+    <div class="am2-rail-batik shrink" aria-hidden="true"></div>
 </aside>
 
 <!--
