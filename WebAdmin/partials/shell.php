@@ -220,12 +220,48 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
     </nav>
 
     <!--
-        Account. Preline dropdown, opening upward out of the sidebar foot:
-        https://preline.co/docs/dropdown.html
-        Everything that is about the operator rather than the network lives
-        here — theme, language, sign out — so the header can stay about the page.
+        The foot.
+
+        The account menu used to live here and moved to the header, which left a
+        column of nothing under the navigation. What sits here now is the two
+        facts an operator asks for when something is wrong and nobody can say
+        why: whether the relay is answering, and which build they are looking
+        at. One poll paints this and the strip under the header, so the two can
+        never disagree.
+
+        The geometry is the login panel's, quieter and fading upward, so the
+        space reads as the foot of the panel rather than as a panel that ran
+        out. In the rail the words go and the dot stays: an icon-width column
+        can still say whether the network is up.
     -->
+    <div class="relative shrink-0 overflow-hidden border-t border-edge px-3 py-3.5">
+        <span class="am2-rail-geometry" aria-hidden="true"></span>
+
+        <div class="relative flex flex-col gap-1.5 font-mono text-[11px] uppercase tracking-[0.15em]">
+            <p class="flex items-center gap-2">
+                <span data-relay-dot class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-subtle"></span>
+                <span data-relay-text class="am2-rail-hide truncate text-ink-subtle">
+                    <?= e('status.checking') ?>
+                </span>
+            </p>
+            <?php $build = am2_release_build(); if ($build !== ''): ?>
+                <!-- Absent in a working copy, which has no release to name. -->
+                <p class="am2-rail-hide truncate text-ink-subtle">
+                    <?= e('nav.build') ?> <span class="text-ink-muted"><?= htmlspecialchars($build) ?></span>
+                </p>
+            <?php endif; ?>
+        </div>
+    </div>
 </aside>
+
+<!--
+    The ground the console sits on is painted on the body itself -- see the
+    `body` background rule in tailwind.src.css. It began as a layer here and
+    drew nothing: body paints an opaque background of its own, and a layer
+    behind that is buried, while a layer in front of it covers the console. As
+    a background there is no painting order to argue with, and no overlay,
+    dropdown or dialogue has to be lifted past it.
+-->
 
 <!--
     Content column. Preline navbar composition:
@@ -395,8 +431,8 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                     bg-card-muted/60 px-4 py-2 font-mono text-[11px] uppercase
                     tracking-[0.15em] lg:px-6">
             <span class="flex shrink-0 items-center gap-1.5">
-                <span id="am2-relay-dot" class="h-1.5 w-1.5 rounded-full bg-ink-subtle"></span>
-                <span id="am2-relay-text" class="text-ink-subtle"><?= e('status.checking') ?></span>
+                <span data-relay-dot class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-subtle"></span>
+                <span data-relay-text class="truncate text-ink-subtle"><?= e('status.checking') ?></span>
             </span>
             <span class="flex shrink-0 items-center gap-1.5 text-ink-subtle">
                 <span id="am2-online" class="text-ink">–</span><?= e('rail.online') ?>
