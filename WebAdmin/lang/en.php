@@ -399,6 +399,8 @@ return [
     'set.current_version'       => 'Announced version',
     'set.copy_url'              => 'Copy the download address',
     'set.copied'                => 'Download address copied.',
+    'set.exporting'             => 'Preparing the export. The download will start shortly.',
+    'set.copy_selected'         => 'No clipboard here. The address is selected and ready to copy.',
     'set.scan_to_install'       => 'Scan to install',
     'set.version_missing'       => 'Release file :file is unavailable. Upload the published APK or publish a different release.',
     'set.no_version'            => 'No administrator-app release has been published.',
