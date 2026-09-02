@@ -7,11 +7,13 @@
     --color-surface-elevated: #ffffff;
     --color-border: #e2d9c6;
     --color-border-strong: #cabda3;
-    /* The hairline the console ground and the sidebar foot are drawn in.
-       Derived from the brand hue so the geometry belongs to the product,
-       and carried at low alpha because it is a 1px grid behind working
-       content -- it has to be found rather than noticed. */
-    --color-console-line: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    /* The hairline the console ground and the sidebar batik are drawn in.
+       Derived from the brand hue so the geometry belongs to the product.
+       Light carries far more of it than dark: the same alpha lifts a hairline
+       much further off a near-black ground than off cream. Measured against
+       the page colour, 16% here came to a contrast ratio of 1.102 while dark's
+       20% came to 1.364 -- present, and below the point of being noticed. */
+    --color-console-line: color-mix(in srgb, var(--color-primary) 44%, transparent);
     --color-text: #0f172a;
     --color-text-muted: #475569;
     --color-text-subtle: #6b6357;
@@ -85,10 +87,7 @@
     --color-surface-elevated: #111827;
     --color-border: #334155;
     --color-border-strong: #475569;
-    /* The hairline the console ground and the sidebar foot are drawn in.
-       Derived from the brand hue so the geometry belongs to the product,
-       and carried at low alpha because it is a 1px grid behind working
-       content -- it has to be found rather than noticed. */
+    /* Dark needs less: see the note in the light block above. */
     --color-console-line: color-mix(in srgb, var(--color-primary) 20%, transparent);
     --color-text: #e5e7eb;
     --color-text-muted: #94a3b8;
