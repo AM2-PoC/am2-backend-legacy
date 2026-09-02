@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "identity": "dedicated-bounded-deploy-interface",
+  "artifact": {
+    "selection": "immutable-archive-sha256",
+    "mutable_references_allowed": false,
+    "read_scope": "approved-private-cache-only",
+    "staging_directory": "dedicated-artifact-ingress-only"
+  },
+  "source_repository": {
+    "access": "none"
+  },
+  "release": {
+    "create_new_immutable_directory": true,
+    "overwrite_existing_directory": false,
+    "activation_requires_separate_approval": true
+  },
+  "services": {
+    "may_restart": ["am2-api", "am2-api-staging"],
+    "may_reload": ["apache2", "nginx"],
+    "arbitrary_service_name_allowed": false
+  },
+  "privileges": {
+    "arbitrary_shell": false,
+    "broad_sudo": false,
+    "runtime_secret_write": false,
+    "rollback_artifact_delete": false,
+    "github_workflow_or_secret_mutation": false
+  }
+}
