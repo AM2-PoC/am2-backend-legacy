@@ -1,0 +1,164 @@
+name: publish backend runtime artifact
+
+on:
+  workflow_run:
+    workflows: ["source checks"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact immutable main commit to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-artifact-${{ github.event.workflow_run.head_sha || inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      archive_sha256: ${{ steps.identity.outputs.archive_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.source_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Confirm immutable main source identity
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse HEAD)
+          test "$source_sha" = "${{ github.event.workflow_run.head_sha || inputs.source_sha }}"
+          test "$(git branch -r --contains "$source_sha" | sed 's/^[[:space:]]*//' | grep -Fx 'origin/main' | wc -l)" -eq 1
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install locked production dependency closure
+        run: npm --prefix server ci --omit=dev --ignore-scripts
+
+      - name: Package and verify sealed runtime artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/am2-backend-artifact"
+          infra/scripts/package-runtime-artifact.sh \
+            --source-root "$GITHUB_WORKSPACE" \
+            --sha "${{ steps.source.outputs.source_sha }}" \
+            --output-dir "$out"
+          infra/scripts/verify-runtime-artifact.sh \
+            --archive "$out/am2-backend-runtime.tar.gz" \
+            --manifest "$out/artifact-manifest.json" \
+            --checksums "$out/SHA256SUMS"
+
+      - name: Record immutable artifact identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/am2-backend-artifact"
+          source_sha="${{ steps.source.outputs.source_sha }}"
+          archive_sha256=$(sha256sum "$out/am2-backend-runtime.tar.gz" | awk '{print $1}')
+          test "$archive_sha256" = "$(python3 - "$out/artifact-manifest.json" <<'PYTHON'
+          import json, sys
+          print(json.load(open(sys.argv[1], encoding='utf-8'))['archive_sha256'])
+          PYTHON
+          )"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          printf 'archive_sha256=%s\n' "$archive_sha256" >> "$GITHUB_OUTPUT"
+          {
+            echo '## Backend artifact candidate'
+            echo
+            echo "- source SHA: \`$source_sha\`"
+            echo "- archive SHA-256: \`$archive_sha256\`"
+            echo '- state: bounded GitHub Actions handoff; private-cache publication is disabled until restricted cache ingress is explicitly configured.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: am2-backend-${{ steps.identity.outputs.source_sha }}-${{ steps.identity.outputs.archive_sha256 }}
+          path: |
+            ${{ runner.temp }}/am2-backend-artifact/am2-backend-runtime.tar.gz
+            ${{ runner.temp }}/am2-backend-artifact/artifact-manifest.json
+            ${{ runner.temp }}/am2-backend-artifact/SHA256SUMS
+            ${{ runner.temp }}/am2-backend-artifact/lockfiles/server-package-lock.json
+            ${{ runner.temp }}/am2-backend-artifact/lockfiles/webadmin-package-lock.json
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-private-cache:
+    needs: package
+    if: vars.ARTIFACT_CACHE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: artifact-cache
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: am2-backend-${{ needs.package.outputs.source_sha }}-${{ needs.package.outputs.archive_sha256 }}
+          path: artifact
+
+      - name: Verify bounded handoff before private publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd artifact
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Install restricted cache publisher identity
+        shell: bash
+        env:
+          ARTIFACT_CACHE_SSH_PRIVATE_KEY: ${{ secrets.ARTIFACT_CACHE_SSH_PRIVATE_KEY }}
+          ARTIFACT_CACHE_KNOWN_HOSTS: ${{ vars.ARTIFACT_CACHE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_CACHE_SSH_PRIVATE_KEY"
+          test -n "$ARTIFACT_CACHE_KNOWN_HOSTS"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$ARTIFACT_CACHE_SSH_PRIVATE_KEY" > ~/.ssh/id_artifact_cache
+          chmod 0600 ~/.ssh/id_artifact_cache
+          printf '%s\n' "$ARTIFACT_CACHE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+
+      - name: Push immutable bytes through forced cache receiver
+        shell: bash
+        env:
+          ARTIFACT_CACHE_HOST: ${{ vars.ARTIFACT_CACHE_HOST }}
+          ARTIFACT_CACHE_USER: ${{ vars.ARTIFACT_CACHE_USER }}
+          ARTIFACT_CACHE_PATH: ${{ vars.ARTIFACT_CACHE_PATH }}
+          SOURCE_SHA: ${{ needs.package.outputs.source_sha }}
+          ARCHIVE_SHA256: ${{ needs.package.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_CACHE_HOST"
+          test -n "$ARTIFACT_CACHE_USER"
+          test -n "$ARTIFACT_CACHE_PATH"
+          rsync -av --protect-args \
+            -e 'ssh -i ~/.ssh/id_artifact_cache -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes' \
+            --rsync-path=am2-artifact-cache-receive \
+            artifact/ \
+            "$ARTIFACT_CACHE_USER@$ARTIFACT_CACHE_HOST:$ARTIFACT_CACHE_PATH/$SOURCE_SHA/$ARCHIVE_SHA256/"

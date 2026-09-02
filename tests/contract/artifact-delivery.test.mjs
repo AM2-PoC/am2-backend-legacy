@@ -314,17 +314,37 @@ test('artifact verifier rejects an external same-basename manifest', { timeout: 
   }
 });
 
-test('CI publishes a checksumed backend runtime artifact', () => {
+test('CI packages a checksumed candidate only after source checks succeed', () => {
   assert.ok(existsSync(workflowPath), 'no CI runtime-artifact publisher exists');
   const workflow = readFileSync(workflowPath, 'utf8');
-  assert.match(workflow, /upload-artifact|gh\s+release\s+upload|oras\s+push|\bscp\b|\brsync\b/i,
-    'CI does not hand its runtime artifact to a retained artifact channel');
-  assert.match(workflow, /SHA256SUMS|sha256sum/i,
-    'CI does not record a checksum for its runtime artifact');
-  assert.match(workflow, /artifact-manifest\.json/,
-    'CI does not publish artifact provenance');
+  assert.match(workflow, /workflow_run:/,
+    'CI artifact publisher is not gated on source checks');
+  assert.match(workflow, /workflows:\s*\[\s*['"]source checks['"]\s*\]/,
+    'CI artifact publisher is not gated on the source-check workflow');
+  assert.match(workflow, /conclusion\s*==\s*['"]success['"]|conclusion == 'success'/,
+    'CI artifact publisher accepts a failed source-check run');
+  assert.match(workflow, /actions\/checkout@v4/,
+    'CI artifact publisher does not checkout source');
+  assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\|\|\s*inputs\.source_sha\s*\}\}/,
+    'CI artifact publisher does not checkout the exact checked source SHA');
+  assert.match(workflow, /npm --prefix server ci --omit=dev --ignore-scripts/,
+    'CI artifact publisher does not install the locked production dependency tree');
+  assert.match(workflow, /package-runtime-artifact\.sh/,
+    'CI artifact publisher does not use the sealed runtime packager');
+  assert.match(workflow, /verify-runtime-artifact\.sh/,
+    'CI artifact publisher does not verify its archive before publication');
+  assert.match(workflow, /upload-artifact@v4/,
+    'CI does not preserve the bounded handoff artifact');
+  assert.match(workflow, /retention-days:\s*90/,
+    'CI handoff artifact retention is not bounded at 90 days');
+  assert.match(workflow, /am2-backend-runtime\.tar\.gz[\s\S]{0,300}artifact-manifest\.json[\s\S]{0,300}SHA256SUMS/,
+    'CI artifact upload omits archive provenance or checksums');
+  assert.match(workflow, /ARTIFACT_CACHE_SSH_PRIVATE_KEY/,
+    'CI publisher does not require the restricted private-cache identity');
+  assert.match(workflow, /known_hosts/,
+    'CI publisher does not pin private-cache host verification');
   assert.match(workflow, /concurrency:/,
     'two CI runs can publish competing bytes into one artifact channel');
-  assert.match(workflow, /source_sha|GITHUB_SHA/,
+  assert.match(workflow, /source_sha|head_sha/,
     'CI artifact publication is not bound to its exact source');
 });
