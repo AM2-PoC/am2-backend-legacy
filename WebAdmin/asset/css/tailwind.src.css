@@ -644,6 +644,79 @@
     transform-origin: left center;
 }
 
+/*
+ * The console ground, and the foot of the sidebar.
+ *
+ * Both are the login panel's geometry at a lower volume: same colour
+ * expression, same 56px module. Reusing the drawing rather than inventing a
+ * second one is what keeps the two screens reading as one product, which is
+ * why these sit beside it rather than in a file of their own.
+ *
+ * What changes is the volume and where the eye is allowed to find it. On login
+ * the geometry fills an empty panel and can be the loudest thing on the left.
+ * Here it lies under a working console, so it is quieter, and it appears only
+ * where nothing else is.
+ */
+
+/*
+ * The ground is the body's own background, not a layer over it.
+ *
+ * A layer was the obvious way and it drew nothing: body paints an opaque
+ * background of its own, and an element at z-index -10 paints before that, so
+ * the grid was there and buried. Positive z-index would have shown it and put
+ * it over the content instead. As a background there is no painting order to
+ * argue with -- it is behind everything in the document by construction, and no
+ * overlay, dropdown or dialogue has to be lifted past it.
+ *
+ * The first layer is the page colour fading downward: it covers the grid
+ * completely at the top -- where the header, the status strip and the first
+ * card sit, the busiest band on the screen -- and lets it through only in the
+ * lower half, which is the emptiness this is for. `fixed` so it behaves as
+ * ground rather than scrolling with the document.
+ */
+body {
+    background-image:
+        linear-gradient(to bottom,
+            var(--color-bg) 0%,
+            var(--color-bg) 34%,
+            color-mix(in srgb, var(--color-bg) 12%, transparent) 100%),
+        linear-gradient(to right, var(--color-console-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--color-console-line) 1px, transparent 1px);
+    background-size: auto, 56px 56px, 56px 56px;
+    background-attachment: fixed;
+}
+
+.am2-rail-geometry {
+    /*
+     * One line, not a second grid.
+     *
+     * The grid was tried here first and it was the wrong instrument twice over:
+     * repeated below the console's own grid it stops being a signature and
+     * becomes a pattern, and at this size the squares ran straight through the
+     * build stamp, reading as a table someone had left behind.
+     *
+     * So the foot takes the other half of the login drawing -- the sweep, at
+     * the same -34deg -- anchored to the corner and passing under the text
+     * rather than across it. One line is enough to say the panel ends here.
+     */
+    position: absolute;
+    right: -12%;
+    bottom: 34%;
+    width: 78%;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(270deg, var(--color-console-line), transparent);
+    opacity: 0.85;
+    transform: rotate(-34deg);
+    transform-origin: right center;
+}
+
+@media (prefers-contrast: more) {
+    /* Scenery is the first thing to go when someone has asked for contrast. */
+    body { background-image: none; }
+    .am2-rail-geometry { display: none; }
+}
+
 [data-theme="dark"] .am2-brand-geometry {
     color: color-mix(in srgb, var(--color-primary) 56%, #334155);
     opacity: 0.4;

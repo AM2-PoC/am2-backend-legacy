@@ -123,6 +123,27 @@
      * Reads get-users-ajax.php, the same session-scoped endpoint the tracking
      * page polls, so a branch admin only ever counts its own units. */
     const $ = (id) => document.getElementById(id);
+
+    /*
+     * Two places say whether the relay is up: the strip under the header and
+     * the foot of the sidebar. Both are painted from one poll and addressed by
+     * attribute rather than by id, because two elements cannot share an id and
+     * the answer must not differ between them -- a green dot in one corner and
+     * an amber one in the other is worse than either on its own.
+     */
+    const RELAY_UP = <?= json_encode(t('status.relay_up'), JSON_UNESCAPED_UNICODE) ?>;
+    const RELAY_STALE = <?= json_encode(t('status.stale'), JSON_UNESCAPED_UNICODE) ?>;
+
+    function relay(up) {
+        document.querySelectorAll('[data-relay-dot]').forEach((dot) => {
+            dot.className = 'h-1.5 w-1.5 shrink-0 rounded-full ' + (up ? 'bg-ok' : 'bg-warn');
+        });
+        document.querySelectorAll('[data-relay-text]').forEach((el) => {
+            el.textContent = up ? RELAY_UP : RELAY_STALE;
+            el.className = 'truncate ' + (up ? 'text-ok' : 'text-warn');
+        });
+    }
+
     async function pollStatus() {
         try {
             const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
@@ -130,9 +151,7 @@
             const users = await res.json();
             const tx = users.filter((u) => Number(u.is_speaking) === 1).length;
 
-            $('am2-relay-dot').className = 'h-1.5 w-1.5 rounded-full bg-ok';
-            $('am2-relay-text').textContent = <?= json_encode(t('status.relay_up')) ?>;
-            $('am2-relay-text').className = 'text-ok';
+            relay(true);
             window.AM2?.countTo($('am2-online'), users.length);
             window.AM2?.countTo($('am2-tx'), tx);
             // The one pulse in the application, and only while it is true.
@@ -141,7 +160,7 @@
             $('am2-stale').classList.add('hidden');
         } catch {
             // Say the numbers are old rather than show them as if they were live.
-            $('am2-relay-dot').className = 'h-1.5 w-1.5 rounded-full bg-warn';
+            relay(false);
             $('am2-stale').classList.remove('hidden');
         }
     }
