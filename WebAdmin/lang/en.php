@@ -301,6 +301,47 @@ return [
     'nav.channels'        => 'Channels',
     'nav.channel_access'  => 'Channel Access',
     'nav.live_track'      => 'Live Track',
+    /*
+     * The result of a write.
+     *
+     * These were written straight into four pages in Indonesian and never went
+     * through t(), so an English interface answered an action in Indonesian.
+     * The banner made that easy to miss; the toast does not.
+     *
+     * Values arrive as placeholders rather than by concatenation -- the pieces
+     * of a sentence do not sit in the same order in both languages -- and
+     * ':detail' carries whatever am2_safe_error() decided is safe to show.
+     */
+    'msg.user_added'             => 'Unit :name (User: :id) registered.',
+    'msg.user_updated'           => 'Unit :id updated.',
+    'msg.user_delete_failed'     => 'Could not delete the unit.',
+    'msg.denied'                 => 'Access denied.',
+    'msg.channel_added'          => 'Channel :name created.',
+    'msg.channel_saved'          => 'Channel changes saved.',
+    'msg.channel_save_failed'    => 'Could not update the channel: :detail',
+    'msg.access_saved'           => 'Channel access updated.',
+    'msg.access_save_failed'     => 'Could not save the access: :detail',
+    'msg.delete_failed'          => 'Could not delete: :detail',
+    'msg.authority_saved'        => 'Unit access authority updated.',
+    'msg.db_update_failed'       => 'Could not update the database: :detail',
+    'msg.admin_not_found'        => 'Administrator not found.',
+    'msg.admin_deleted'          => 'Branch administrator account deleted.',
+    'msg.admin_saved'            => 'Administrator configuration saved.',
+    'msg.save_failed'            => 'Could not save: :detail',
+    'msg.delegation_saved'       => 'Channel delegation updated.',
+    'msg.delegation_failed'      => 'Could not delegate: :detail',
+
+    'ch.search_units'            => 'Search units…',
+    'ch.no_match'                => 'Nothing matches.',
+    'acc.search_channels'        => 'Search channels…',
+    'acc.no_match'               => 'Nothing matches.',
+
+    'msg.channel_name_taken'     => 'That channel name is already registered.',
+    'msg.channel_add_failed'     => 'Could not create the channel: :detail',
+    'msg.user_id_taken'          => 'ID :id is already registered.',
+    'msg.user_add_failed'        => 'Could not register the unit: :detail',
+    'msg.db_error'               => 'Database error: :detail',
+
     'nav.activity_log'    => 'Activity Log',
     'nav.settings'        => 'Settings',
     'nav.admin_panel'     => 'Admin Panel',

@@ -101,7 +101,7 @@ try {
 
 
 } catch (PDOException $e) {
-    die("Kesalahan Database: " . am2_safe_error($e, 'dashboard'));
+    die(htmlspecialchars(t('msg.db_error', ['detail' => am2_safe_error($e, 'dashboard')])));
 }
 
 if (empty($ptt_activity)) {
