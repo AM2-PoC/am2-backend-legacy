@@ -505,23 +505,20 @@ include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
-<!--
-    Always rendered, empty or not: the upload swaps this node in from the
-    response rather than reloading the page, so it needs somewhere to land.
--->
-<div id="am2-page-alert">
-    <?php if ($msg !== '' || $error !== ''): ?>
-        <div role="<?= $error !== '' ? 'alert' : 'status' ?>" data-kpi
-             class="mb-4 flex items-start gap-2.5 rounded-control border px-3 py-3 text-sm
-                    <?= $error !== '' ? 'border-bad/40 border-l-2 border-l-bad bg-bad/5'
-                                      : 'border-ok/40 border-l-2 border-l-ok bg-ok/5' ?>">
-            <span class="mt-px shrink-0 <?= $error !== '' ? 'text-bad' : 'text-ok' ?>" aria-hidden="true">
-                <?= am2_icon($error !== '' ? 'alert' : 'shield', 'h-4 w-4') ?>
-            </span>
-            <span><?= htmlspecialchars($error !== '' ? $error : $msg) ?></span>
-        </div>
-    <?php endif; ?>
-</div>
+<?php
+/*
+ * One sentence, one place -- the same partial every other page uses. The server
+ * renders it for a browser with no script, and the bundle turns it into a
+ * toast; a failure waits to be dismissed rather than expiring.
+ *
+ * This used to be a node the APK upload swapped in from its response. Nothing
+ * uploads through the panel any more -- releases arrive from the pipeline --
+ * and nothing had referenced the node since.
+ */
+$noticeText = $error !== '' ? $error : $msg;
+$noticeOk   = $error === '';
+include 'partials/notice.php';
+?>
 
 <!--
     Scope of the account, as three counts. Each one is a link, because each one
@@ -998,14 +995,15 @@ include 'partials/shell.php';
             <!-- A native submit, deliberately: the response to this POST is the
                  dump itself, streamed by passthru(). Sending it through fetch()
                  would download the file into memory and never hand it over. -->
-            <form method="POST" class="shrink-0">
+            <form method="POST" class="shrink-0" data-export>
                 <?= am2_csrf_field() ?>
                 <button type="submit" name="export_db" value="1"
                         class="h-11 w-full rounded-control border border-edge px-5 font-mono
                                text-[11px] font-semibold uppercase tracking-[0.15em] text-ink
                                transition-colors duration-[var(--duration-micro)]
                                hover:border-brand hover:text-brand focus:outline-none
-                               focus-visible:ring-2 focus-visible:ring-brand/60 sm:w-auto">
+                               focus-visible:ring-2 focus-visible:ring-brand/60
+                               disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
                     <?= e('set.export_action') ?>
                 </button>
             </form>
@@ -1219,6 +1217,8 @@ include 'partials/shell.php';
         'no_drop'    => t('set.warn_no_drop'),
         'partial'    => t('set.warn_partial_read'),
         'not_sql'    => t('set.err_sql_type'),
+        'exporting'  => t('set.exporting'),
+        'selected'   => t('set.copy_selected'),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
     const bytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
@@ -1294,6 +1294,10 @@ include 'partials/shell.php';
             } catch {
                 // Clipboard needs a secure context and permission; selecting
                 // the text is the fallback that always works.
+                //
+                // It used to do it in silence, which reads as a button that
+                // does nothing: the address was selected and waiting, and
+                // nothing on screen said so.
                 const code = btn.previousElementSibling;
                 if (!code) return;
                 const r = document.createRange();
@@ -1301,7 +1305,32 @@ include 'partials/shell.php';
                 const sel = getSelection();
                 sel.removeAllRanges();
                 sel.addRange(r);
+                window.AM2?.toast(T.selected, false);
             }
+        });
+    });
+
+    /*
+     * Exporting says something, because the response is a file.
+     *
+     * A native submit whose response carries Content-Disposition never replaces
+     * the page, so nothing rendered, no banner appeared, and a dump of any size
+     * was several seconds of a console that looked like it had ignored the
+     * click -- which is answered by clicking again.
+     *
+     * What is claimed here is only what is known: the request went. The page is
+     * given no completion event for a download it did not fetch itself, so the
+     * button comes back on a timer rather than pretending to know the file
+     * arrived. Long enough that a second press is deliberate; short enough that
+     * the control is never stuck.
+     */
+    document.querySelectorAll('[data-export]').forEach((form) => {
+        form.addEventListener('submit', () => {
+            const btn = form.querySelector('button[type="submit"]');
+            window.AM2?.toast(T.exporting);
+            if (!btn) return;
+            btn.disabled = true;
+            setTimeout(() => { btn.disabled = false; }, 6000);
         });
     });
 
