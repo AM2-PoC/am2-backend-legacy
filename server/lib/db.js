@@ -81,6 +81,73 @@ const runCleanup = async () => {
  * Unconditional, because the premise is: this process has no connections yet.
  * It corrects session state and nothing else.
  */
+/*
+ * Whether this process is the relay for this database, or only visiting it.
+ *
+ * The premise under resetSessions() and the boot-time cleanup is "this process
+ * has no connections yet". That is true of the process and false of the
+ * database, which is shared. infra/scripts/smoke-release.sh proves a candidate
+ * release can cold-start by running server.js against the real environment file
+ * on a loopback port -- so every deploy started a second relay against
+ * production, and that second relay reset every live session and deleted logs
+ * before exiting.
+ *
+ * Measured on production: the busiest unit on the network, 137 transmissions in
+ * fifteen minutes and one seven seconds earlier, sat at status='offline' with
+ * its row untouched since login. Live Track selects on status='online', so it
+ * had been invisible on the map for hours while transmitting perfectly.
+ *
+ * A session-scoped advisory lock says it exactly: whoever holds it is the relay
+ * for this database. The real relay takes it at boot and keeps it for its
+ * lifetime; a probe cannot take it, learns it is a visitor, and skips every
+ * boot-time write while still proving it can start, connect and answer.
+ *
+ * No cooperation is needed from whoever launches the process, which is the
+ * point -- a flag the caller has to remember is a flag the next caller forgets.
+ * On a genuine cold start nobody holds the lock, it is taken, and the reset runs
+ * as it always did.
+ *
+ * The key is arbitrary and permanent; changing it would let two relays each
+ * believe they own the same database.
+ */
+const RELAY_OWNER_LOCK_KEY = 0x414d3201; // "AM2" + 1
+
+let relayOwnership = null;
+
+const claimRelayOwnership = async () => {
+    if (relayOwnership) return relayOwnership;
+    relayOwnership = (async () => {
+        try {
+            // A dedicated client, held for the life of the process: an advisory
+            // lock belongs to a session, and a pooled connection handed back
+            // would drop it the moment it was reused.
+            const client = await pool.connect();
+            const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS held', [RELAY_OWNER_LOCK_KEY]);
+            if (rows[0]?.held !== true) {
+                client.release();
+                console.log('\u{1F50E} Another relay owns this database; starting as a probe and touching nothing.');
+                return false;
+            }
+            // Never released and never returned to the pool. Holding it is the
+            // statement being made.
+            client.on('error', (err) => {
+                console.error('\u274C Relay ownership connection error:', err.message);
+            });
+            return true;
+        } catch (err) {
+            /*
+             * A relay that will not start because it could not ask who owns the
+             * database is worse than one that starts without the answer. It
+             * assumes it is a visitor, which costs a stale roster at worst and
+             * cannot corrupt a live one.
+             */
+            console.error('\u274C Relay ownership check failed:', err.message);
+            return false;
+        }
+    })();
+    return relayOwnership;
+};
+
 const resetSessions = async () => {
     try {
         const res = await pool.query(
@@ -237,4 +304,5 @@ async function channelPermission(userId, channelSlug) {
 
 module.exports = {
     issueDeviceToken, userForDeviceToken, revokeDeviceTokens,
-    resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission };
+    resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission,
+    claimRelayOwnership };

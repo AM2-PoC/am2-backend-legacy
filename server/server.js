@@ -37,6 +37,7 @@ const {
 
 const {
     resetSessions, pool, redisClient, connectRedis, startCleanup, createLog,
+    claimRelayOwnership,
 } = require('./lib/db');
 const { commitLoginSession, LoginSessionError } = require('./lib/login-session');
 const { registerRoutes } = require('./lib/routes');
@@ -44,10 +45,28 @@ const { attachProtocol } = require('./lib/protocol');
 const { installShutdown } = require('./lib/shutdown');
 
 connectRedis();
-startCleanup();
-// Before any socket is accepted: nobody can be connected to a process that has
-// only just started, so anything the previous one left marked online is wrong.
-resetSessions();
+
+/*
+ * Everything that writes at boot waits to find out whether this process is the
+ * relay for this database or only visiting it.
+ *
+ * Both of these were unconditional. The smoke test starts a candidate release
+ * against the real environment file to prove it can cold-start, so every deploy
+ * ran them against production: resetSessions() marked every connected unit
+ * offline -- taking them off Live Track while they were still transmitting --
+ * and startCleanup() ran its DELETE immediately rather than on its daily timer.
+ *
+ * A probe still starts, connects, and answers, which is all the smoke test was
+ * ever asking. It simply stops writing to a database it does not own.
+ */
+claimRelayOwnership().then((owned) => {
+    if (!owned) return;
+    startCleanup();
+    // Before any socket is accepted: nobody can be connected to a process that
+    // has only just started, so anything the previous one left marked online is
+    // wrong.
+    resetSessions();
+});
 
 // --- MIDDLEWARE ---
 // Was wildcard. The relay is called by the panel over localhost and by the
