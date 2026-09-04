@@ -19,10 +19,23 @@ import { asSuper, BASE, HOST, SRC } from './helpers.mjs';
 let sup;
 before(async () => { sup = await asSuper(); });
 
-/** What the endpoint actually serves to a handset. */
+/**
+ * What the endpoint serves to a handset asking for an update.
+ *
+ * With a session, because that is the only way it is ever asked: the check is a
+ * button on SettingsActivity, and that screen is reached through the navigation
+ * drawer in BaseActivity -- after signing in. This helper used to call
+ * anonymously, which stopped being a faithful simulation when api_*.php began
+ * requiring a session; it then reported "the endpoint refuses to serve" for
+ * every version, including correct ones.
+ *
+ * A handset that cannot sign in is not cut off from recovery: the manifest and
+ * the APK are plain files under /update/, served by the web server without
+ * touching PHP, so neither passes through this guard.
+ */
 async function advertised() {
     const res = await fetch(`${BASE}/api_settings.php?action=check_update`, {
-        headers: { Host: HOST },
+        headers: { Host: HOST, Cookie: sup },
     });
     return { status: res.status, body: await res.json() };
 }
@@ -44,10 +57,18 @@ async function shelf(locale = 'id') {
     const start = html.indexOf('id="am2-shelf-version"');
     assert.ok(start > 0, 'the distribution card is not on the page');
 
-    const SECTION = '<section class="rounded-control border border-edge p-4">';
-    const first = html.indexOf(SECTION, start);
-    assert.ok(first > 0, 'the admin channel section is not on the page');
-    const second = html.indexOf(SECTION, first + SECTION.length);
+    /*
+     * Matched on the classes that carry meaning, not on the exact attribute
+     * string. Pinning the literal broke the moment `min-w-0` was added to stop
+     * the card sizing itself to an unbreakable URL and overflowing its column
+     * -- a correct fix, reported as a missing section. A test that fails when a
+     * utility class is added is testing the stylesheet, not the page.
+     */
+    const cards = [...html.matchAll(/<section class="[^"]*\brounded-control\b[^"]*\bborder-edge\b[^"]*">/g)]
+        .filter((m) => m.index > start);
+    assert.ok(cards.length > 0, 'the admin channel section is not on the page');
+    const first = cards[0].index;
+    const second = cards.length > 1 ? cards[1].index : -1;
     return html.slice(first, second > first ? second : html.length);
 }
 

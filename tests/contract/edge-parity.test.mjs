@@ -17,7 +17,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,24 +87,48 @@ test('stable admin update URLs cannot cache one half of a release set', () => {
 });
 
 test('stable Client update URLs cannot cache one half of a release set', () => {
-    const source = read('infra/nginx/am2-api.conf');
-    assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
-        'generic API proxying owns the Client update release set');
-    for (const name of ['version.json', 'update.apk']) {
-        const escaped = name.replace('.', '\\.');
-        const match = source.match(new RegExp(
-            `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
-        assert.ok(match, `production API has no exact cache guard for ${name}`);
-        assert.match(match[0],
-            /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
-            `${name} can remain stale while its release-set peer changes`);
-        assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
-            `${name} returns conflicting upstream and edge cache policies`);
-        assert.match(match[0], /expires\s+off/, `${name} inherits an expiry`);
-    }
-    assert.match(source,
-        /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
-        'non-canonical Client update files remain public');
+  const source = read('infra/nginx/am2-api.conf');
+  assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
+    'generic API proxying owns the Client update release set');
+  for (const name of ['version.json', 'update.apk']) {
+    const escaped = name.replace('.', '\\.');
+    const match = source.match(new RegExp(
+        `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
+    assert.ok(match, `production API has no exact cache guard for ${name}`);
+    assert.match(match[0],
+        /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+        `${name} can remain stale while its release-set peer changes`);
+    assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
+        `${name} returns conflicting upstream and edge cache policies`);
+    assert.match(match[0], /expires\s+off/, `${name} inherits an expiry`);
+  }
+  assert.match(source,
+    /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
+    'non-canonical Client update files remain public');
+});
+
+test('staging Client update URLs have the same closed release-set boundary', () => {
+  const path = 'infra/nginx/am2-api-staging.conf';
+  assert.ok(existsSync(join(ROOT, path)),
+    'staging Client edge configuration is host-only and cannot receive source review');
+  const source = read(path);
+  assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
+    'staging lets the generic API proxy own the Client update release set');
+  for (const name of ['version.json', 'update.apk']) {
+    const escaped = name.replace('.', '\\.');
+    const match = source.match(new RegExp(
+        `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
+    assert.ok(match, `staging API has no exact cache guard for ${name}`);
+    assert.match(match[0],
+      /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+      `staging ${name} can remain stale while its release-set peer changes`);
+    assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
+      `staging ${name} returns conflicting upstream and edge cache policies`);
+    assert.match(match[0], /expires\s+off/, `staging ${name} inherits an expiry`);
+  }
+  assert.match(source,
+    /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
+    'staging serves non-canonical files from the Client update directory');
 });
 
 test('every WebAdmin root redirects explicitly to login', () => {
@@ -143,8 +167,8 @@ test('development deny precedes generic edge regex locations', () => {
     }
 });
 
-test('every Apache WebAdmin vhost strips rendered implementation commentary', () => {
-    const filter = read('infra/php/webadmin-output-filter.php');
+test('the prepended file strips rendered implementation commentary', () => {
+    const filter = read('infra/php/webadmin-prepend.php');
     assert.match(filter, /ob_start/);
     assert.match(filter, /preg_replace/);
     assert.match(filter, /<!--/);
@@ -152,15 +176,24 @@ test('every Apache WebAdmin vhost strips rendered implementation commentary', ()
         'the output filter does not use the response Content-Type');
     assert.doesNotMatch(filter, /doctype|<html/i,
         'the output filter infers MIME type from arbitrary response bytes');
+    /*
+     * The directive is no longer written into the vhosts. It now lives in PHP's
+     * own conf.d, installed by infra/scripts/install-webadmin-guard.sh, because
+     * the same file also carries the authentication net -- and the migration
+     * plan retires Apache, which would have taken a vhost directive with it
+     * silently and in the direction of open.
+     */
     for (const f of APACHE_VHOSTS) {
-        assert.match(read(f),
-            /php_value\s+auto_prepend_file\s+\/etc\/am2\/php\/webadmin-output-filter\.php/,
-            `${f} can emit private HTML comments`);
+        assert.doesNotMatch(read(f), /php_value\s+auto_prepend_file/,
+            `${f} still pins the prepend to Apache, which is being retired`);
     }
+    assert.match(read('infra/scripts/install-webadmin-guard.sh'),
+        /auto_prepend_file = \$installed/,
+        'nothing installs the prepend into PHP configuration');
 });
 
 test('output filter changes HTML comments but preserves explicit non-HTML bytes', () => {
-    const filter = join(ROOT, 'infra/php/webadmin-output-filter.php');
+    const filter = join(ROOT, 'infra/php/webadmin-prepend.php');
     const run = (contentType, body) => execFileSync('php', [
         '-r',
         `putenv('AM2_OUTPUT_FILTER_CONTENT_TYPE=' . $argv[1]); require $argv[2]; echo $argv[3];`,

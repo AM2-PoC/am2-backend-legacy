@@ -1,13 +1,17 @@
 // The api_*.php layer and the authorization behaviour of the whole panel.
 //
-// Read the second describe block before changing anything: it records
-// behaviour that is wrong. Those tests exist so that the security release has
-// to change them deliberately, and so that nothing else changes them by
-// accident in the meantime.
+// The second describe block used to be headed KNOWN BROKEN and recorded
+// behaviour that was wrong: an anonymous caller naming its own admin_id and
+// role was served. It carried the instruction that the security release had to
+// change it deliberately. This is that change -- made after the hole was
+// exploited on production on 2026-09-04, which is a more expensive way to
+// learn that a test recording a hole is not the same as a test closing one.
+//
+// Every call here now carries a session, because there is no other way in.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    asSuper, asBranchA, get, postForm, json, sqlOne, ctAdminId, BASE, EDGE, NODE_URL,
+    asSuper, asBranchA, get, postForm, json, sqlOne, ctAdminId, BASE, EDGE, HOST, NODE_URL,
 } from './helpers.mjs';
 
 let sup, branchA;
@@ -21,32 +25,36 @@ describe('api_*.php response contracts (consumed by the Admin Native app)', () =
         assert.equal(body.success, false);
         assert.ok('message' in body, 'api_*.php uses message, unlike users.php which uses msg');
 
-        // This is why the security release cannot simply require a PHP session
-        // on these files: there is nothing here for a client to carry forward.
+        // A failed sign-in must hand out nothing at all -- no session, no
+        // token. This is the request that was answered 401 at 11:30:54 on
+        // 2026-09-04, five minutes before the operator whose login had just
+        // failed deleted an admin account through an endpoint that served him
+        // anyway.
         const res = await postForm('/api_login.php', null, {
             username: 'nobody_at_all', password: 'wrong',
         });
+        assert.equal(res.status, 401, 'a refused sign-in must say so in the status');
         const cookies = res.headers.getSetCookie?.() ?? [];
         assert.ok(!cookies.some((c) => /token|jwt|bearer/i.test(c)),
-            'no token is issued today');
+            'a token is issued to a caller who failed to sign in');
     });
 
     test('api_dashboard_stats.php keeps its key names', async () => {
-        const body = await json(await get('/api_dashboard_stats.php?admin_id=1&role=superadmin', null));
+        const body = await json(await get('/api_dashboard_stats.php?admin_id=1&role=superadmin', sup));
         for (const k of ['total_user', 'user_online', 'total_channel']) {
             assert.ok(k in body, `api_dashboard_stats lost ${k}`);
         }
     });
 
     test('api_dashboard_chart.php answers labels and values', async () => {
-        const body = await json(await get('/api_dashboard_chart.php?admin_id=1&role=superadmin', null));
+        const body = await json(await get('/api_dashboard_chart.php?admin_id=1&role=superadmin', sup));
         assert.ok(Array.isArray(body.labels) && Array.isArray(body.values));
         assert.equal(body.labels.length, body.values.length);
         body.values.forEach((v) => assert.equal(typeof v, 'number'));
     });
 
     test('api_logs.php keeps the indonesian key names the mobile app reads', async () => {
-        const body = await json(await get('/api_logs.php?category=ALL&admin_id=1&role=superadmin', null));
+        const body = await json(await get('/api_logs.php?category=ALL&admin_id=1&role=superadmin', sup));
         assert.ok(Array.isArray(body));
         assert.ok(body.length > 0, 'staging must carry log rows for this assertion to bite');
         for (const k of ['aksi', 'jam', 'tanggal', 'pelaksana', 'kategori']) {
@@ -57,13 +65,13 @@ describe('api_*.php response contracts (consumed by the Admin Native app)', () =
 
     test('api_users.php action=get_user_channels returns a bare id array', async () => {
         const body = await json(await get(
-            '/api_users.php?action=get_user_channels&u_id=CT_A1&admin_id=1&role=superadmin', null));
+            '/api_users.php?action=get_user_channels&u_id=CT_A1&admin_id=1&role=superadmin', sup));
         assert.ok(Array.isArray(body));
     });
 
     test('api_settings.php action=check_update keeps its three keys', async () => {
         const body = await json(await get(
-            '/api_settings.php?action=check_update&admin_id=1&role=superadmin', null));
+            '/api_settings.php?action=check_update&admin_id=1&role=superadmin', sup));
         for (const k of ['latest_version', 'download_url', 'changelog']) {
             assert.ok(k in body, `check_update lost ${k}`);
         }
@@ -72,21 +80,50 @@ describe('api_*.php response contracts (consumed by the Admin Native app)', () =
     test('failures answer HTTP 200 with success:false, not an error status', async () => {
         // Widely relied on by the mobile client. Changing it is a breaking change
         // even though it looks like a bug fix.
-        const res = await get('/api_users.php?action=nonsense&admin_id=1&role=superadmin', null);
+        const res = await get('/api_users.php?action=nonsense&admin_id=1&role=superadmin', sup);
         assert.equal(res.status, 200);
     });
 });
 
-describe('KNOWN BROKEN — locked here so the security release must change them on purpose', () => {
-    test('api_*.php accept an unauthenticated caller claiming to be superadmin', async () => {
-        // Tightening the API credential will make this fail. When it does, update
-        // this test; do not delete it.
+describe('CLOSED — the hole that was exploited on 2026-09-04', () => {
+    test('an anonymous caller claiming superadmin is refused', async () => {
+        /*
+         * This test used to assert status 200 and a full body, under the
+         * heading KNOWN BROKEN, with the note "tightening the API credential
+         * will make this fail; when it does, update this test".
+         *
+         * It was not tightened in time. At 11:35:58 on 2026-09-04 a caller in
+         * exactly this position -- no session, no key, naming its own role --
+         * was answered 200 by api_admin_panel.php and deleted an admin row,
+         * which cascaded to 186 units, 191 channel memberships and 114,514 log
+         * rows.
+         */
         const res = await get('/api_dashboard_stats.php?admin_id=1&role=superadmin', null);
-        assert.equal(res.status, 200, 'today: no authentication at all');
-        const body = await json(res);
-        assert.ok('total_user' in body, 'today: full data returned to an anonymous caller');
+        assert.equal(res.status, 401, 'an unauthenticated caller is still served');
     });
 
+    test('the endpoint that was used is refused too', async () => {
+        // Named separately from the one above: this is the specific URL that
+        // did the damage, and a regression here has a body count.
+        const res = await fetch(`${BASE}/api_admin_panel.php`, {
+            method: 'POST', redirect: 'manual',
+            headers: { Host: HOST, Accept: 'application/json',
+                       'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=delete&id=4',
+        });
+        assert.equal(res.status, 401);
+    });
+
+    test('a session cannot widen its own scope by naming another admin', async () => {
+        // The other half of the same defect: identity used to be whatever the
+        // request said whenever the session did not object. A branch session
+        // asking as the superadmin must still answer as the branch.
+        const claimed = await json(
+            await get(`/api_dashboard_chart.php?admin_id=${ctAdminId('ct_super')}&role=superadmin`, branchA));
+        const honest = await json(await get('/api_dashboard_chart.php', branchA));
+        assert.deepEqual(claimed.values, honest.values,
+            'naming another admin in the query string changed the answer');
+    });
 });
 
 describe('node relay routes', () => {
@@ -154,16 +191,19 @@ describe('tenant scoping, corrected in the security release', () => {
     // BROKEN block above. They are kept, not deleted, so a regression reads as
     // a failure rather than as silence.
 
-    test('omitting admin_id narrows the result to nothing, never widens it', async () => {
-        const scoped = await json(await get('/api_get_users.php?admin_id=6&role=admin', null));
-        const unscoped = await json(await get('/api_get_users.php?role=admin', null));
-        assert.ok(Array.isArray(scoped) && Array.isArray(unscoped));
-        assert.equal(unscoped.length, 0,
-            'a branch request with no branch must return nothing, not everything');
+    test('the roster is scoped by the session, not by the query string', async () => {
+        // Was: "omitting admin_id narrows to nothing". admin_id is no longer
+        // read at all, so the property worth asserting is the stronger one --
+        // what the caller writes in the URL cannot change what it sees.
+        const honest = await json(await get('/api_get_users.php', branchA));
+        const greedy = await json(await get('/api_get_users.php?admin_id=1&role=superadmin', branchA));
+        assert.ok(Array.isArray(honest) && Array.isArray(greedy));
+        assert.equal(greedy.length, honest.length,
+            'claiming another admin in the URL widened the roster');
     });
 
     test('api_user_access.php search runs', async () => {
-        const res = await get('/api_user_access.php?admin_id=1&role=superadmin&search=CT', null);
+        const res = await get('/api_user_access.php?admin_id=1&role=superadmin&search=CT', sup);
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.ok(Array.isArray(body) || typeof body === 'object',
@@ -198,10 +238,10 @@ describe('tenant scoping, corrected in the security release', () => {
          * that fails whenever a unit keys the mic at the wrong moment.
          */
         const branchId = ctAdminId('ct_branch_a');
-        const branch = await json(
-            await get(`/api_dashboard_chart.php?admin_id=${branchId}&role=admin`, null));
-        const global = await json(
-            await get(`/api_dashboard_chart.php?admin_id=${ctAdminId('ct_super')}&role=superadmin`, null));
+        // Scope now follows the session, so the two answers come from two
+        // sessions rather than from two different query strings.
+        const branch = await json(await get('/api_dashboard_chart.php', branchA));
+        const global = await json(await get('/api_dashboard_chart.php', sup));
 
         const sum = (a) => a.reduce((x, y) => x + y, 0);
         // event_time is a timestamp without a zone, and the endpoint reads it
@@ -225,9 +265,12 @@ describe('tenant scoping, corrected in the security release', () => {
             'a branch cannot hold more events than exist');
     });
 
-    test('the chart refuses a branch request with no branch', async () => {
-        const body = await json(await get('/api_dashboard_chart.php?role=admin', null));
-        assert.ok('error' in body, 'falling back to the global figure is what leaked');
+    test('the chart refuses a caller with no session at all', async () => {
+        // Was: "a branch request with no branch falls back to the global
+        // figure, and that is the leak". There is no such request any more --
+        // a caller without a session never reaches the query.
+        const res = await get('/api_dashboard_chart.php?role=admin', null);
+        assert.equal(res.status, 401, 'falling back to the global figure is what leaked');
     });
 });
 

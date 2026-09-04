@@ -125,9 +125,23 @@ describe('session guards on the AJAX endpoints', () => {
         }
     });
 
-    test('fetch_logs.php refuses an anonymous caller', async () => {
-        const body = await json(await get('/fetch_logs.php', null));
-        assert.ok('error' in body);
+    test('fetch_logs.php refuses an anonymous caller with a status', async () => {
+        /*
+         * This used to assert only that the body carried an `error` key,
+         * because the endpoint answered HTTP 200 and put the refusal in the
+         * payload. No status-reading client could see that -- which is exactly
+         * how an expired session showed up in Admin Native as "Gagal
+         * memperbarui fitur" on whatever switch happened to be tapped.
+         *
+         * The refusal now comes from the shared guard, so it carries 401 and
+         * the same envelope every other endpoint uses.
+         */
+        const res = await get('/fetch_logs.php', null);
+        assert.equal(res.status, 401, 'a refusal no client can read is not a refusal');
+        const body = await json(res);
+        assert.equal(body.success, false);
+        assert.ok(['unauthenticated', 'session_expired'].includes(body.code),
+            `the caller cannot tell why it was refused: ${JSON.stringify(body)}`);
     });
 
     test('get-users-ajax.php returns a bare array and 401s anonymously', async () => {

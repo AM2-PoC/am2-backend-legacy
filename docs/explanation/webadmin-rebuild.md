@@ -216,11 +216,13 @@ menjawab 404 ke setiap radio. Tidak ada `update.apk` di direktori yang dilayani
 relay, dan unggahan panel masuk ke direktori berbeda (jalur APK admin). Rantai
 pembaruan otomatis belum tersambung ujung ke ujung.
 
-**`AM2_API_AUTH_MODE=log`, bukan `enforce`,** di staging dan produksi. Kunci yang
-salah atau tidak ada hanya dicatat, permintaannya tetap diteruskan — termasuk ke
-`POST /api/admin/set-app-version`, satu-satunya penulis `app_versions`. Mode
-`log` memang tahap wajar sebelum dikencangkan; kalau lognya sudah bersih, ini
-tinggal mengganti satu nilai.
+**~~Mode auth masih permisif.~~ Selesai.** Dulu tertulis di sini bahwa kunci yang
+salah atau tidak ada hanya dicatat lalu permintaannya tetap diteruskan, dan
+bahwa itu "tinggal mengganti satu nilai". Nilai itu tidak pernah diganti di
+produksi, dan kalimat "tinggal satu nilai" adalah persis yang membuatnya
+tertinggal — pekerjaan yang tampak sudah selesai. Saklarnya kini dihapus, bukan
+disetel: identitas hanya berasal dari sesi, penolakan tidak bisa dikonfigurasi,
+dan sebuah tes gagal bila mekanisme itu muncul lagi di pohon mana pun.
 
 **Kontras warna belum diukur.** Lihat bagian aksesibilitas.
 

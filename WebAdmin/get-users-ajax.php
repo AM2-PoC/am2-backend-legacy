@@ -1,13 +1,10 @@
 <?php
 require_once __DIR__ . '/session_boot.php';
 am2_session_boot();
+// config.php authenticates. This file used to repeat the check itself, which
+// is how it came to disagree with the eleven api_*.php files about what
+// authentication means.
 require_once 'config.php';
-
-if (!isset($_SESSION['admin_logged_in'])) {
-    header('Content-Type: application/json', true, 401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
 
 date_default_timezone_set('Asia/Jakarta');
 

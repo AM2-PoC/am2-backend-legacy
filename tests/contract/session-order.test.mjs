@@ -11,7 +11,11 @@ import assert from 'node:assert';
 import { asBranchA, get, postForm, sql, sqlOne, csrfToken } from './helpers.mjs';
 import { execFileSync } from 'node:child_process';
 
-const SESSION_DIR = process.env.CT_SESSION_DIR || '/var/lib/php/sessions';
+// The staging lane's own store. Both lanes shared /var/lib/php/sessions until
+// 2026-09-04, which meant a staging session was accepted by production; each
+// vhost now pins its own save_path. This test backdates a session file by hand,
+// so it has to look where the lane it is testing actually writes.
+const SESSION_DIR = process.env.CT_SESSION_DIR || '/var/lib/php/sessions/am2-staging';
 const UNIT = 'CT_A2';
 
 const sid = (cookie) => cookie.split('=')[1];

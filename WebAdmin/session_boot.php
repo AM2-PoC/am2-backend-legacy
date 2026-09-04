@@ -44,6 +44,19 @@ if (!function_exists('am2_session_boot')) {
         $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 
+        // Refuse a session id the caller invented.
+        //
+        // Without this PHP creates a session under whatever id arrives, so an
+        // attacker can choose the id, get an operator to sign in on it, and
+        // hold a signed-in session. It mattered less while identity could be
+        // claimed outright in a query string -- there were easier ways in --
+        // and it is decisive now that the session is the only authority.
+        //
+        // Set here rather than in php.ini for the same reason the cookie flags
+        // are: that file is not tracked, not deployed with the code, and
+        // different on every host this runs on.
+        ini_set('session.use_strict_mode', '1');
+
         session_set_cookie_params([
             'lifetime' => 0,
             'path'     => '/',

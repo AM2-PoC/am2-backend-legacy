@@ -10,20 +10,25 @@ AM2 has one database and three ways in, and only one of them authenticates.
 | Caller | Entry point | How it authenticates |
 |---|---|---|
 | Browser (the PHP panel) | `webadmin.am2-poc.com` → Apache → `*.php` | PHP `$_SESSION`, set only by `login.php` |
-| Admin Native app | `webadmin.am2-poc.com` → `api_*.php` | **Nothing.** `admin_id` and `role` are ordinary request parameters |
+| Admin Native app | `webadmin.am2-poc.com` → `api_*.php` | The same PHP session, carried in a cookie jar, with a CSRF token on writes |
 | AM2 field app | `apiapi.am2-poc.com` → Node | WebSocket `app_login` (bcrypt). The HTTP routes authenticate nothing |
 
 The panel's session model is sound in outline — one place sets four session keys, and every page
 checks `admin_logged_in`. Everything else is trust-by-assertion.
 
-## Why `api_*.php` cannot simply be given session auth
+## How `api_*.php` came to have session auth after all
 
-The obvious fix — require a session on `api_*.php` — breaks the Admin Native app, because
-`api_login.php` never issues one. It verifies the password and returns `admin_id`, `username` and
-`role` as plain JSON; the app then replays those values as query parameters on every later call.
-There is no session cookie and no token to present. Closing this therefore requires issuing a
-credential *and* updating the app, which is why it is scheduled as its own release rather than
-folded into the UI work.
+This section used to explain why it could not: `api_login.php` verified the password and returned
+`admin_id`, `username` and `role` as plain JSON, and the app replayed those values as query
+parameters on every later call. No cookie, no token, nothing to require.
+
+Both halves have since shipped. `api_login.php` issues a session (`am2_session_login()`) and hands
+back a CSRF token; Admin Native has carried a cookie jar, a CSRF interceptor and a 401 handler since
+build 83. So requiring a session on `api_*.php` broke nothing and needed no handset release — the
+app had been ready for months while the panel was configured not to ask.
+
+That gap is the lesson worth keeping. The credential was built, tested and deployed on both sides,
+and a single word in one env file meant none of it ran.
 
 ## What was exposed at the edge, and what changed
 
@@ -64,20 +69,12 @@ reachable until that app can present a credential.
 
 ## Still open
 
-One item, and it is a decision rather than an oversight.
+Nothing in the authentication path. The item that stood here — the Admin Native credential — is
+closed; see below. Two adjacent items remain and are tracked elsewhere:
 
-**The Admin Native credential.** `AM2_API_AUTH_MODE` defaults to `log` in both halves
-(`WebAdmin/config.php`, `server/server.js`), so an unauthenticated caller reaching the six remaining
-`/api/admin/*` routes or the `api_*.php` files is recorded and then allowed through — and, having no
-session, is free to claim `role=superadmin` in the request body. The mechanism that closes this is
-already built and tested: key check, identity resolution, superadmin gate, structured rejection
-logging, and an immediate refusal for anyone presenting a session instead.
-
-What is missing is the switch, and flipping it is blocked outside this repository: the Admin Native
-app has to ship a build that presents a key first. `tests/contract/identity.test.mjs` marks this
-`KNOWN OPEN` and asserts both halves of it — the hole as it exists today, and the refusal that must
-appear under `enforce`. Treat it as an accepted risk with a named owner and a release it is waiting
-on, not as a bug nobody has got to.
+- **Two writers on six tables.** The relay and the panel both write `users`, `user_channels`,
+  `device_tokens`, `user_app_permissions`, `ptt_logs` and `admin_activity_logs`, and they overlap on
+  `users.current_channel` and `users.force_logout`. Not an authentication problem; its own scope.
 
 ## Closed since this document was first written
 
@@ -88,7 +85,15 @@ settles it.
 
 - **CSRF.** `am2_csrf_require()` runs in the `config.php` bootstrap; tokens are emitted per form and
   carried by the fetch paths.
-- **Session fixation.** `session_regenerate_id(true)` on successful login in `login.php`.
+- **Session fixation.** `session_regenerate_id(true)` on successful login, via `am2_session_login()`,
+  and `session.use_strict_mode=1` in `am2_session_boot()` so a session id the caller invented is
+  never adopted in the first place.
+- **Claimed identity.** `am2_api_identity()` reads `$_SESSION` and nothing else. Appending
+  `&role=superadmin` to a request changes nothing; a caller with no session is refused before the
+  endpoint runs, by `am2_require_identity()` in the `config.php` bootstrap.
+- **A control that could be switched off.** There is no auth mode, in either half. A missing or
+  wrong credential is refused, always, and no environment variable changes that — asserted by
+  absence across the tree in `tests/unit/auth-single-identity.test.mjs`.
 - **Idle timeout.** `am2_expire_idle_session()`, invoked from the same bootstrap.
 - **Cookie hardening.** `WebAdmin/session_boot.php` sets `HttpOnly`, `SameSite=Lax`, and `Secure`
   whenever the request arrived over HTTPS — including through nginx, via `X-Forwarded-Proto`. Every
@@ -102,5 +107,14 @@ settles it.
   the bare `app.use(cors())`.
 - **Stored XSS in the log view.** `logs.php` builds every row with `textContent`; a contract test
   fails the build if `innerHTML` returns to that file.
+- **One session store for two lanes.** Closed 2026-09-04. Production (`127.0.0.1:8080`) and staging
+  (`:8081`) shared `/var/lib/php/sessions` with no per-vhost override, so a session obtained on
+  staging was accepted by production — measured, not inferred: the same `PHPSESSID` answered `200`
+  on both. That was a real escalation rather than a tidiness problem, because `ct_super` is a
+  fixture account created by `contract-test-fixtures.sh` on staging and has **no row on
+  production at all**, yet its session was served there as a superadmin. Each vhost now pins its
+  own `session.save_path` (`/var/lib/php/sessions/am2` and `…/am2-staging`); the same session now
+  answers `200` on staging and `401` on production. Splitting the store invalidated every session
+  on both lanes, which is why it needed a decision rather than a commit.
 - **API key comparison.** Constant-time on both sides now — `hash_equals()` in PHP,
   `crypto.timingSafeEqual` in Node.
