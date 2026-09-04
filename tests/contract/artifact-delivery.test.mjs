@@ -140,7 +140,7 @@ test('runtime packager seals an allowlisted artifact without repository residue'
       assert.doesNotMatch(listing.stdout, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
         `runtime archive leaks ${forbidden}`);
     }
-    for (const required of ['.release-sha', 'server/server.js', 'server/node_modules/', 'WebAdmin/login.php', 'WebAdmin/asset/js/am2-ui.min.js', 'infra/scripts/smoke-release.sh', 'infra/scripts/verify-webadmin-guard.sh']) {
+    for (const required of ['.release-sha', 'server/server.js', 'server/node_modules/', 'WebAdmin/login.php', 'WebAdmin/asset/js/am2-ui.min.js', 'infra/scripts/smoke-release.sh', 'infra/scripts/rehearse-staging-artifact.sh', 'infra/scripts/verify-materialized-artifact.sh', 'infra/scripts/verify-webadmin-guard.sh']) {
       assert.match(listing.stdout, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
         `runtime archive misses ${required}`);
     }

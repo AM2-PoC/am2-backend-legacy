@@ -140,6 +140,14 @@ test('artifact materializer creates immutable runnable release and leaves curren
     assert.equal(existsSync(current), false, 'materializer changed current release pointer');
     const preflight = spawnSync('bash', [verify, destination, sha], { encoding: 'utf8' });
     assert.equal(preflight.status, 0, `${preflight.stdout}\n${preflight.stderr}`);
+    const verifyMaterialized = resolve(root, 'infra/scripts/verify-materialized-artifact.sh');
+    const intact = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
+    writeFileSync(join(destination, 'server/server.js'), '\n// tampered\n', { flag: 'a' });
+    const tampered = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(tampered.status, 0, 'mutated materialized runtime retained artifact identity');
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

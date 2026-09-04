@@ -170,9 +170,11 @@ copy_tree infra/migrations
 for script in \
     apply-migrations.sh \
     check-relay-health.sh \
+    rehearse-staging-artifact.sh \
     relay-source-digest.sh \
     smoke-release.sh \
     verify-current-release.sh \
+    verify-materialized-artifact.sh \
     verify-release-runtime.sh \
     verify-webadmin-guard.sh
 do

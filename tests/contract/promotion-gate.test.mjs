@@ -121,6 +121,12 @@ describe('production promotion gate', () => {
             'staging gate checks only the symlink marker');
         assert.match(s, /rehearsal|acceptance.*receipt|receipt.*staging/i,
             'staging gate accepts a pointer move without rollback/re-promotion evidence');
+        assert.match(s, /verify-materialized-artifact\.sh|VERIFY_ARTIFACT/,
+            'staging gate does not verify exact artifact bytes');
+        const rehearsal = read('infra/scripts/rehearse-staging-artifact.sh');
+        for (const evidence of ['candidate_pid', 'rollback_pid', 'repromoted_pid', 'archive_sha256', 'payload_sha256']) {
+            assert.match(rehearsal, new RegExp(evidence), `staging rehearsal omits ${evidence}`);
+        }
     });
 
     test('candidate and rollback use the stable host-owned compatibility verifier', () => {

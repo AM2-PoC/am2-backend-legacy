@@ -47,8 +47,10 @@ PYTHON
 CURRENT=${AM2_PRODUCTION_CURRENT:-/var/www/am2/current}
 STAGING=${AM2_STAGING_CURRENT:-/var/www/am2/staging/current}
 RECEIPTS=${AM2_PROMOTION_RECEIPTS:-/var/www/am2/shared/promotions}
+STAGING_RECEIPTS=${AM2_STAGING_RECEIPTS:-/var/www/am2/staging/shared/rehearsals}
 DEPLOY_LOCK=${AM2_DEPLOY_LOCK:-/var/lib/am2-relay-watchdog/deploy.lock}
 VERIFY_CURRENT=${AM2_VERIFY_CURRENT:-/usr/local/libexec/am2/verify-current-release.sh}
+VERIFY_ARTIFACT=${AM2_VERIFY_ARTIFACT:-/usr/local/libexec/am2/verify-materialized-artifact.sh}
 PRODUCTION_ENV=${AM2_PRODUCTION_ENV:-/etc/am2/api.env}
 PRODUCTION_UNIT=${AM2_PRODUCTION_UNIT:-am2-api}
 STAGING_UNIT=${AM2_STAGING_UNIT:-am2-api-staging}
@@ -89,6 +91,9 @@ print(json.load(open(sys.argv[1], encoding='utf-8'))['source_sha'])
 PYTHON
 )
 [[ $identity_source_sha == "$sha" ]] || { echo "release marker and artifact identity source mismatch" >&2; exit 1; }
+candidate_manifest=${AM2_CANDIDATE_MANIFEST:-/var/lib/am2-artifacts/$sha/$archive_sha256/artifact-manifest.json}
+[[ -f $candidate_manifest && ! -L $candidate_manifest ]] || { echo "trusted candidate manifest is missing" >&2; exit 1; }
+"$VERIFY_ARTIFACT" --release "$release" --manifest "$candidate_manifest" >/dev/null
 old=$(readlink -f "$CURRENT")
 old_sha=$(sha_of "$old")
 old_pid=$(systemctl show "$PRODUCTION_UNIT" -p MainPID --value)
@@ -106,14 +111,28 @@ staging_sha=$(sha_of "$STAGING" 2>/dev/null || true)
 staging_pid=$(systemctl show "$STAGING_UNIT" -p MainPID --value 2>/dev/null || true)
 staging_cwd=$(readlink -f "/proc/$staging_pid/cwd" 2>/dev/null || true)
 staging_body=$(curl -fsS --max-time 5 "$STAGING_URL" 2>/dev/null || true)
-if [[ $(systemctl is-active "$STAGING_UNIT" 2>/dev/null || true) != active || $staging_sha != "$sha" || $staging_cwd != "$(readlink -f "$STAGING")/server" || $staging_body != *"PTT Server"* ]]; then
+staging_release=$(readlink -f "$STAGING" 2>/dev/null || true)
+if [[ $(systemctl is-active "$STAGING_UNIT" 2>/dev/null || true) != active || $staging_sha != "$sha" || $staging_cwd != "$staging_release/server" || $staging_body != *"PTT Server"* ]]; then
     refuse "staging is not actively running candidate source $sha"
+elif ! "$VERIFY_ARTIFACT" --release "$staging_release" --manifest "$candidate_manifest" >/dev/null 2>&1; then
+    refuse "staging is not running the exact candidate artifact bytes"
 fi
-if [[ -z $rehearsal_receipt || $rehearsal_receipt != /* || ! -f $rehearsal_receipt ]]; then
+if [[ -z $rehearsal_receipt || $rehearsal_receipt != "$STAGING_RECEIPTS/"* || ! -f $rehearsal_receipt || -L $rehearsal_receipt || $(stat -c %u "$rehearsal_receipt") -ne 0 || $(stat -c %a "$rehearsal_receipt") != 644 ]]; then
     refuse "an exact staging rehearsal receipt is required"
 else
+    grep -Fxq "schema_version 1" "$rehearsal_receipt" || refuse "staging rehearsal receipt schema mismatch"
     grep -Fxq "source_sha $sha" "$rehearsal_receipt" || refuse "staging rehearsal receipt source mismatch"
     grep -Fxq "archive_sha256 $archive_sha256" "$rehearsal_receipt" || refuse "staging rehearsal receipt archive mismatch"
+    identity_payload_sha=$(python3 - "$release/.artifact-identity.json" <<'PYTHON'
+import json, sys
+print(json.load(open(sys.argv[1], encoding='utf-8'))['payload_sha256'])
+PYTHON
+)
+    grep -Fxq "payload_sha256 $identity_payload_sha" "$rehearsal_receipt" || refuse "staging rehearsal receipt payload mismatch"
+    grep -Fxq "candidate_release $staging_release" "$rehearsal_receipt" || refuse "staging rehearsal receipt release mismatch"
+    grep -Eq '^candidate_pid [1-9][0-9]*$' "$rehearsal_receipt" || refuse "staging rehearsal candidate PID missing"
+    grep -Eq '^rollback_pid [1-9][0-9]*$' "$rehearsal_receipt" || refuse "staging rehearsal rollback PID missing"
+    grep -Eq '^repromoted_pid [1-9][0-9]*$' "$rehearsal_receipt" || refuse "staging rehearsal re-promotion PID missing"
     grep -Fxq "status verified" "$rehearsal_receipt" || refuse "staging rehearsal is not verified"
 fi
 

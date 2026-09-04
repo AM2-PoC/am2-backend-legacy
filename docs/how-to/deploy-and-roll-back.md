@@ -247,28 +247,16 @@ Current migrations are additive. A future destructive migration requires a separ
 
 ## Required staging restart and rollback rehearsal
 
-```bash
-STAGING_OLD=$(readlink -f /var/www/am2/staging/current)
-sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
-sudo systemctl reset-failed am2-api-staging
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
-systemctl show am2-api-staging -p ActiveState -p NRestarts -p MainPID
-```
-
-Rehearse rollback, then re-promote candidate:
+Do not sequence staging pointer changes by hand. Use the host-owned rehearsal command; it holds the deployment lock, verifies exact materialized artifact bytes, activates the candidate, rolls back, re-promotes the same digest, waits for PID/cwd/HTTP readiness at every transition, and atomically writes a root-owned receipt:
 
 ```bash
-sudo ln -sfn "$STAGING_OLD" /var/www/am2/staging/current
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
-
-sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
+/usr/local/libexec/am2/rehearse-staging-artifact.sh \
+  --release "$STAGING_REL" \
+  --manifest "/var/lib/am2-artifacts/$SHA/$ARCHIVE_SHA/artifact-manifest.json" \
+  --allow-relay-restart
 ```
 
-Run staging contract/protocol tests after the final candidate restart. Do not proceed if any restart, dependency, protocol, or HTTP check fails.
+The receipt is written below `/var/www/am2/staging/shared/rehearsals/` and binds source SHA, archive and payload digests, candidate and rollback paths, and all three observed PIDs. Run staging contract/protocol and physical-device acceptance after final re-promotion. Do not proceed if any restart, dependency, protocol, HTTP, or exact-byte check fails.
 
 ## Production cutover
 
