@@ -143,8 +143,8 @@ test('development deny precedes generic edge regex locations', () => {
     }
 });
 
-test('every Apache WebAdmin vhost strips rendered implementation commentary', () => {
-    const filter = read('infra/php/webadmin-output-filter.php');
+test('the prepended file strips rendered implementation commentary', () => {
+    const filter = read('infra/php/webadmin-prepend.php');
     assert.match(filter, /ob_start/);
     assert.match(filter, /preg_replace/);
     assert.match(filter, /<!--/);
@@ -152,15 +152,24 @@ test('every Apache WebAdmin vhost strips rendered implementation commentary', ()
         'the output filter does not use the response Content-Type');
     assert.doesNotMatch(filter, /doctype|<html/i,
         'the output filter infers MIME type from arbitrary response bytes');
+    /*
+     * The directive is no longer written into the vhosts. It now lives in PHP's
+     * own conf.d, installed by infra/scripts/install-webadmin-guard.sh, because
+     * the same file also carries the authentication net -- and the migration
+     * plan retires Apache, which would have taken a vhost directive with it
+     * silently and in the direction of open.
+     */
     for (const f of APACHE_VHOSTS) {
-        assert.match(read(f),
-            /php_value\s+auto_prepend_file\s+\/etc\/am2\/php\/webadmin-output-filter\.php/,
-            `${f} can emit private HTML comments`);
+        assert.doesNotMatch(read(f), /php_value\s+auto_prepend_file/,
+            `${f} still pins the prepend to Apache, which is being retired`);
     }
+    assert.match(read('infra/scripts/install-webadmin-guard.sh'),
+        /auto_prepend_file = \$installed/,
+        'nothing installs the prepend into PHP configuration');
 });
 
 test('output filter changes HTML comments but preserves explicit non-HTML bytes', () => {
-    const filter = join(ROOT, 'infra/php/webadmin-output-filter.php');
+    const filter = join(ROOT, 'infra/php/webadmin-prepend.php');
     const run = (contentType, body) => execFileSync('php', [
         '-r',
         `putenv('AM2_OUTPUT_FILTER_CONTENT_TYPE=' . $argv[1]); require $argv[2]; echo $argv[3];`,

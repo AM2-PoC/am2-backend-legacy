@@ -1,0 +1,138 @@
+<?php
+/**
+ * Who may reach this panel at all, decided in one place for every request.
+ *
+ * There used to be no such place. Each of the thirteen endpoints remembered its
+ * own guard and they disagreed: api_logs.php authenticated but never checked
+ * CSRF; get-users-ajax.php and fetch_logs.php authenticated nothing and rolled
+ * a private session test instead, one of which answered an unauthenticated
+ * caller with HTTP 200 and an `error` field -- a refusal no status-reading
+ * client could see. A new endpoint inherited whichever neighbour it was copied
+ * from, and nobody could tell which without reading all thirteen.
+ *
+ * This file is loaded twice on purpose, and defines everything conditionally so
+ * that loading it twice is free:
+ *
+ *   1. by config.php, which every endpoint already requires. This is the
+ *      authoritative copy and it travels with the code, so it survives the
+ *      planned replacement of Apache by nginx and PHP-FPM.
+ *   2. by the auto_prepend_file in infra/php/webadmin-prepend.php, which runs
+ *      before any script at all. That catches a file which forgets to require
+ *      config.php -- but it hangs off host configuration, which is exactly the
+ *      kind of thing that goes missing during a web server swap, so it is the
+ *      net and not the floor.
+ *
+ * One definition, two callers. A second copy of the entry list would be a
+ * second thing to keep in step, and the pair would disagree exactly once,
+ * silently, in the direction of open.
+ */
+
+require_once __DIR__ . '/session_boot.php';
+
+if (!defined('AM2_PUBLIC_ENTRY')) {
+    /**
+     * The only entry points that answer without a session.
+     *
+     * A constant in the code, deliberately, and not a setting. The failure this
+     * whole change exists to end was a control with an off position: an env
+     * file on a host said `log`, the panel stopped refusing anyone, and there
+     * was nothing in the repository to show for it. A list that lives in /etc
+     * or in a vhost has the same shape -- it grows by one line, on one machine,
+     * in a hurry, and nobody ever sees it again. Here it can only grow through
+     * a commit somebody reads, and a test pins its exact contents so the growth
+     * cannot be quiet.
+     *
+     * Two names, because there are two ways to obtain a session and nothing
+     * else that legitimately has none. Signing out is not among them: with no
+     * session there is nothing to sign out of, and the refusal says so.
+     */
+    define('AM2_PUBLIC_ENTRY', ['login.php', 'api_login.php']);
+}
+
+if (!function_exists('am2_entry_point')) {
+    /** The script actually being executed, as a bare file name. */
+    function am2_entry_point(): string
+    {
+        // Resolved by the server, never taken from the URL. SCRIPT_FILENAME is
+        // what PHP is running; REQUEST_URI would let `/api_users.php?x=login.php`,
+        // `//login.php` or an encoded traversal argue its way onto the list.
+        return basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+    }
+}
+
+if (!function_exists('am2_signed_in')) {
+    /** True when the caller holds a signed-in panel session. */
+    function am2_signed_in(): bool
+    {
+        return session_status() === PHP_SESSION_ACTIVE
+            && isset($_SESSION['admin_logged_in'])
+            && $_SESSION['admin_logged_in'] === true;
+    }
+}
+
+if (!function_exists('am2_require_identity')) {
+    /**
+     * Refuse anyone who is not signed in.
+     *
+     * This is the half of the design that survives a forgetful maintainer: a
+     * new endpoint is protected the moment its file exists, because nothing has
+     * to be added to it. Forgetting makes something safe rather than open,
+     * which is the only polarity worth shipping.
+     */
+    function am2_require_identity(): void
+    {
+        // Maintenance scripts and the test suite run these files outside a
+        // request; there is no session to have and nothing to refuse.
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
+        if (in_array(am2_entry_point(), AM2_PUBLIC_ENTRY, true)) {
+            return;
+        }
+        // Opened only when the caller presents one, so a request that never had
+        // a session is not handed one it did not ask for -- that would change
+        // the headers Admin Native sees on a refusal.
+        if (session_status() === PHP_SESSION_NONE && isset($_COOKIE[session_name()])) {
+            am2_session_boot();
+        }
+        if (am2_signed_in()) {
+            return;
+        }
+
+        error_log(sprintf(
+            'AM2 auth REJECT %s %s from %s ua=%s',
+            $_SERVER['REQUEST_METHOD'] ?? '?',
+            $_SERVER['REQUEST_URI'] ?? '?',
+            function_exists('am2_client_ip') ? am2_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '?'),
+            substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120)
+        ));
+
+        // A redirect answers a fetch() with 200 and a page of HTML, which the
+        // caller then tries to parse as JSON. Say what happened instead: Admin
+        // Native's interceptor signs the operator out on 401 and deliberately
+        // leaves 403 alone, so the status is the whole message.
+        //
+        // Anything that is not plainly a document request is treated as an API
+        // call. That is the safe way round: a browser always asks for
+        // text/html, so the worst case for a misjudged caller is a machine
+        // readable refusal instead of a redirect it could not have followed.
+        $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+        $timedOut = function_exists('am2_session_timed_out') && am2_session_timed_out();
+        if (!str_contains($accept, 'text/html')
+            || str_contains($accept, 'json')
+            || str_contains((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest')
+        ) {
+            http_response_code(401);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'code' => $timedOut ? 'session_expired' : 'unauthenticated',
+                'message' => function_exists('t') ? t('common.session_expired') : 'Unauthorized',
+            ]);
+            exit;
+        }
+
+        header('Location: login.php' . ($timedOut ? '?timeout=1' : ''));
+        exit;
+    }
+}

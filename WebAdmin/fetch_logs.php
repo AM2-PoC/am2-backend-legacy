@@ -2,12 +2,11 @@
 require_once __DIR__ . '/session_boot.php';
 am2_session_boot();
 date_default_timezone_set('Asia/Jakarta');
+// config.php authenticates. The private check this replaces answered an
+// unauthenticated caller with HTTP 200 and an `error` field -- a refusal no
+// status-reading client could see, which is the shape of bug that had Admin
+// Native reporting "Gagal memperbarui fitur" for an expired session.
 require_once 'config.php';
-
-if (!isset($_SESSION['admin_logged_in'])) {
-    header('Content-Type: application/json');
-    exit(json_encode(['error' => 'Unauthorized']));
-}
 
 $current_admin_id = $_SESSION['admin_id'];
 $role_admin = strtolower($_SESSION['admin_role'] ?? '');
