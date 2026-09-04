@@ -18,7 +18,7 @@ const expectedPackages = {
 const expectedEndpointHosts = {
   client: {
     dev: ['dev-api.am2-poc.com', ['update_manifest_url', 'websocket_url']],
-    staging: ['staging-api.am2-poc.com', ['update_manifest_url', 'websocket_url']],
+    staging: ['staging-apiapi.am2-poc.com', ['update_manifest_url', 'websocket_url']],
     production: ['apiapi.am2-poc.com', ['update_manifest_url', 'websocket_url']],
   },
   admin: {
@@ -62,6 +62,15 @@ test('defines exact Android package and minimum API identities', async () => {
       assert.equal(record.min_api, minApi);
       assert.equal(record.label_suffix, environment === 'production' ? '' : ` ${environment.toUpperCase()}`);
     }
+  }
+});
+
+test('staging Client endpoint contract uses the deployed staging hostname', async () => {
+  const { apps } = await loadContract();
+  const staging = apps.client.staging.endpoints;
+  for (const [field, value] of Object.entries(staging)) {
+    assert.equal(new URL(value).hostname, 'staging-apiapi.am2-poc.com',
+      `client/staging/${field} must use the deployed staging hostname`);
   }
 });
 
