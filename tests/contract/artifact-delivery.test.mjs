@@ -16,6 +16,10 @@ const manifestSchemaPath = resolve(ROOT, 'infra/schemas/artifact-manifest.schema
 const deployIdentityPath = resolve(ROOT, 'infra/contracts/deploy-identity.json');
 const cacheReceiverPath = resolve(ROOT, 'infra/scripts/am2-artifact-cache-receive.py');
 const cacheSshWrapperPath = resolve(ROOT, 'infra/scripts/am2-artifact-cache-ssh-wrapper.py');
+const runtimeBoundaryAuditPath = resolve(ROOT, 'infra/scripts/audit-runtime-boundary.sh');
+const runtimeBoundaryServicePath = resolve(ROOT, 'infra/systemd/am2-runtime-boundary-audit.service');
+const runtimeBoundaryTimerPath = resolve(ROOT, 'infra/systemd/am2-runtime-boundary-audit.timer');
+const releaseBoundaryDocPath = resolve(ROOT, 'docs/explanation/release-boundary.md');
 
 function tempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -298,6 +302,42 @@ test('cache receiver never overwrites an existing immutable artifact bundle', { 
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
+});
+
+test('runtime boundary audit is an alert-only guard that preserves the explicit operator exception', () => {
+  for (const path of [runtimeBoundaryAuditPath, runtimeBoundaryServicePath, runtimeBoundaryTimerPath]) {
+    assert.ok(existsSync(path), `runtime boundary guard is missing: ${path}`);
+  }
+  const audit = readFileSync(runtimeBoundaryAuditPath, 'utf8');
+  const service = readFileSync(runtimeBoundaryServicePath, 'utf8');
+  const timer = readFileSync(runtimeBoundaryTimerPath, 'utf8');
+  assert.match(audit, /AM2_RUNTIME_OPERATOR_CHECKOUT/,
+    'audit does not name the bounded transitional operator exception');
+  assert.match(audit, /git \(clone\|fetch\|pull\|checkout\)/,
+    'audit does not detect source-based deployment commands');
+  assert.match(audit, /npm \(ci\|install\)/,
+    'audit does not detect package-install deployment commands');
+  assert.match(audit, /\.git|git metadata/i,
+    'audit does not detect repository metadata in active releases');
+  assert.match(audit, /artifact-identity\.json/,
+    'audit does not bind active release identity to materialized artifact metadata');
+  assert.match(audit, /am2-artifacts/,
+    'audit does not require retained immutable artifact cache bytes');
+  assert.match(audit, /--exclude=audit-runtime-boundary\.sh/g,
+    'audit scans its own prohibited-pattern definitions and would self-alert');
+  assert.match(audit, /exit 0/,
+    'audit must be quiet and succeed when no actionable drift is present');
+  assert.match(service, /ExecStart=.*audit-runtime-boundary\.sh/,
+    'systemd service does not invoke boundary audit');
+  assert.match(service, /OnFailure=am2-relay-alert@%n\.service/,
+    'audit failure is not bounded through existing alert routing');
+  assert.match(timer, /OnUnitActiveSec=/,
+    'runtime boundary audit is not periodically scheduled');
+  const doc = readFileSync(releaseBoundaryDocPath, 'utf8');
+  assert.match(doc, /runtime boundary audit/i,
+    'release boundary does not document permanent drift prevention');
+  assert.match(doc, /approved expiring exception/i,
+    'release boundary does not state the transitional operator exception expiry');
 });
 
 test('deploy identity remains bounded to immutable artifacts', () => {

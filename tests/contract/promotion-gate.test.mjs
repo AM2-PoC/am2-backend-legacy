@@ -96,6 +96,14 @@ describe('production promotion gate', () => {
             'promotion selects the candidate before invoking a verifier absent from its artifact');
     });
 
+    test('promotion runs a fresh runtime-boundary audit before activation', () => {
+        const s = read(GATE);
+        assert.match(s, /AM2_RUNTIME_BOUNDARY_AUDIT[^\n]*audit-runtime-boundary\.sh/,
+            'promotion has no host-owned runtime-boundary audit interface');
+        assert.match(s, /"\$RUNTIME_BOUNDARY_AUDIT" --deploy-gate[\s\S]*step "staging runtime and rehearsal identity"/,
+            'promotion does not fail closed on fresh runtime-boundary drift before promotion gates');
+    });
+
     test('promotion owns the deployment lock and automatically restores failures', () => {
         const s = read(GATE);
         assert.match(s, /flock[^\n]*deploy\.lock|deploy\.lock[\s\S]*flock/,

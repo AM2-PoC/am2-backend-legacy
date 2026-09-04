@@ -1,0 +1,23 @@
+[Unit]
+Description=AM2 artifact-only runtime boundary audit
+After=am2-api.service am2-api-staging.service
+OnFailure=am2-relay-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/am2/runtime-boundary-audit.env
+ExecStart=/usr/local/libexec/am2/audit-runtime-boundary.sh
+StandardOutput=null
+StandardError=journal
+SyslogLevel=err
+LogLevelMax=warning
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/www/am2 /var/lib/am2-artifacts /etc/systemd/system /etc/cron.d /usr/local/libexec/am2
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true

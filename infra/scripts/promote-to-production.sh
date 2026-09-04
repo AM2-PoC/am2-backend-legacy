@@ -57,6 +57,7 @@ STAGING_UNIT=${AM2_STAGING_UNIT:-am2-api-staging}
 PRODUCTION_URL=${AM2_PRODUCTION_URL:-http://127.0.0.1:5000/}
 STAGING_URL=${AM2_STAGING_URL:-http://127.0.0.1:5001/}
 RELAY_DIGEST=${AM2_RELAY_DIGEST:-/usr/local/libexec/am2/relay-source-digest.sh}
+RUNTIME_BOUNDARY_AUDIT=${AM2_RUNTIME_BOUNDARY_AUDIT:-/usr/local/libexec/am2/audit-runtime-boundary.sh}
 
 sha_of() { tr -d '\r\n' < "$1/.release-sha"; }
 step() { printf '\n-- %s\n' "$*"; }
@@ -90,6 +91,11 @@ wait_ready() {
 # shared lock and therefore skips the intentional mismatch window silently.
 exec 9>"$DEPLOY_LOCK"
 flock -x 9
+
+# A healthy timer result is informational only. Run the host-owned audit inside
+# the exclusive transition so actionable source/build or identity drift blocks
+# this deployment rather than being noticed after it.
+"$RUNTIME_BOUNDARY_AUDIT" --deploy-gate
 
 sha=$(sha_of "$release")
 identity_source_sha=$(python3 - "$release/.artifact-identity.json" <<'PYTHON'

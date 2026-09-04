@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AM2 artifact-only runtime boundary audit every five minutes
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=5min
+AccuracySec=15s
+Persistent=true
+Unit=am2-runtime-boundary-audit.service
+
+[Install]
+WantedBy=timers.target
