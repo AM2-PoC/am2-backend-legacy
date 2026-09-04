@@ -24,6 +24,10 @@
  * after the commit, and see it fail.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 /**
  * What user_channels.permission accepts. The check constraint on the column
  * still allows 'TX' and the old column default 'rxtx', so those are passed

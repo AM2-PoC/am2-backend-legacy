@@ -181,6 +181,34 @@ else
     fi
 fi
 
+# ── Gate 6. The file that runs before every request is the one this release ships.
+#
+# /etc/am2/php/webadmin-prepend.php is host state, outside the artifact, updated
+# only by a manual install-webadmin-guard.sh --apply. Nothing else notices when
+# it drifts: verify-webadmin-guard.sh proves *a* prepend is running, not that it
+# is this one. So a release that changes the guard would promote cleanly and run
+# the previous copy indefinitely, with a green gate -- the single PHP file that
+# executes before every request sitting outside the boundary the artifact work
+# exists to enforce.
+step "installed prepend matches the release"
+installed_prepend=/etc/am2/php/webadmin-prepend.php
+release_prepend=$release/infra/php/webadmin-prepend.php
+if [[ ! -r $installed_prepend ]]; then
+    refuse "$installed_prepend is not installed -- run install-webadmin-guard.sh --apply"
+elif [[ ! -f $release_prepend ]]; then
+    # Not drift: absence. The artifact carries infra/migrations and
+    # infra/scripts and nothing else under infra/, so the one PHP file that
+    # executes before every request to the panel -- along with the nginx real-ip
+    # snippet and the vhosts that keep each lane's sessions apart -- is host
+    # state that no artifact versions and no boundary audit inspects. Saying
+    # "differs" here would send somebody looking for a diff that cannot exist.
+    refuse "this release carries no infra/php/webadmin-prepend.php, so nothing can verify what runs before every request"
+elif cmp -s "$release_prepend" "$installed_prepend"; then
+    echo "ok: the running prepend is this release's"
+else
+    refuse "the installed prepend differs from this release's -- run install-webadmin-guard.sh --apply first"
+fi
+
 if (( gate )); then
     echo "production was not touched." >&2
     exit 1

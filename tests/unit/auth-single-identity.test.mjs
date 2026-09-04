@@ -420,3 +420,30 @@ test('each lane pins its own session store, in a tracked file', () => {
     const b = read('infra/apache/am2-webadmin-staging.conf').match(/session\.save_path\s+(\S+)/)[1];
     assert.notEqual(a, b, 'both lanes point at the same session store');
 });
+
+test('layer one reaches every file, so layer two is a net and not the floor', () => {
+    /*
+     * The stated hierarchy is that config.php carries the guard for everything
+     * and the auto_prepend copy catches what slips. For eight files it was the
+     * other way round: they include no config.php at all, so only the prepend
+     * stood between them and an anonymous caller. Production proved it -- six of
+     * them answered 200 between the symlink flip at 16:24 and the installer run
+     * at 16:28.
+     *
+     * Seven are libraries that define functions and render nothing; the right
+     * answer for them is not to authenticate but to refuse being an endpoint at
+     * all. logout.php is a real page and gets the ordinary guard.
+     */
+    const files = readdirSync(join(ROOT, 'WebAdmin'))
+        .filter((f) => f.endsWith('.php'));
+    const uncovered = files.filter((f) => {
+        if (['login.php', 'api_login.php', 'config.php',
+             'auth_guard.php', 'session_boot.php'].includes(f)) return false;
+        const src = read(`WebAdmin/${f}`);
+        if (/require(_once)?[^;]*(config|auth_guard)\.php/.test(src)) return false;
+        // A library that refuses to be executed directly needs nothing else.
+        return !/am2_refuse_direct_request\(__FILE__\)/.test(src);
+    });
+    assert.deepEqual(uncovered, [],
+        `neither guarded nor refusing direct execution: ${uncovered.join(', ')}`);
+});
