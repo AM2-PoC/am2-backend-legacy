@@ -232,6 +232,18 @@ elseif ($method == 'POST') {
                  FROM public.admin WHERE id = ?");
             $stmtAuth->execute([$admin_id]);
             $auth = $stmtAuth->fetch(PDO::FETCH_ASSOC) ?: [];
+            /*
+             * No row for the id this request was made under.
+             *
+             * Downstream that is indistinguishable from an administrator who
+             * simply lacks the right, and both refuse the change with the same
+             * sentence. Naming the id here is the only way to tell afterwards
+             * whether a refusal was a decision or a lookup that failed.
+             */
+            if ($auth === [] && $admin_role !== 'superadmin') {
+                error_log('AM2 admin identity unresolved: no admin row for id='
+                    . var_export($admin_id, true) . ' role=' . var_export($admin_role, true));
+            }
             if ($admin_role === 'superadmin') {
                 $auth = ['can_manage_maps' => true, 'can_manage_p2p' => true,
                          'can_manage_video' => true];

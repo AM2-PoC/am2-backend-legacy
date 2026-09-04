@@ -95,7 +95,21 @@ function am2_set_user_feature(PDO $pdo, string $userId, string $feature, $raw, a
         throw new InvalidArgumentException('Fitur tidak valid');
     }
     if (!am2_may_set_feature($auth, $feature)) {
-        $refuse('admin-lacks-right');
+        /*
+         * Two different failures wore one name.
+         *
+         * An empty $auth is not an administrator who lacks a right: it is a
+         * lookup that found no row for the id the request was made under, which
+         * is a fault on this side. Both refuse the change and both told the
+         * operator the same thing, so the log was the only place they could be
+         * told apart -- and it called them both admin-lacks-right.
+         *
+         * Every refusal recorded on production so far carries that reason, and
+         * with the administrators all holding every right it could not be
+         * decided from the log which of the two had happened. Naming them
+         * separately costs one branch and settles it the next time it occurs.
+         */
+        $refuse($auth === [] ? 'admin-identity-unresolved' : 'admin-lacks-right');
         throw new RuntimeException('Akses ditolak');
     }
 
