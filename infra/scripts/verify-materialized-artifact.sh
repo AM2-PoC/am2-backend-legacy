@@ -52,12 +52,13 @@ trap 'rm -rf -- "$work"' EXIT INT TERM HUP
 mkdir "$work/payload"
 cp -a "$release/." "$work/payload/"
 rm -f "$work/payload/.artifact-identity.json" "$work/payload/WebAdmin/update" "$work/payload/server/update"
-# Materialization inherits the releases root's setgid bit on every created
-# directory. Normalize every sealed directory exactly as the packager did,
-# including clearing inherited special bits, otherwise metadata changes the
-# canonical payload digest.
-find "$work/payload" -type d -exec chmod 0755 {} +
-find "$work/payload" -type d -exec chmod g-s {} +
+# The materializer deliberately closes the release root to 0750 and the setgid
+# releases parent adds g+s to nested directories. Restore only those two known
+# publication effects before hashing; retain all other permission mutations as
+# integrity-relevant metadata.
+chmod 0755 "$work/payload"
+chmod g-s "$work/payload"
+find "$work/payload" -mindepth 1 -type d -exec chmod g-s {} +
 actual=$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
     -C "$work/payload" -cf - . | sha256sum | awk '{print $1}')
 [[ $actual == "$payload_sha256" ]] || { echo "materialized release payload digest mismatch" >&2; exit 1; }

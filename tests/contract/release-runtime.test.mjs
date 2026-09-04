@@ -148,6 +148,14 @@ test('artifact materializer creates immutable runnable release and leaves curren
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
       'materialized setgid release directory changes the sealed payload digest');
+    assert.equal(statSync(join(destination, 'server')).mode & 0o2000, 0o2000,
+      'setgid releases root did not exercise inherited directory mode normalization');
+    chmodSync(join(destination, 'server'), 0o700);
+    const permissionTampered = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(permissionTampered.status, 0,
+      'materialized verifier normalized an unauthorized sealed child-directory mode');
+    chmodSync(join(destination, 'server'), 0o755);
     writeFileSync(join(destination, 'server/server.js'), '\n// tampered\n', { flag: 'a' });
     const tampered = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
