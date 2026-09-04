@@ -1,6 +1,10 @@
 # Run AM2 locally with Docker
 
-How-to. For why this exists at all, see the explanation linked at the bottom.
+How-to: you know what you want, this is where the ports, volumes and reset
+paths are. Never used Docker before? Start with
+[the tutorial](../tutorial/your-first-local-am2.md) and come back here.
+
+For why this exists at all, see the explanation linked at the bottom.
 
 ## Bring it up
 
