@@ -17,7 +17,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,24 +87,48 @@ test('stable admin update URLs cannot cache one half of a release set', () => {
 });
 
 test('stable Client update URLs cannot cache one half of a release set', () => {
-    const source = read('infra/nginx/am2-api.conf');
-    assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
-        'generic API proxying owns the Client update release set');
-    for (const name of ['version.json', 'update.apk']) {
-        const escaped = name.replace('.', '\\.');
-        const match = source.match(new RegExp(
-            `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
-        assert.ok(match, `production API has no exact cache guard for ${name}`);
-        assert.match(match[0],
-            /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
-            `${name} can remain stale while its release-set peer changes`);
-        assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
-            `${name} returns conflicting upstream and edge cache policies`);
-        assert.match(match[0], /expires\s+off/, `${name} inherits an expiry`);
-    }
-    assert.match(source,
-        /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
-        'non-canonical Client update files remain public');
+  const source = read('infra/nginx/am2-api.conf');
+  assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
+    'generic API proxying owns the Client update release set');
+  for (const name of ['version.json', 'update.apk']) {
+    const escaped = name.replace('.', '\\.');
+    const match = source.match(new RegExp(
+        `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
+    assert.ok(match, `production API has no exact cache guard for ${name}`);
+    assert.match(match[0],
+        /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+        `${name} can remain stale while its release-set peer changes`);
+    assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
+        `${name} returns conflicting upstream and edge cache policies`);
+    assert.match(match[0], /expires\s+off/, `${name} inherits an expiry`);
+  }
+  assert.match(source,
+    /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
+    'non-canonical Client update files remain public');
+});
+
+test('staging Client update URLs have the same closed release-set boundary', () => {
+  const path = 'infra/nginx/am2-api-staging.conf';
+  assert.ok(existsSync(join(ROOT, path)),
+    'staging Client edge configuration is host-only and cannot receive source review');
+  const source = read(path);
+  assert.match(source, /location\s+\^~\s+\/update\/\s*\{/,
+    'staging lets the generic API proxy own the Client update release set');
+  for (const name of ['version.json', 'update.apk']) {
+    const escaped = name.replace('.', '\\.');
+    const match = source.match(new RegExp(
+        `location\\s+=\\s+\\/update\\/${escaped}\\s*\\{[\\s\\S]*?\\}`));
+    assert.ok(match, `staging API has no exact cache guard for ${name}`);
+    assert.match(match[0],
+      /Cache-Control\s+"no-store, no-cache, must-revalidate, max-age=0"/,
+      `staging ${name} can remain stale while its release-set peer changes`);
+    assert.match(match[0], /proxy_hide_header\s+Cache-Control/,
+      `staging ${name} returns conflicting upstream and edge cache policies`);
+    assert.match(match[0], /expires\s+off/, `staging ${name} inherits an expiry`);
+  }
+  assert.match(source,
+    /location\s+\^~\s+\/update\/\s*\{\s*access_log\s+off;\s*return\s+404;\s*\}/,
+    'staging serves non-canonical files from the Client update directory');
 });
 
 test('every WebAdmin root redirects explicitly to login', () => {
