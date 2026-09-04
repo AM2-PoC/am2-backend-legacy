@@ -269,6 +269,9 @@ return [
     // The number, not just a refusal. On 2026-09-04 one admin deletion took
     // 186 units with it by cascade, and that number never appeared on
     // anyone's screen before or after.
+    // The database change is saved; what went unconfirmed is the relay
+    // closing the socket that is open right now.
+    'msg.relay_unconfirmed' => 'Saved, but the relay did not confirm. The unit may still be connected — check Livetrack.',
     'adm.locked_owns_units' => 'This admin still owns :count unit(s). Move or remove them first.',
     'adm.username' => 'Username',
     'adm.password' => 'Password',
