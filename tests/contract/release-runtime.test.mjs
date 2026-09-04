@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,6 +8,10 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(import.meta.dirname, '../..');
 const build = resolve(root, 'infra/scripts/build-release.sh');
 const verify = resolve(root, 'infra/scripts/verify-release-runtime.sh');
+const materialize = resolve(root, 'infra/scripts/materialize-runtime-release.sh');
+const packageArtifact = resolve(root, 'infra/scripts/package-runtime-artifact.sh');
+const atomicRename = resolve(root, 'infra/scripts/atomic-rename-no-replace.py');
+const snapshotArtifactInput = resolve(root, 'infra/scripts/snapshot-artifact-input.py');
 
 function git(...args) {
   const run = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
@@ -18,6 +22,179 @@ function git(...args) {
 function tempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
 }
+
+function packageArtifactFixture(base, sha) {
+  const source = join(base, 'source');
+  const clone = spawnSync('git', ['clone', '--shared', root, source], { encoding: 'utf8' });
+  assert.equal(clone.status, 0, clone.stderr);
+  const install = spawnSync('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: join(source, 'server'), encoding: 'utf8', timeout: 300_000 });
+  assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
+  const output = join(base, 'ingress');
+  const pack = spawnSync('bash', [packageArtifact, '--source-root', source, '--sha', sha, '--output-dir', output], { encoding: 'utf8', timeout: 110_000 });
+  assert.equal(pack.status, 0, `${pack.stdout}\n${pack.stderr}`);
+  return output;
+}
+
+test('artifact snapshot rejects ingress behind a symlinked parent', () => {
+  const base = tempDir('am2-snapshot-parent-link-');
+  try {
+    const realParent = join(base, 'real');
+    const linkedParent = join(base, 'linked');
+    const ingress = join(realParent, 'ingress');
+    mkdirSync(ingress, { recursive: true });
+    const destination = join(base, 'snapshot');
+    mkdirSync(destination);
+    const link = spawnSync('ln', ['-s', realParent, linkedParent], { encoding: 'utf8' });
+    assert.equal(link.status, 0, link.stderr);
+    const run = spawnSync('python3', [snapshotArtifactInput, '--ingress', join(linkedParent, 'ingress'), '--destination', destination], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /canonical|symlink|ingress/i);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('atomic release publisher refuses replacing an existing destination', () => {
+  const base = tempDir('am2-atomic-release-');
+  try {
+    const source = join(base, 'source');
+    const destination = join(base, 'destination');
+    mkdirSync(source);
+    mkdirSync(destination);
+    const run = spawnSync('python3', [atomicRename, '--source', source, '--destination', destination], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.ok(existsSync(source), 'atomic helper removed source after refusing destination');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('atomic release publisher rejects a symlink source', () => {
+  const base = tempDir('am2-atomic-release-link-');
+  try {
+    const realSource = join(base, 'real-source');
+    const source = join(base, 'source-link');
+    const destination = join(base, 'destination');
+    mkdirSync(realSource);
+    const link = spawnSync('ln', ['-s', realSource, source], { encoding: 'utf8' });
+    assert.equal(link.status, 0, link.stderr);
+    const run = spawnSync('python3', [atomicRename, '--source', source, '--destination', destination], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.ok(lstatSync(source).isSymbolicLink(), 'atomic helper followed or removed symlink source');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('artifact materializer rejects malformed identity without creating release destination', () => {
+  const base = tempDir('am2-materialize-invalid-');
+  try {
+    const ingress = join(base, 'ingress');
+    const destination = join(base, 'releases', 'candidate');
+    mkdirSync(ingress, { recursive: true });
+    const run = spawnSync('bash', [materialize,
+      '--archive', join(ingress, 'am2-backend-runtime.tar.gz'),
+      '--manifest', join(ingress, 'artifact-manifest.json'),
+      '--checksums', join(ingress, 'SHA256SUMS'),
+      '--dest', destination,
+      '--webadmin-update', join(base, 'webadmin-update'),
+      '--server-update', join(base, 'server-update')], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /missing|required|artifact|shared update/i);
+    assert.equal(spawnSync('test', ['-e', destination]).status, 1);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('artifact materializer creates immutable runnable release and leaves current untouched', { timeout: 180_000 }, () => {
+  const base = tempDir('am2-materialize-green-');
+  const sha = git('rev-parse', 'HEAD');
+  try {
+    const ingress = packageArtifactFixture(base, sha);
+    const environment = join(base, 'environment');
+    const destination = join(environment, 'releases', `candidate-${sha.slice(0, 12)}`);
+    const webadminUpdate = join(environment, 'shared', 'webadmin-update');
+    const serverUpdate = join(environment, 'shared', 'server-update');
+    const current = join(environment, 'current');
+    mkdirSync(webadminUpdate, { recursive: true });
+    mkdirSync(serverUpdate, { recursive: true });
+    const run = spawnSync('bash', [materialize,
+      '--archive', join(ingress, 'am2-backend-runtime.tar.gz'),
+      '--manifest', join(ingress, 'artifact-manifest.json'),
+      '--checksums', join(ingress, 'SHA256SUMS'),
+      '--dest', destination,
+      '--webadmin-update', webadminUpdate,
+      '--server-update', serverUpdate], { encoding: 'utf8', timeout: 110_000 });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    assert.equal(readFileSync(join(destination, '.release-sha'), 'utf8').trim(), sha);
+    assert.equal(readlinkSync(join(destination, 'WebAdmin/update')), webadminUpdate);
+    assert.equal(readlinkSync(join(destination, 'server/update')), serverUpdate);
+    assert.equal(existsSync(current), false, 'materializer changed current release pointer');
+    const preflight = spawnSync('bash', [verify, destination, sha], { encoding: 'utf8' });
+    assert.equal(preflight.status, 0, `${preflight.stdout}\n${preflight.stderr}`);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('artifact materializer rejects a shared update directory behind a symlinked parent', { timeout: 180_000 }, () => {
+  const base = tempDir('am2-materialize-update-parent-link-');
+  const sha = git('rev-parse', 'HEAD');
+  try {
+    const ingress = packageArtifactFixture(base, sha);
+    const realShared = join(base, 'real-shared');
+    const linkedParent = join(base, 'linked-shared');
+    const serverUpdate = join(base, 'server-update');
+    mkdirSync(realShared);
+    mkdirSync(serverUpdate);
+    const link = spawnSync('ln', ['-s', realShared, linkedParent], { encoding: 'utf8' });
+    assert.equal(link.status, 0, link.stderr);
+    const run = spawnSync('bash', [materialize,
+      '--archive', join(ingress, 'am2-backend-runtime.tar.gz'),
+      '--manifest', join(ingress, 'artifact-manifest.json'),
+      '--checksums', join(ingress, 'SHA256SUMS'),
+      '--dest', join(base, 'releases', 'candidate'),
+      '--webadmin-update', linkedParent,
+      '--server-update', serverUpdate], { encoding: 'utf8', timeout: 110_000 });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /canonical|symlink|shared update/i);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('artifact materializer never overwrites destination or release pointer', { timeout: 180_000 }, () => {
+  const base = tempDir('am2-materialize-existing-');
+  const sha = git('rev-parse', 'HEAD');
+  try {
+    const ingress = packageArtifactFixture(base, sha);
+    const environment = join(base, 'environment');
+    const destination = join(environment, 'releases', 'existing');
+    const webadminUpdate = join(environment, 'shared', 'webadmin-update');
+    const serverUpdate = join(environment, 'shared', 'server-update');
+    const current = join(environment, 'current');
+    mkdirSync(destination, { recursive: true });
+    writeFileSync(join(destination, 'sentinel'), 'keep\n');
+    mkdirSync(webadminUpdate, { recursive: true });
+    mkdirSync(serverUpdate, { recursive: true });
+    const currentLink = spawnSync('ln', ['-s', destination, current], { encoding: 'utf8' });
+    assert.equal(currentLink.status, 0, currentLink.stderr);
+    const run = spawnSync('bash', [materialize,
+      '--archive', join(ingress, 'am2-backend-runtime.tar.gz'),
+      '--manifest', join(ingress, 'artifact-manifest.json'),
+      '--checksums', join(ingress, 'SHA256SUMS'),
+      '--dest', destination,
+      '--webadmin-update', webadminUpdate,
+      '--server-update', serverUpdate], { encoding: 'utf8', timeout: 110_000 });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /already exists/i);
+    assert.equal(readFileSync(join(destination, 'sentinel'), 'utf8'), 'keep\n');
+    assert.equal(readlinkSync(current), destination);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
 
 test('release builder rejects a destination that already exists', () => {
   const base = tempDir('am2-release-existing-');
@@ -80,6 +257,23 @@ test('runtime verifier rejects marker mismatch and a dependency-less archive', (
     const dependency = spawnSync('bash', [verify, archive, sha], { encoding: 'utf8' });
     assert.notEqual(dependency.status, 0);
     assert.match(dependency.stderr, /node_modules|dependenc|resolve/i);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('release verifier rejects a missing transitive production dependency', { timeout: 180_000 }, () => {
+  const base = tempDir('am2-release-transitive-dependency-');
+  const destination = join(base, 'candidate');
+  const sha = git('rev-parse', 'HEAD');
+  try {
+    const buildRun = spawnSync('bash', [build, '--repo', root, '--sha', sha, '--dest', destination], { encoding: 'utf8', timeout: 110_000 });
+    assert.equal(buildRun.status, 0, `${buildRun.stdout}\n${buildRun.stderr}`);
+    const remove = spawnSync('rm', ['-rf', join(destination, 'server', 'node_modules', 'body-parser')]);
+    assert.equal(remove.status, 0);
+    const run = spawnSync('bash', [verify, destination, sha], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /dependency|missing|closure/i);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
