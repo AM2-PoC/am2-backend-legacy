@@ -38,6 +38,10 @@ Rollback never rebuilds. It selects a retained, preflighted immutable release de
 
 WebAdmin and relay runtime files form one release. Partial file-level rollback is unsupported because authentication, session, endpoint, and UI contracts can change together. Move only between complete release identities; never copy individual files into an active release.
 
+## Runtime boundary audit
+
+A root-owned runtime boundary audit runs periodically and immediately before a new bounded deployment transition. It alerts only on actionable drift: source/build commands or source-credential references in deployment automation, active CI runners, forbidden developer metadata in active releases, active release/PID identity mismatch, or missing retained artifact bytes. Healthy runs are silent; the deploy gate runs a fresh audit so stale timer state cannot block forever.
+
 ## Transitional operator exception
 
-The co-resident operator checkout is transitional. It may remain temporarily for chat-assisted coding and `git`/`gh` branch–PR–merge work, but it is never deployment input and is unreadable to bounded cache/materialization identities. The final transition task relocates operator work and removes source credentials, checkout, and build-only tooling from the runtime VPS after production artifact deployment, rollback, runbook, and drift prevention have all been proven.
+The co-resident operator checkout is an approved expiring exception. It may remain temporarily for chat-assisted coding and `git`/`gh` branch–PR–merge work, but it is never deployment input and is unreadable to bounded cache/materialization identities. Task 14 relocates operator work and removes source credentials, checkout, and build-only tooling from the runtime VPS only after a non-production operator destination is approved.
