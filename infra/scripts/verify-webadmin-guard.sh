@@ -77,4 +77,50 @@ else
     failed=1
 fi
 
+# Every PHP file in the document root, asked twice with no session.
+#
+# Reasoning about which files are guarded is exactly what produced thirteen
+# endpoints that disagreed with each other, so this asks all of them instead.
+# It also covers the ones nobody thinks of as endpoints: config.php,
+# session_boot.php, i18n.php and the other libraries are reachable by URL like
+# anything else, and before the shared guard they would run.
+#
+# Two shapes, because the right refusal differs: a fetch() or an API client
+# needs a status it can act on, a browser navigating needs to arrive at the
+# login page. Anything that answers 200 to either is serving an anonymous
+# caller.
+echo "sweeping every .php in $docroot"
+sweep_bad=0
+for file in "$docroot"/*.php; do
+    name=$(basename "$file")
+    api=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+        -H 'Accept: application/json' "http://$origin/$name" || echo 000)
+    nav=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+        -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' \
+        "http://$origin/$name" || echo 000)
+
+    case "$name" in
+        # The one page that must answer, and the sign-in endpoint, which is
+        # POST-only and so refuses a GET on its own terms after the guard lets
+        # it through.
+        login.php)     [[ $api == 200 && $nav == 200 ]] || { echo "FAIL: login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
+        api_login.php) [[ $api == 405 && $nav == 405 ]] || { echo "FAIL: api_login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
+    esac
+
+    if [[ $api != 401 ]]; then
+        echo "FAIL: $name answered $api to an anonymous API call, not 401" >&2
+        sweep_bad=1
+    fi
+    if [[ $nav != 302 && $nav != 401 ]]; then
+        echo "FAIL: $name answered $nav to an anonymous navigation, not 302" >&2
+        sweep_bad=1
+    fi
+done
+if (( sweep_bad )); then
+    failed=1
+else
+    count=$(ls -1 "$docroot"/*.php | wc -l)
+    echo "ok: all $count PHP files in the $lane document root refuse an anonymous caller"
+fi
+
 exit "$failed"
