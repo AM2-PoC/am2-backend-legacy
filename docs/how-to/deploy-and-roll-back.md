@@ -187,6 +187,37 @@ OLD_SHA=$(tr -d '\r\n' < "$OLD_REL/.release-sha")
 "$OLD_REL/infra/scripts/verify-release-runtime.sh" "$OLD_REL" "$OLD_SHA"
 ```
 
+## Promote to production
+
+Do not run the gates by hand. They were skipped entirely once — on 2026-09-04 at
+11:29:06, production moved to a new release with no staging acceptance, no
+verified rollback target, no smoke against the production environment, and no
+record beyond the symlink's own mtime — and later the same day they were run
+correctly, one command at a time. Both outcomes came from the same arrangement:
+a checklist a person executes.
+
+```bash
+infra/scripts/promote-to-production.sh --release "$REL" --dry-run   # gates only
+infra/scripts/promote-to-production.sh --release "$REL"
+```
+
+It refuses rather than warns. In order: staging must be running the same source
+SHA; the candidate must verify; **the rollback target must verify too**, because
+a rollback nobody has checked is a hope rather than a plan; the candidate must
+survive a cold start against `/etc/am2/api.env`, which staging cannot prove
+since it has its own database and relay.
+
+The last gate is about people rather than code. PHP is read from disk per
+request, so moving the symlink changes the panel immediately and interrupts
+nobody. The relay holds its code in memory, so a relay change needs a restart
+and a restart disconnects every unit. When the relay source differs the script
+counts who is online and **refuses**, until `--allow-relay-restart` says that is
+understood.
+
+Afterwards it re-runs the guard sweep and writes a receipt to
+`/var/www/am2/shared/promotions/` naming the actor, both SHAs, and whether the
+relay was restarted.
+
 Cold-start the exact candidates using protected environment files and random loopback ports:
 
 ```bash
