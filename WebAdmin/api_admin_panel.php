@@ -93,8 +93,31 @@ elseif ($method == 'POST') {
     elseif ($action == 'delete') {
         $id = (int)$_POST['id'];
         try {
-            $pdo->prepare("DELETE FROM public.admin WHERE id = ? AND role != 'superadmin'")->execute([$id]);
-            echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+            /*
+             * The same four rules the page applies. This used to be
+             * `WHERE id = ? AND role != 'superadmin'` written into the
+             * statement, which protected the superadmin row and nothing else --
+             * so the master admin and the caller's own account were deletable
+             * here and refused on the page.
+             *
+             * Checked before the query rather than after, so a rule doing its
+             * job is not reported to the operator as a system error. Migration
+             * 006 makes the database refuse as well; this is what makes the
+             * refusal readable.
+             */
+            $found = $pdo->prepare('SELECT id, role FROM public.admin WHERE id = ?');
+            $found->execute([$id]);
+            $target = $found->fetch();
+            if (!$target) {
+                echo json_encode(['success' => false, 'message' => t('msg.admin_not_found')]);
+            } elseif ([$why, $why_params] = am2_admin_undeletable($pdo, $target, $_SESSION['admin_id'] ?? 0)) {
+                if ($why !== '') {
+                    echo json_encode(['success' => false, 'message' => t($why, $why_params)]);
+                } else {
+                    $pdo->prepare('DELETE FROM public.admin WHERE id = ?')->execute([$id]);
+                    echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+                }
+            }
         } catch (PDOException $e) {
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_admin_panel')]);
         }

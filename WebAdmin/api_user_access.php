@@ -101,8 +101,18 @@ elseif ($method == 'POST') {
 
             am2_audit_complete();
             $pdo->commit();
-            notifyForceLogout($user_id);
-            echo json_encode(['success' => true, 'message' => 'User berhasil dikeluarkan.']);
+            /*
+             * The database change is committed either way -- the token is revoked
+             * and the row says offline, so the unit cannot sign back in. What the
+             * relay does is close the socket that is open right now. If it did not
+             * confirm, the unit may still be transmitting, and the person who
+             * pressed the button is the one who needs to know that while they are
+             * still looking at the screen.
+             */
+            $relay = notifyForceLogout($user_id);
+            echo json_encode($relay
+                ? ['success' => true, 'message' => 'User berhasil dikeluarkan.']
+                : ['success' => true, 'message' => t('msg.relay_unconfirmed')]);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);

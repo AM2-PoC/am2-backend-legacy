@@ -9,9 +9,12 @@ set -euo pipefail
 # session check -- does the request still get refused?
 #
 # That is the only property that makes this design safe for a maintainer who
-# forgets, so it is worth a probe rather than an assumption. The probe is
-# written, requested and removed within the run, and it prints nothing but a
-# marker so a false pass cannot look like a real page.
+# forgets, so it is worth asking rather than assuming. It is asked of files that
+# are already there: seven of the panel's own files include no config.php, so
+# nothing has to be written into a release to find out. Releases are immutable
+# and owned by am2release under artifact-only delivery, and an earlier version
+# of this script created a probe file inside one -- briefly, with sudo, but
+# inside one all the same.
 #
 # Defaults to the staging lane. Production must be named explicitly.
 
@@ -34,35 +37,38 @@ esac
 
 [[ -d $docroot ]] || { echo "no document root at $docroot" >&2; exit 1; }
 
-# A name nothing else will collide with, and one that says what it is if a run
-# is interrupted before the cleanup.
-probe=am2-guard-probe-$$.php
-marker="GUARD-PROBE-REACHED-$$"
+# A file that never requires config.php, chosen rather than created.
+#
+# This used to write a synthetic probe into the document root and delete it
+# again. That was wrong twice over. Releases are immutable and owned by
+# am2release under the artifact-only delivery model, so writing into one --
+# even briefly, even with sudo -- is exactly what that model exists to prevent.
+# And it was unnecessary: seven files already in the panel include no config.php
+# at all, so the property can be checked against something real.
+#
+# i18n.php is the clearest of them. It defines translation helpers, includes
+# nothing, and has no side effects worth triggering. If layer two is not
+# running, it answers 200 with an empty body -- which is what production did
+# until the guard was installed at 16:28 today.
+probe=i18n.php
+if ! grep -q "require.*config\.php" "$docroot/$probe" 2>/dev/null; then
+    :
+else
+    echo "FAIL: $probe now includes config.php, so it no longer tests layer two" >&2
+    echo "      pick another file that does not, or this check proves nothing" >&2
+    exit 1
+fi
 
-cleanup() { sudo rm -f "$docroot/$probe"; }
-trap cleanup EXIT
-
-# Deliberately unguarded: no config.php, no session check, nothing. This is the
-# file a maintainer writes at speed, and the whole design is about that file
-# being safe anyway.
-printf '<?php echo "%s";\n' "$marker" | sudo tee "$docroot/$probe" >/dev/null
-sudo chown --reference="$docroot" "$docroot/$probe"
-sudo chmod 0644 "$docroot/$probe"
-
-status=$(curl -s -o /tmp/am2-guard-probe.out -w '%{http_code}' \
+status=$(curl -s -o /dev/null -w '%{http_code}' \
     -H "Host: $host" -H 'Accept: application/json' \
     "http://$origin/$probe" || echo 000)
-body=$(cat /tmp/am2-guard-probe.out); rm -f /tmp/am2-guard-probe.out
 
 failed=0
-if grep -q "$marker" <<<"$body"; then
-    echo "FAIL: an unguarded file ran and returned its own output ($lane)" >&2
-    failed=1
-elif [[ $status != 401 ]]; then
-    echo "FAIL: expected 401 for an unguarded file, got $status ($lane)" >&2
-    failed=1
+if [[ $status == 401 ]]; then
+    echo "ok: a file that never requires config.php is refused before it runs ($lane)"
 else
-    echo "ok: an unguarded file in $lane is refused with 401 before it runs"
+    echo "FAIL: $probe answered $status, not 401 -- layer two is not running ($lane)" >&2
+    failed=1
 fi
 
 # The other half: the two public entry points must still answer, or nobody can

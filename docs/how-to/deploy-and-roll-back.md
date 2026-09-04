@@ -187,6 +187,44 @@ OLD_SHA=$(tr -d '\r\n' < "$OLD_REL/.release-sha")
 "$OLD_REL/infra/scripts/verify-release-runtime.sh" "$OLD_REL" "$OLD_SHA"
 ```
 
+## Promote to production
+
+Do not run the gates by hand. They were skipped entirely once — on 2026-09-04 at
+11:29:06, production moved to a new release with no staging acceptance, no
+verified rollback target, no smoke against the production environment, and no
+record beyond the symlink's own mtime — and later the same day they were run
+correctly, one command at a time. Both outcomes came from the same arrangement:
+a checklist a person executes.
+
+```bash
+ARCHIVE_SHA=<staging-accepted-archive-sha256>
+REHEARSAL_RECEIPT=/var/www/am2/staging/shared/promotions/<verified-rehearsal>.txt
+infra/scripts/promote-to-production.sh \
+  --release "$REL" \
+  --archive-sha256 "$ARCHIVE_SHA" \
+  --staging-rehearsal-receipt "$REHEARSAL_RECEIPT" \
+  --dry-run
+# Run the same command without --dry-run only after separate production approval.
+# Add --allow-relay-restart only when reconnect disruption was explicitly approved.
+```
+
+It refuses rather than warns. In order: staging must be running the same source
+SHA; the candidate must verify; **the rollback target must verify too**, because
+a rollback nobody has checked is a hope rather than a plan; the candidate must
+survive a cold start against `/etc/am2/api.env`, which staging cannot prove
+since it has its own database and relay.
+
+The last gate is about people rather than code. PHP is read from disk per
+request, so moving the symlink changes the panel immediately and interrupts
+nobody. The relay holds its code in memory, so a relay change needs a restart
+and a restart disconnects every unit. When the relay source differs the script
+counts who is online and **refuses**, until `--allow-relay-restart` says that is
+understood.
+
+Afterwards it re-runs the guard sweep and writes a receipt to
+`/var/www/am2/shared/promotions/` naming the actor, both SHAs, and whether the
+relay was restarted.
+
 Cold-start the exact candidates using protected environment files and random loopback ports:
 
 ```bash
@@ -209,28 +247,16 @@ Current migrations are additive. A future destructive migration requires a separ
 
 ## Required staging restart and rollback rehearsal
 
-```bash
-STAGING_OLD=$(readlink -f /var/www/am2/staging/current)
-sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
-sudo systemctl reset-failed am2-api-staging
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
-systemctl show am2-api-staging -p ActiveState -p NRestarts -p MainPID
-```
-
-Rehearse rollback, then re-promote candidate:
+Do not sequence staging pointer changes by hand. Use the host-owned rehearsal command; it holds the deployment lock, verifies exact materialized artifact bytes, activates the candidate, rolls back, re-promotes the same digest, waits for PID/cwd/HTTP readiness at every transition, and atomically writes a root-owned receipt:
 
 ```bash
-sudo ln -sfn "$STAGING_OLD" /var/www/am2/staging/current
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
-
-sudo ln -sfn "$STAGING_REL" /var/www/am2/staging/current
-sudo systemctl restart am2-api-staging
-curl -fsS http://127.0.0.1:5001/ | grep -F 'PTT Server'
+/usr/local/libexec/am2/rehearse-staging-artifact.sh \
+  --release "$STAGING_REL" \
+  --manifest "/var/lib/am2-artifacts/$SHA/$ARCHIVE_SHA/artifact-manifest.json" \
+  --allow-relay-restart
 ```
 
-Run staging contract/protocol tests after the final candidate restart. Do not proceed if any restart, dependency, protocol, or HTTP check fails.
+The receipt is written below `/var/www/am2/staging/shared/rehearsals/` and binds source SHA, archive and payload digests, candidate and rollback paths, and all three observed PIDs. Run staging contract/protocol and physical-device acceptance after final re-promotion. Do not proceed if any restart, dependency, protocol, HTTP, or exact-byte check fails.
 
 ## Production cutover
 

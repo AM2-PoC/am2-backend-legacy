@@ -153,3 +153,28 @@ test('synthetic fixtures exercise both live-track entity identities', () => {
     assert.match(seed, /entity_type/i);
     assert.match(seed, /DEMO_UNIT_3[\s\S]*tracker/i);
 });
+
+test('deleting one admin cannot delete a branch', () => {
+    /*
+     * On 2026-09-04 a single unauthenticated POST deleted admin id 4 and
+     * ON DELETE CASCADE took 186 units, 191 channel memberships, 186 permission
+     * rows and 114,514 log rows with it. No confirmation, no count, no pause.
+     *
+     * The authentication hole that let the POST through is closed, but the
+     * cascade is a separate hazard and it points at the same outcome for a
+     * legitimate superadmin in a hurry. RESTRICT is the one guard that holds
+     * regardless of which path tries -- panel, Admin app, a future Laravel
+     * adapter, or psql at two in the morning -- because it is the database
+     * refusing rather than an application remembering.
+     *
+     * Soft delete was the alternative and is the wrong trade here: retrofitting
+     * `deleted_at` across 167 raw SQL statements fails *open* when one is
+     * missed -- a deleted unit that still answers, still logs in, still
+     * transmits. RESTRICT fails closed.
+     */
+    // Comments stripped, so the rule has to be in the SQL rather than in a
+    // note promising it.
+    const all = migrations().map(sql).join('\n');
+    assert.match(all, /ALTER TABLE[\s\S]{0,160}users[\s\S]{0,240}ON DELETE RESTRICT/i,
+        'users.admin_id still cascades; one admin row still takes a branch with it');
+});

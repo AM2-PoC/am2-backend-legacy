@@ -170,10 +170,13 @@ copy_tree infra/migrations
 for script in \
     apply-migrations.sh \
     check-relay-health.sh \
+    rehearse-staging-artifact.sh \
     relay-source-digest.sh \
     smoke-release.sh \
     verify-current-release.sh \
-    verify-release-runtime.sh
+    verify-materialized-artifact.sh \
+    verify-release-runtime.sh \
+    verify-webadmin-guard.sh
 do
     copy_file "infra/scripts/$script"
     chmod 0755 "$payload/infra/scripts/$script"

@@ -7,6 +7,23 @@
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/*
+ * Source files come from the repository; built output comes from the deployed
+ * tree. The distinction only started to matter when staging moved to
+ * artifact-only delivery: an artifact carries what the browser is served --
+ * am2-tailwind.css, am2-ui.min.js -- and deliberately not what those were built
+ * from. Reading tailwind.src.css out of SRC then fails with ENOENT and reads as
+ * "the artwork is gone" rather than "you looked in the wrong place".
+ *
+ * Which side a file belongs on is not a style choice. Asserting about built
+ * output has to look at what is deployed, or it proves nothing about the running
+ * system; asserting about source has to look at the source, which is the only
+ * place it exists.
+ */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'WebAdmin');
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -300,7 +317,7 @@ describe('rendered markup that the CSS and JS depend on', () => {
         for (const c of ['custom-marker', 'marker-label', 'pulse-dot']) {
             assert.ok(html.includes(c), `${c} is a divIcon className, not styling — markers break without it`);
         }
-        const model = fs.readFileSync(`${SRC}/asset/js/src/livetrack-model.js`, 'utf8');
+        const model = fs.readFileSync(`${REPO}/asset/js/src/livetrack-model.js`, 'utf8');
         assert.match(model, /`entity-\$\{entityType\}`/,
             'the presentation model no longer emits an identity class');
         assert.match(model, /`freshness-\$\{freshness\}`/,
@@ -516,7 +533,7 @@ describe('login background artwork', () => {
     });
 
     test('geometric artwork is non-interactive and theme-aware', () => {
-        const css = fs.readFileSync(`${SRC}/asset/css/tailwind.src.css`, 'utf8');
+        const css = fs.readFileSync(`${REPO}/asset/css/tailwind.src.css`, 'utf8');
         assert.match(css, /\.am2-login-geometry\s*\{[^}]*pointer-events:\s*none/s);
         assert.match(css, /\[data-theme="dark"\]\s+\.am2-login-geometry/);
         const reducedMotionBlocks = [...css.matchAll(
@@ -556,7 +573,7 @@ describe('login background artwork', () => {
     });
 
     test('brand-side signal system cannot intercept login interaction', () => {
-        const css = fs.readFileSync(`${SRC}/asset/css/tailwind.src.css`, 'utf8');
+        const css = fs.readFileSync(`${REPO}/asset/css/tailwind.src.css`, 'utf8');
         assert.match(css, /\.am2-brand-geometry\s*\{[^}]*pointer-events:\s*none/s);
         assert.match(css, /\[data-theme="dark"\]\s+\.am2-brand-geometry/);
     });
