@@ -258,7 +258,7 @@ describe('the admin app writes membership the same way the panel does', () => {
 
         // The app sends the whole roster of a channel, exactly as the panel's
         // access dialogue does.
-        const res = await postForm(`/api_channels.php?admin_id=${ADMIN()}&role=admin`, null, {
+        const res = await postForm('/api_channels.php', cookie, {
             action: 'save_access', channel_id: CH_A, users: JSON.stringify([UNIT]),
         });
         assert.ok(res.status < 400, `save_access answered ${res.status}`);
@@ -278,7 +278,7 @@ describe('the admin app writes membership the same way the panel does', () => {
 
         // The same two channels, in the other order. Nothing about the request
         // says "make the first one default", and nothing should read it that way.
-        const res = await postForm(`/api_users.php?admin_id=${ADMIN()}&role=admin`, null, {
+        const res = await postForm('/api_users.php', cookie, {
             action: 'save_user_channels', u_id: UNIT, channels: JSON.stringify([CH_A2, CH_A]),
         });
         assert.ok(res.status < 400, `save_user_channels answered ${res.status}`);
@@ -295,7 +295,7 @@ describe('the admin app writes membership the same way the panel does', () => {
     test('the app cannot put a unit on another tenant\'s channel', async () => {
         await seed();
 
-        const res = await postForm(`/api_users.php?admin_id=${ADMIN()}&role=admin`, null, {
+        const res = await postForm('/api_users.php', cookie, {
             action: 'save_user_channels', u_id: UNIT, channels: JSON.stringify([CH_B]),
         });
         const body = await res.json();
