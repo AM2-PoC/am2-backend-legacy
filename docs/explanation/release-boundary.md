@@ -1,56 +1,43 @@
-# Release boundary: why this ships all at once
+# Backend release boundary
 
-Explanation. For the mechanics of deploying, see `docs/how-to/deploy-and-roll-back.md`.
+The AM2 backend is built once in ephemeral CI and promoted by immutable archive digest. Staging and production attach different protected configuration and writable storage to the same verified runtime bytes.
 
-## The decision
+## Four identities
 
-The redesign and the security work ship as **one atomic release**. There is no
-feature flag, no second document root, no route namespace, and no cohort
-selector. Rollback is moving the `current` symlink back to the previous
-release directory — all of it, at once.
+1. **Source identity** — the exact reviewed Git commit used only by a developer or ephemeral CI runner.
+2. **Artifact identity** — the sealed runtime archive, addressed by `archive_sha256` and carrying its source SHA, payload digest, lockfile digests, and `SHA256SUMS`.
+3. **Release identity** — an immutable directory materialized from that verified artifact with environment-owned update links attached afterward.
+4. **Activation identity** — the atomic `current` pointer plus the service PID, cwd, release marker, and restart count.
 
-This was a deliberate choice against building a dual-UX boundary, taken 3 Aug
-2026. The argument for one was that old and new pages could then be tested and
-rolled back independently. The argument against, which won:
+A branch is a change/review boundary. A release tag is an optional human-readable label bound to the accepted source and artifact identity. Neither is a mutable deployment pointer.
 
-- It is one VPS, one symlink, and roughly ten admin users. A cohort selector is
-  machinery sized for a problem this deployment does not have.
-- Two UIs would run against **one** database, **one** session model and **one**
-  relay. The bugs this release fixes — tenant isolation, membership integrity,
-  who the caller is — all live in that shared layer. Keeping two front ends
-  alive over it doubles the number of places each fix has to be right, which is
-  the opposite of what the fixes are for.
-- The old pages are the ones with the defects. A flag that keeps them reachable
-  is a flag that keeps the defects reachable.
+## Build once and promote the same bytes
 
-## What this costs
+```text
+short-lived branch → PR → main → ephemeral CI build
+→ immutable archive digest → private cache
+→ staging activation/rollback/re-promotion
+→ production approval → same archive digest
+```
 
-Partial rollback is not available, and must not be attempted. Concretely, these
-combinations are broken and there is no adapter for them:
+Staging acceptance applies to one exact artifact. A rebuild from the same source SHA is a different artifact until its bytes and digest are proven identical. Production must activate the same archive digest accepted in staging.
 
-| Combination | Result |
-|---|---|
-| Old UI + new `config.php` | Old forms carry no `_csrf` field; every POST is refused. |
-| Old `dashboard.php` + new `api_dashboard_chart.php` | The old page calls the endpoint with no parameters. It now answers for the session instead, which is correct — but the old page also reads a 7-bucket shape the endpoint no longer returns first. |
-| New UI + old `config.php` | `t()`, `am2_asset()`, `am2_api_identity()` and `channel_access.php` are all missing. Fatal on every page. |
-| New UI + old `api_*.php` | The pages do not call them directly, so this one is survivable — but the Admin Native app would be talking to endpoints with no superadmin gate. |
+Runtime configuration, secrets, databases, Redis, logs, and update stores remain outside the archive. Materialization may attach only the environment-owned writable links defined by the release contract; it must not modify sealed payload files.
 
-## Supported states
+## Runtime host boundary
 
-Exactly two:
+Deployment and rollback must not read or use the operator checkout. They require no Git source credential, `git clone/fetch/pull`, dependency installation, compiler, bundler, or CI runner. The deploy identity reads one approved private-cache digest, creates a new immutable release, verifies it, and performs only the separately approved activation/service operation.
 
-1. **Previous release** — every file from the May build, `current` pointing at it.
-2. **This release** — every file from this build, `current` pointing at it.
+A runtime release must contain no `.git`, `.github`, `.hermes`, tests, plans, developer docs, local environment files, build caches, or development dependencies.
 
-Moving between them is a symlink change plus an `am2-api` restart. Nothing in
-between is supported, and nothing in between is tested.
+## Rollback
 
-## What the contract suite guarantees
+Rollback never rebuilds. It selects a retained, preflighted immutable release derived from a previously verified artifact, switches `current` atomically, and runs the same identity and health checks as forward promotion. Accepted and rollback artifacts remain in durable private storage.
 
-`tests/contract/` runs against a whole deployed tree, not against files in
-isolation. A green suite means *that tree* is consistent. It says nothing about
-a tree assembled from two releases, and it is not able to: the tests read the
-document root as a unit.
+## Atomic release scope
 
-So the operational rule is the simple one. Deploy the release. If it is wrong,
-put the symlink back. Do not move individual files, in either direction.
+WebAdmin and relay runtime files form one release. Partial file-level rollback is unsupported because authentication, session, endpoint, and UI contracts can change together. Move only between complete release identities; never copy individual files into an active release.
+
+## Transitional operator exception
+
+The co-resident operator checkout is transitional. It may remain temporarily for chat-assisted coding and `git`/`gh` branch–PR–merge work, but it is never deployment input and is unreadable to bounded cache/materialization identities. The final transition task relocates operator work and removes source credentials, checkout, and build-only tooling from the runtime VPS after production artifact deployment, rollback, runbook, and drift prevention have all been proven.
