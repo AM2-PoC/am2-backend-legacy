@@ -269,3 +269,32 @@ test('the page guard delegates rather than keeping a third copy', () => {
     assert.match(auth, /require_once __DIR__ \. '\/config\.php'/,
         'auth.php no longer pulls in the guard, so including it alone protects nothing');
 });
+
+test('a refusal takes the shape the caller can act on', () => {
+    /*
+     * Three kinds of caller, three right answers, and getting this wrong is how
+     * the original complaint happened: a handset whose session had expired was
+     * sent a login *page* with status 200, so nothing could tell it had been
+     * signed out and every screen blamed its own feature.
+     *
+     *   - a browser navigating       -> 302 to login.php
+     *   - a fetch() from a page      -> 401 JSON
+     *   - anything asking for JSON   -> 401 JSON
+     *
+     * The first two are told apart by Sec-Fetch-Dest, which every current
+     * browser sends and which says what the response is *for*: `document` for a
+     * navigation, `empty` for a fetch(). A caller that sends neither it nor an
+     * Accept header -- curl, the contract suite -- falls back to being treated
+     * as a document, which is the behaviour that was there before and the one
+     * those tests encode.
+     */
+    const g = phpFunction(guard, 'am2_require_identity');
+    assert.match(g, /HTTP_SEC_FETCH_DEST/,
+        'a fetch() and a navigation are still indistinguishable');
+    assert.match(g, /http_response_code\(401\)/);
+    assert.match(g, /header\('Location: login\.php/);
+    // Absent Sec-Fetch-Dest must not by itself mean "API". That inversion turns
+    // every plain curl of a page into a 401 and breaks the redirect contract.
+    assert.doesNotMatch(g, /!str_contains\(\$accept, 'text\/html'\)/,
+        'a caller that sends no Accept header is treated as an API call');
+});

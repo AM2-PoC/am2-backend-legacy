@@ -107,18 +107,34 @@ if (!function_exists('am2_require_identity')) {
             substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120)
         ));
 
-        // A redirect answers a fetch() with 200 and a page of HTML, which the
-        // caller then tries to parse as JSON. Say what happened instead: Admin
-        // Native's interceptor signs the operator out on 401 and deliberately
-        // leaves 403 alone, so the status is the whole message.
-        //
-        // Anything that is not plainly a document request is treated as an API
-        // call. That is the safe way round: a browser always asks for
-        // text/html, so the worst case for a misjudged caller is a machine
-        // readable refusal instead of a redirect it could not have followed.
+        /*
+         * Three kinds of caller, three right answers.
+         *
+         * A redirect answers a fetch() with 200 and a page of HTML, which the
+         * caller then tries to parse as JSON -- that is precisely the shape of
+         * the original complaint, where a handset on an expired session was
+         * handed a login page and every screen reported its own feature as
+         * broken because nothing could see a status. So a fetch() gets 401,
+         * which Admin Native's interceptor acts on (and 403, which it
+         * deliberately does not).
+         *
+         * A browser navigating still gets the redirect. The two are told apart
+         * by Sec-Fetch-Dest, which every current browser sends and which says
+         * what the response is *for*: `document` for a navigation, `empty` for
+         * a fetch(). Accept cannot make that distinction -- fetch() defaults to
+         * `*\/*`, which looks like nothing in particular.
+         *
+         * A caller that sends neither header -- curl, the contract suite -- is
+         * treated as a document. Not because that is safer in the abstract, but
+         * because it is the behaviour that was here before and the behaviour
+         * those tests encode; changing it would be an unrelated change riding
+         * along with a security fix.
+         */
         $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+        $dest = (string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '');
         $timedOut = function_exists('am2_session_timed_out') && am2_session_timed_out();
-        if (!str_contains($accept, 'text/html')
+        $subresource = $dest !== '' && $dest !== 'document' && $dest !== 'iframe';
+        if ($subresource
             || str_contains($accept, 'json')
             || str_contains((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest')
         ) {
