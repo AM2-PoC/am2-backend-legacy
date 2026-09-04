@@ -1,103 +1,55 @@
-# Deploy a restart-safe release, and roll it back
+# Deploy and roll back an immutable backend artifact
 
-Production is an immutable release directory selected by `/var/www/am2/current`. Apache and `am2-api` both resolve that symlink, so every selected release must be runnable by both services even when a change appears PHP-only. Never edit a release in place.
+Production consumes a CI-built runtime artifact. Deployment and rollback do not fetch source, install dependencies, or build on the runtime host.
+
+## Required identity
+
+Record before any staging or production activation:
 
 ```text
-/var/www/am2/
-├── current -> releases/<stamp>-<sha12>
-├── releases/<stamp>-<sha12>/
-├── shared/
-└── staging/
+source SHA
+GitHub Actions artifact ID
+archive_sha256 and payload_sha256 from artifact-manifest.json
+candidate, current, and rollback release paths
+service PID, cwd, NRestarts, and established session count
 ```
 
-## Non-negotiable invariants
+A branch and tag are review/label boundaries, not deployment inputs. Activation selects one verified archive digest.
 
-- Build from an exact 40-character commit SHA, never an implicit moving branch.
-- Do not move `/current` until dependency preflight and isolated cold start pass on the exact candidate.
-- Validate the rollback release before cutover.
-- A healthy old PID is not candidate evidence: compare `/proc/<pid>/cwd` with `/current/server`.
-- Restarting the relay drops every WebSocket. Require a quiet window or explicit session-drain approval.
-- Invalid candidates stay outside `/current`; failed builds are discarded, not repaired in place.
-- Runtime secrets stay in protected `/etc/am2/*.env` files and are represented in documentation as `[REDACTED]`.
+## Artifact bundle
 
-## One-time host containment
+The private cache entry is addressed by:
 
-Make the releases directories setgid, so every release published into them
-inherits the web server's group:
+```text
+<source_sha>/<archive_sha256>/
+```
+
+It contains exactly:
+
+```text
+am2-backend-runtime.tar.gz
+artifact-manifest.json
+SHA256SUMS
+lockfiles/server-package-lock.json
+lockfiles/webadmin-package-lock.json
+```
+
+GitHub Actions is only a bounded handoff. Accepted and rollback bytes stay in the private cache.
+
+## Before materialization
+
+1. Confirm exact-main source checks for the source SHA succeeded.
+2. Confirm the CI artifact is not expired, then verify the cache copy:
 
 ```bash
-sudo chgrp www-data /var/www/am2/releases /var/www/am2/staging/releases
-sudo chmod g+s /var/www/am2/releases /var/www/am2/staging/releases
+CACHE=/var/lib/am2-artifacts/<source_sha>/<archive_sha256>
+/usr/local/libexec/am2/verify-runtime-artifact.sh \
+  --archive "$CACHE/am2-backend-runtime.tar.gz" \
+  --manifest "$CACHE/artifact-manifest.json" \
+  --checksums "$CACHE/SHA256SUMS"
 ```
 
-A release is mode `0750`, so the group is Apache's only way in. The builder runs
-unprivileged and cannot join a group it does not belong to, so it verifies this
-inheritance rather than setting it, and refuses to publish when it did not hold.
-Without the setgid bit a release takes the building user's own group and Apache
-answers `403` for all of WebAdmin the moment the symlink moves.
-
-Install source-controlled policy and health artifacts. This does not restart `am2-api`:
-
-```bash
-sudo install -D -m 0644 infra/needrestart/am2-realtime.conf \
-  /etc/needrestart/conf.d/am2-realtime.conf
-sudo install -D -m 0755 infra/scripts/check-relay-health.sh \
-  /usr/local/libexec/am2/check-relay-health.sh
-sudo install -D -m 0755 infra/scripts/send-relay-alert.sh \
-  /usr/local/libexec/am2/send-relay-alert.sh
-sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.service \
-  /etc/systemd/system/am2-relay-watchdog.service
-sudo install -D -m 0644 infra/systemd/am2-relay-watchdog.timer \
-  /etc/systemd/system/am2-relay-watchdog.timer
-sudo install -D -m 0644 infra/systemd/am2-relay-alert@.service \
-  /etc/systemd/system/am2-relay-alert@.service
-sudo install -D -m 0644 infra/nginx/am2-webadmin-dev-deny.conf \
-  /etc/nginx/snippets/am2-webadmin-dev-deny.conf
-sudo install -D -m 0644 infra/nginx/am2-webadmin.conf \
-  /etc/nginx/sites-available/am2-webadmin.conf
-sudo install -D -m 0644 infra/nginx/am2-webadmin-staging.conf \
-  /etc/nginx/sites-available/am2-webadmin-staging.conf
-sudo ln -sfn /etc/nginx/sites-available/am2-webadmin.conf \
-  /etc/nginx/sites-enabled/am2-webadmin.conf
-sudo ln -sfn /etc/nginx/sites-available/am2-webadmin-staging.conf \
-  /etc/nginx/sites-enabled/am2-webadmin-staging.conf
-# The panel guard: the prepended file plus the PHP conf.d directive that loads
-# it. Installed by a script rather than by hand because it also takes the old
-# directive back out of the Apache vhosts, so there is one place it lives.
-infra/scripts/install-webadmin-guard.sh --apply
-
-sudo install -D -m 0644 infra/apache/am2-webadmin-internal.conf \
-  /etc/apache2/sites-available/am2-webadmin-internal.conf
-sudo install -D -m 0644 infra/apache/am2-webadmin-staging.conf \
-  /etc/apache2/sites-available/am2-webadmin-staging.conf
-sudo ln -sfn ../sites-available/am2-webadmin-internal.conf \
-  /etc/apache2/sites-enabled/am2-webadmin-internal.conf
-sudo ln -sfn ../sites-available/am2-webadmin-staging.conf \
-  /etc/apache2/sites-enabled/am2-webadmin-staging.conf
-sudo systemctl daemon-reload
-sudo systemctl enable --now am2-relay-watchdog.timer
-sudo nginx -t
-sudo apache2ctl configtest
-sudo systemctl reload nginx apache2
-```
-
-Configure an absolute executable `AM2_ALERT_COMMAND` in `/etc/am2/relay-watchdog.env`. The command receives one message argument and must notify the on-call operator. Without it, the fallback is local journald only and the two-minute operator-notification acceptance criterion is not met.
-
-The needrestart override defers only the exact `am2-api.service` and `am2-api-staging.service` names. A controlled maintenance window must later restart them when required by package updates.
-
-The edge deny snippet returns `404` for repository metadata, internal docs/tests, manifests, lockfiles, schema snapshots, and dependency trees on both production and staging. The Apache `auto_prepend_file` strips ordinary implementation comments from rendered WebAdmin HTML. Probe forbidden URLs at both edge and loopback origin and confirm representative public pages still return `200` after every configuration rollout.
-
-## Pre-deploy evidence
-
-Take and validate a database dump:
-
-```bash
-sudo systemctl start am2-backup.service
-DUMP=$(ls -1t /var/backups/am2/postgres/*.dump | head -1)
-sudo -u postgres pg_restore -l "$DUMP" | grep -c 'TABLE DATA'
-```
-
-Record live identity and sessions before cutover:
+3. Record and preflight the current rollback release:
 
 ```bash
 OLD_REL=$(readlink -f /var/www/am2/current)
@@ -105,260 +57,127 @@ OLD_PID=$(systemctl show am2-api -p MainPID --value)
 OLD_RESTARTS=$(systemctl show am2-api -p NRestarts --value)
 sudo readlink -f "/proc/$OLD_PID/cwd"
 sudo ss -Htn state established 'sport = :5000' | wc -l
+sudo /usr/local/libexec/am2/verify-current-release.sh "$OLD_REL"
 ```
 
-If PID cwd differs from `$OLD_REL/server`, record the hybrid state. Do not use that old PID as evidence that `$OLD_REL` or a new candidate can cold-start.
+4. Take and inventory a fresh database backup. A destructive migration requires a separately approved data rollback plan.
 
-## Build exact immutable candidates
+## Materialize without source
 
-Fetch, pin, and build production with runtime links already sealed into the candidate:
+The bounded release identity may read one immutable cache digest and create a new release. It cannot read the operator checkout or write shared update storage.
 
 ```bash
-sudo -u am2deploy git -C /home/am2deploy/am2-main fetch origin
-SHA=$(git -C /home/am2deploy/am2-main rev-parse origin/main^{commit})
-STAMP=$(date +%Y%m%d%H%M%S)
-REL=/var/www/am2/releases/${STAMP}-${SHA:0:12}
+SOURCE_SHA=<40-lowercase-hex>
+ARCHIVE_SHA=<64-lowercase-hex>
+CACHE=/var/lib/am2-artifacts/$SOURCE_SHA/$ARCHIVE_SHA
+REL=/var/www/am2/releases/artifact-$ARCHIVE_SHA
 
-sudo -u am2deploy /home/am2deploy/am2-main/infra/scripts/build-release.sh \
-  --repo /home/am2deploy/am2-main \
-  --sha "$SHA" \
+sudo -u am2release /usr/local/libexec/am2/materialize-runtime-release.sh \
+  --archive "$CACHE/am2-backend-runtime.tar.gz" \
+  --manifest "$CACHE/artifact-manifest.json" \
+  --checksums "$CACHE/SHA256SUMS" \
   --dest "$REL" \
   --webadmin-update /var/www/am2/shared/webadmin-update \
   --server-update /var/www/am2/shared/server-update
+
+sudo /usr/local/libexec/am2/verify-current-release.sh "$REL"
+sudo /usr/local/libexec/am2/verify-materialized-artifact.sh \
+  --release "$REL" --manifest "$CACHE/artifact-manifest.json"
+sudo /usr/local/libexec/am2/smoke-release.sh \
+  "$REL" "$SOURCE_SHA" /etc/am2/api.env
 ```
 
-The builder uses `git archive`, writes `.release-sha`, runs `npm ci --omit=dev`, validates JavaScript syntax and every declared production dependency, then atomically publishes the directory. It refuses an existing destination and removes failed temporary output.
+Materialization leaves `current` untouched. `smoke-release.sh` starts on a random loopback port, checks migrations, and must print `isolated release smoke OK`.
 
-Build staging separately from the same SHA:
+If an artifact contains unapplied additive migrations, apply them before any pointer switch:
 
 ```bash
-STAGING_REL=/var/www/am2/staging/releases/${STAMP}-${SHA:0:12}
-sudo -u am2deploy /home/am2deploy/am2-main/infra/scripts/build-release.sh \
-  --repo /home/am2deploy/am2-main \
-  --sha "$SHA" \
-  --dest "$STAGING_REL" \
-  --webadmin-update /var/www/am2/staging/shared/webadmin-update \
-  --server-update /var/www/am2/staging/shared/server-update
+"$REL/infra/scripts/apply-migrations.sh" --db am2 --dry-run
+"$REL/infra/scripts/apply-migrations.sh" --db am2
+# guarded activation performs: ln -sfn "$REL" /var/www/am2/current
 ```
 
-If staging shared paths differ, inspect existing links and pass those exact absolute directories. Do not guess or reuse production data.
+## Update channels
 
-## Publish the field app, when there is a new one
-
-The radio app's update channel is one manifest and one APK: `server/update/version.json` is what a handset fetches, and the APK it names is what a handset downloads. They are published together or not at all — separately is the one way to leave a manifest describing bytes other than the ones beside it, which the handset refuses on the digest while reporting nothing an operator can act on.
+Backend activation does not publish an Android APK. Publish a separately accepted Client artifact only through its validating publisher:
 
 ```bash
 "$REL/infra/scripts/publish-field-update.sh" \
-  --artifact /path/to/downloaded/ci-artifact \
+  --artifact /path/to/client-ci-artifact \
   --update-dir /var/www/am2/shared/server-update
 ```
 
-It refuses a manifest that does not describe the APK shipped beside it, a build that does not advance past the published one, and an artifact holding more than one APK. `public.app_versions` is deliberately not touched: nothing reads it, and it was a second hand-written copy of this channel that drifted three builds behind.
+Admin uses its independent `publish-admin-update.sh` channel. Never copy an APK and manifest independently.
 
-The administrator app uses a separate package, signer, directory, manifest name,
-and endpoint. Publish that coherent pair through its own validator:
+## Required staging rehearsal
+
+Before production, staging must run the same source SHA and exact archive and payload digests. Do not sequence pointer changes manually. The host-owned rehearsal holds the deployment lock, verifies candidate bytes, performs candidate → rollback → same-digest re-promotion, requires three stable PID/cwd/HTTP/NRestarts samples per transition, and atomically records root-owned evidence.
 
 ```bash
-"$REL/infra/scripts/publish-admin-update.sh" \
-  --artifact /path/to/downloaded/admin-ci-artifact \
-  --update-dir /var/www/am2/shared/webadmin-update
+STAGING_REL=/var/www/am2/staging/releases/artifact-$ARCHIVE_SHA
+/usr/local/libexec/am2/rehearse-staging-artifact.sh \
+  --release "$STAGING_REL" \
+  --manifest "$CACHE/artifact-manifest.json" \
+  --allow-relay-restart
 ```
 
-It requires production package `com.am2.admin`, the canonical production HTTPS
-URL, exact APK digest, signer/source metadata, and a strictly increasing build.
-On failed read-back it restores the previous APK and manifest together. Do not
-copy `admin.apk` and `admin_version.json` separately or reuse the field-app
-publisher: these are independent channels.
+It prints a receipt under:
 
-## Preflight, smoke, migration
-
-Install the host-owned preflight helper before loading either relay unit. Keeping `ExecStartPre` outside the release means a pre-P0 rollback target can still be started and validated:
-
-```bash
-sudo install -d -m 0755 /usr/local/libexec/am2
-sudo install -m 0755 infra/scripts/verify-current-release.sh /usr/local/libexec/am2/verify-current-release.sh
+```text
+/var/www/am2/staging/shared/rehearsals/
 ```
 
-Validate candidate and rollback target:
+The receipt binds the source SHA, archive SHA-256, payload SHA-256, candidate/rollback paths, and activation/rollback/re-promotion PIDs. Run staging protocol, contract, physical-device, and update-channel acceptance after the final re-promotion.
+
+## Production approval gate
+
+Production promotion requires all of these:
+
+- exact staging rehearsal receipt for the same archive digest;
+- candidate and rollback host-owned preflight success;
+- verified cache and materialized-byte identity;
+- valid backup inventory;
+- separately approved disruptive relay restart, when required;
+- explicit production approval naming the source SHA, archive digest, old/new paths, session count, and rollback target.
+
+Use the source-controlled gate rather than a hand-run checklist:
 
 ```bash
-"$REL/infra/scripts/verify-release-runtime.sh" "$REL" "$SHA"
-OLD_SHA=$(tr -d '\r\n' < "$OLD_REL/.release-sha")
-"$OLD_REL/infra/scripts/verify-release-runtime.sh" "$OLD_REL" "$OLD_SHA"
-```
-
-## Promote to production
-
-Do not run the gates by hand. They were skipped entirely once — on 2026-09-04 at
-11:29:06, production moved to a new release with no staging acceptance, no
-verified rollback target, no smoke against the production environment, and no
-record beyond the symlink's own mtime — and later the same day they were run
-correctly, one command at a time. Both outcomes came from the same arrangement:
-a checklist a person executes.
-
-```bash
-ARCHIVE_SHA=<staging-accepted-archive-sha256>
-REHEARSAL_RECEIPT=/var/www/am2/staging/shared/promotions/<verified-rehearsal>.txt
-infra/scripts/promote-to-production.sh \
+REHEARSAL_RECEIPT=/var/www/am2/staging/shared/rehearsals/<verified-receipt>
+/usr/local/libexec/am2/promote-to-production.sh \
   --release "$REL" \
   --archive-sha256 "$ARCHIVE_SHA" \
   --staging-rehearsal-receipt "$REHEARSAL_RECEIPT" \
   --dry-run
-# Run the same command without --dry-run only after separate production approval.
-# Add --allow-relay-restart only when reconnect disruption was explicitly approved.
+
+# After separate production approval, rerun without --dry-run.
+# Add --allow-relay-restart only when reconnect disruption is approved.
 ```
 
-It refuses rather than warns. In order: staging must be running the same source
-SHA; the candidate must verify; **the rollback target must verify too**, because
-a rollback nobody has checked is a hope rather than a plan; the candidate must
-survive a cold start against `/etc/am2/api.env`, which staging cannot prove
-since it has its own database and relay.
+The gate owns `/var/lib/am2-relay-watchdog/deploy.lock`, compares canonical relay digests against the running PID cwd, requires stable readiness, writes an immutable receipt, and automatically restores the verified previous release if post-cutover validation fails.
 
-The last gate is about people rather than code. PHP is read from disk per
-request, so moving the symlink changes the panel immediately and interrupts
-nobody. The relay holds its code in memory, so a relay change needs a restart
-and a restart disconnects every unit. When the relay source differs the script
-counts who is online and **refuses**, until `--allow-relay-restart` says that is
-understood.
+## Post-activation verification
 
-Afterwards it re-runs the guard sweep and writes a receipt to
-`/var/www/am2/shared/promotions/` naming the actor, both SHAs, and whether the
-relay was restarted.
+Require all of these before declaring success:
 
-Cold-start the exact candidates using protected environment files and random loopback ports:
-
-```bash
-"$REL/infra/scripts/smoke-release.sh" "$REL" "$SHA" /etc/am2/api.env
-"$STAGING_REL/infra/scripts/smoke-release.sh" \
-  "$STAGING_REL" "$SHA" /etc/am2/api.staging.env
+```text
+/current resolves to the approved release
+.release-sha and materialized payload match the verified manifest
+running PID cwd / canonical relay digest match current runtime
+am2-api is active with stable NRestarts
+API root answers 200 with the PTT Server marker
+WebAdmin login answers 200
+anonymous protected WebAdmin APIs answer 401
+Client/Admin canonical update pairs remain coherent
+production database and Redis are healthy
 ```
 
-Smoke must return `isolated release smoke OK`. It traps and removes its child relay. It never prints protected environment values.
+Inspect service and watchdog journals for startup, dependency, authentication, or HTTP 502 errors during the bounded soak. Retain at least the accepted release and one independently verified rollback release.
 
-Dry-run migrations first, apply to staging, then production before code swap:
+## Rollback
 
-```bash
-"$REL/infra/scripts/apply-migrations.sh" --db am2 --dry-run
-"$STAGING_REL/infra/scripts/apply-migrations.sh" --db am2_staging
-"$REL/infra/scripts/apply-migrations.sh" --db am2
-```
+Rollback selects retained verified bytes; rollback never rebuilds. Keep the deployment lock held, preflight the recorded rollback release, atomically restore `current`, restart only if canonical relay bytes differ, and re-run the same identity, HTTP, WebSocket/auth, database, Redis, and update-channel checks. Record both source/archive identities, paths, PIDs, timestamps, and outcome.
 
-Current migrations are additive. A future destructive migration requires a separate database rollback plan and cannot rely on symlink rollback.
+## Transitional operator checkout
 
-## Required staging restart and rollback rehearsal
-
-Do not sequence staging pointer changes by hand. Use the host-owned rehearsal command; it holds the deployment lock, verifies exact materialized artifact bytes, activates the candidate, rolls back, re-promotes the same digest, waits for PID/cwd/HTTP readiness at every transition, and atomically writes a root-owned receipt:
-
-```bash
-/usr/local/libexec/am2/rehearse-staging-artifact.sh \
-  --release "$STAGING_REL" \
-  --manifest "/var/lib/am2-artifacts/$SHA/$ARCHIVE_SHA/artifact-manifest.json" \
-  --allow-relay-restart
-```
-
-The receipt is written below `/var/www/am2/staging/shared/rehearsals/` and binds source SHA, archive and payload digests, candidate and rollback paths, and all three observed PIDs. Run staging contract/protocol and physical-device acceptance after final re-promotion. Do not proceed if any restart, dependency, protocol, HTTP, or exact-byte check fails.
-
-## Production cutover
-
-First determine whether `server/`, systemd, or relay scripts changed:
-
-```bash
-git -C /home/am2deploy/am2-main diff --quiet "$OLD_SHA" "$SHA" -- \
-  server infra/systemd infra/scripts infra/needrestart
-```
-
-For a WebAdmin-only change, swap and reload Apache; verify the relay PID is unchanged:
-
-```bash
-BEFORE_PID=$(systemctl show am2-api -p MainPID --value)
-sudo ln -sfn "$REL" /var/www/am2/current
-sudo systemctl reload apache2
-AFTER_PID=$(systemctl show am2-api -p MainPID --value)
-test "$BEFORE_PID" = "$AFTER_PID"
-```
-
-When relay-related files changed, require the approved quiet window and verify established session count is at the agreed drain threshold. Then:
-
-```bash
-exec 9</var/lib/am2-relay-watchdog/deploy.lock
-flock -x 9
-sudo install -m 0644 "$REL/infra/systemd/am2-api.service" \
-  /etc/systemd/system/am2-api.service
-sudo systemctl daemon-reload
-sudo ln -sfn "$REL" /var/www/am2/current
-sudo systemctl reload apache2
-sudo systemctl reset-failed am2-api
-
-# Restart only when the relay source actually changed.
-#
-# A WebSocket cannot survive its process ending, so every restart drops every
-# connected handset. The drain makes that an ended transmission rather than a
-# severed one, but the cheapest interruption is still the one not taken: most
-# releases change WebAdmin and leave server/ untouched, and for those the
-# running relay is already running exactly what is deployed.
-OLD_PID=$(systemctl show am2-api -p MainPID --value)
-RUNNING=$(sudo readlink -f "/proc/$OLD_PID/cwd")
-if [[ "$("$REL/infra/scripts/relay-source-digest.sh" "$RUNNING")" \
-   == "$("$REL/infra/scripts/relay-source-digest.sh" "$REL/server")" ]]; then
-    echo "relay source unchanged; leaving $OLD_PID and its sessions alone"
-else
-    sudo systemctl restart am2-api
-fi
-```
-
-Keep file descriptor 9 open through the complete swap, restart, immediate verification, and any rollback. The watchdog takes a non-blocking shared lock and silently skips samples while this exclusive deployment lock is held; it never restarts the relay itself.
-
-Verify service and HTTP directly before releasing the lock, then run one watchdog sample after release. Runtime identity is asserted on the relay's *source*, not its path: a relay left running from an earlier release directory is correct as long as it holds byte-identical code, which is exactly the state a skipped restart produces.
-
-```bash
-systemctl is-active --quiet am2-api
-curl -fsS http://127.0.0.1:5000/ | grep -F 'PTT Server'
-NEW_PID=$(systemctl show am2-api -p MainPID --value)
-test "$("$REL/infra/scripts/relay-source-digest.sh" "$(sudo readlink -f "/proc/$NEW_PID/cwd")")" \
-   = "$("$REL/infra/scripts/relay-source-digest.sh" "$(readlink -f /var/www/am2/current)/server")"
-flock -u 9
-exec 9>&-
-sudo /usr/local/libexec/am2/check-relay-health.sh
-```
-
-The service preflight validates the exact `/current` release before Node executes. The unit permits no more than three failed starts in five minutes.
-
-## Verify and automatic rollback decision
-
-Within 60 seconds:
-
-```bash
-systemctl is-active am2-api nginx apache2 postgresql redis-server
-curl -fsS http://127.0.0.1:5000/ | grep -F 'PTT Server'
-sudo /usr/local/libexec/am2/check-relay-health.sh
-NEW_PID=$(systemctl show am2-api -p MainPID --value)
-sudo readlink -f "/proc/$NEW_PID/cwd"
-readlink -f /var/www/am2/current
-systemctl show am2-api -p NRestarts
-```
-
-Also verify public login/API probes, one authenticated read, one safe write, WebSocket login, channel join, heartbeat, and one PTT transmit/release path.
-
-Rollback immediately if health is not green within 60 seconds, startup fatals appear, restart count grows, PID cwd differs from `/current/server`, or client protocol checks fail. Target rollback completion is five minutes:
-
-```bash
-sudo ln -sfn "$OLD_REL" /var/www/am2/current
-sudo systemctl reload apache2
-sudo systemctl reset-failed am2-api
-sudo systemctl restart am2-api
-sudo /usr/local/libexec/am2/check-relay-health.sh
-```
-
-## Soak and evidence retention
-
-For at least 15 minutes after cutover, record:
-
-```bash
-systemctl show am2-api -p NRestarts -p MainPID -p ActiveEnterTimestamp
-sudo journalctl -u am2-api --since '<cutover timestamp>' --no-pager
-sudo journalctl -u am2-relay-watchdog --since '<cutover timestamp>' --no-pager
-```
-
-Confirm zero new dependency errors, startup fatals, restart growth, watchdog failures, and HTTP 502 responses. Preserve candidate SHA, release path, rollback path, dump path, session count, PID/cwd, test output, and cutover/rollback timestamps in the deployment record.
-
-Keep at least the last three validated runnable releases. Never delete the last known-good rollback target while production restart closure is unproven.
+The co-resident operator checkout may temporarily remain for chat-assisted coding and `git`/`gh` branch–PR–merge work. Deployment and rollback must not read or use that checkout, its dependencies, or source credentials. The final transition task relocates operator work and removes the VPS exception only after artifact delivery, production rollback, runbook, and drift prevention are proven.

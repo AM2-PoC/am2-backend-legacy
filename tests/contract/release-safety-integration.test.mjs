@@ -32,8 +32,9 @@ test('CI executes every restart-safety contract and builds a production artifact
 
 test('deploy runbook permits promotion only through exact-SHA safety scripts', () => {
   const runbook = read('docs/how-to/deploy-and-roll-back.md');
-  assert.match(runbook, /build-release\.sh/);
-  assert.match(runbook, /verify-release-runtime\.sh/);
+  assert.match(runbook, /verify-runtime-artifact\.sh/);
+  assert.match(runbook, /materialize-runtime-release\.sh/);
+  assert.match(runbook, /verify-current-release\.sh/);
   assert.match(runbook, /smoke-release\.sh/);
   assert.match(runbook, /check-relay-health\.sh/);
   assert.match(runbook, /exec 9<\/var\/lib\/am2-relay-watchdog\/deploy\.lock/,
