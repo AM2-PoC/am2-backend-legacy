@@ -1,200 +1,225 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Move production to a release, or refuse and say which gate stopped it.
-#
-# Every step here already existed as its own script. What did not exist was
-# anything that ran them in order and stopped when one failed -- the sequence
-# lived in docs/how-to/deploy-and-roll-back.md and in whoever happened to be
-# doing the deploy.
-#
-# On 2026-09-04 at 11:29:06 production was moved to a new release with none of
-# these gates: no staging acceptance, no verified rollback target, no smoke
-# against the production environment, no record that it happened beyond the
-# symlink's own mtime. That was not the cause of the incident six minutes later
-# -- the vulnerability predated it -- but the gates existed on paper and were
-# skipped, which is the only interesting thing about them. Later the same day
-# the same gates were run correctly, by hand, one command at a time. Both
-# outcomes came from the same arrangement: a checklist a person executes.
-#
-# This does not decide whether to promote. It decides whether promoting is
-# allowed to proceed, and leaves a receipt saying what was promoted and by whom.
-#
-#   promote-to-production.sh --release /var/www/am2/releases/<stamp>-<sha12>
-#   promote-to-production.sh --release ... --dry-run    # run the gates only
-
 usage() {
     cat >&2 <<'USAGE'
-Usage: promote-to-production.sh --release /absolute/release [--dry-run] [--allow-relay-restart]
-
-  --release              the candidate. Must already be built and published.
-  --dry-run              run every gate, change nothing.
-  --allow-relay-restart  permit the step that disconnects every connected unit.
-                         Without it, a release whose relay source differs from
-                         the running one is refused rather than restarted
-                         silently.
+Usage: promote-to-production.sh --release /absolute/release --archive-sha256 64-hex [--staging-rehearsal-receipt /absolute/file] [--dry-run] [--allow-relay-restart]
 USAGE
 }
 
 release=
+archive_sha256=
+rehearsal_receipt=
 dry_run=0
 allow_restart=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --release)             [[ $# -ge 2 ]] || { usage; exit 64; }; release=$2; shift 2 ;;
-        --dry-run)             dry_run=1; shift ;;
+        --release) [[ $# -ge 2 ]] || { usage; exit 64; }; release=$2; shift 2 ;;
+        --archive-sha256) [[ $# -ge 2 ]] || { usage; exit 64; }; archive_sha256=$2; shift 2 ;;
+        --staging-rehearsal-receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; rehearsal_receipt=$2; shift 2 ;;
+        --dry-run) dry_run=1; shift ;;
         --allow-relay-restart) allow_restart=1; shift ;;
-        -h|--help)             usage; exit 0 ;;
-        *)                     usage; exit 64 ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage; exit 64 ;;
     esac
 done
 [[ -n $release && $release == /* && -d $release ]] || { usage; exit 64; }
+[[ $archive_sha256 =~ ^[0-9a-f]{64}$ ]] || { echo "archive SHA-256 must be lowercase 64-hex" >&2; exit 64; }
+[[ -f $release/.artifact-identity.json ]] || { echo "release artifact identity is missing" >&2; exit 1; }
+release_archive_sha256=$(python3 - "$release/.artifact-identity.json" <<'PYTHON'
+import json
+import re
+import sys
+value = json.load(open(sys.argv[1], encoding='utf-8'))
+if set(value) != {'source_sha', 'archive_sha256', 'payload_sha256'}:
+    raise SystemExit('release artifact identity key set is not exact')
+for key, width in (('source_sha', 40), ('archive_sha256', 64), ('payload_sha256', 64)):
+    if not re.fullmatch(f'[0-9a-f]{{{width}}}', str(value.get(key, ''))):
+        raise SystemExit(f'release artifact identity {key} is invalid')
+print(value['archive_sha256'])
+PYTHON
+)
+[[ $release_archive_sha256 == "$archive_sha256" ]] || {
+    echo "release artifact identity does not match requested archive SHA-256" >&2
+    exit 1
+}
 
-CURRENT=/var/www/am2/current
-STAGING=/var/www/am2/staging/current
-RECEIPTS=/var/www/am2/shared/promotions
+CURRENT=${AM2_PRODUCTION_CURRENT:-/var/www/am2/current}
+STAGING=${AM2_STAGING_CURRENT:-/var/www/am2/staging/current}
+RECEIPTS=${AM2_PROMOTION_RECEIPTS:-/var/www/am2/shared/promotions}
+DEPLOY_LOCK=${AM2_DEPLOY_LOCK:-/var/lib/am2-relay-watchdog/deploy.lock}
+VERIFY_CURRENT=${AM2_VERIFY_CURRENT:-/usr/local/libexec/am2/verify-current-release.sh}
+PRODUCTION_ENV=${AM2_PRODUCTION_ENV:-/etc/am2/api.env}
+PRODUCTION_UNIT=${AM2_PRODUCTION_UNIT:-am2-api}
+STAGING_UNIT=${AM2_STAGING_UNIT:-am2-api-staging}
+PRODUCTION_URL=${AM2_PRODUCTION_URL:-http://127.0.0.1:5000/}
+STAGING_URL=${AM2_STAGING_URL:-http://127.0.0.1:5001/}
+RELAY_DIGEST=${AM2_RELAY_DIGEST:-/usr/local/libexec/am2/relay-source-digest.sh}
 
 sha_of() { tr -d '\r\n' < "$1/.release-sha"; }
-gate=0
-step() { printf '\n── %s\n' "$*"; }
+step() { printf '\n-- %s\n' "$*"; }
 refuse() { echo "REFUSED: $*" >&2; gate=1; }
+wait_ready() {
+    local unit=$1 url=$2 expected_root=$3 before_pid=$4
+    local pid cwd body
+    for _ in $(seq 1 60); do
+        if systemctl is-active --quiet "$unit"; then
+            pid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)
+            cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
+            body=$(curl -fsS --max-time 2 "$url" 2>/dev/null || true)
+            if [[ $pid =~ ^[1-9][0-9]*$ && $pid != "$before_pid" && $cwd == "$expected_root/server" && $body == *"PTT Server"* ]]; then
+                printf '%s\n' "$pid"
+                return 0
+            fi
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+# Own the transition before reading old/current identities. The watchdog takes a
+# shared lock and therefore skips the intentional mismatch window silently.
+exec 9>"$DEPLOY_LOCK"
+flock -x 9
 
 sha=$(sha_of "$release")
+identity_source_sha=$(python3 - "$release/.artifact-identity.json" <<'PYTHON'
+import json, sys
+print(json.load(open(sys.argv[1], encoding='utf-8'))['source_sha'])
+PYTHON
+)
+[[ $identity_source_sha == "$sha" ]] || { echo "release marker and artifact identity source mismatch" >&2; exit 1; }
 old=$(readlink -f "$CURRENT")
 old_sha=$(sha_of "$old")
+old_pid=$(systemctl show "$PRODUCTION_UNIT" -p MainPID --value)
+old_restarts=$(systemctl show "$PRODUCTION_UNIT" -p NRestarts --value)
+running_cwd=$(readlink -f "/proc/$old_pid/cwd" 2>/dev/null || true)
+gate=0
 
 echo "candidate : $release"
-echo "            $sha"
-echo "rollback  : $old"
-echo "            $old_sha"
+echo "source    : $sha"
+echo "archive   : $archive_sha256"
+echo "rollback  : $old ($old_sha)"
 
-# ── Gate 1. Staging ran this exact source.
-#
-# The gate that would have caught 11:29. Production took a release built from a
-# SHA no staging release had ever been built from, and nothing noticed. Compared
-# by SHA rather than by release name because the two lanes stamp their
-# directories independently.
-step "staging has run this source"
-staging_sha=$(sha_of "$STAGING" 2>/dev/null || echo '')
-if [[ -z $staging_sha ]]; then
-    refuse "cannot read the staging release; there is nothing to compare against"
-elif [[ $staging_sha != "$sha" ]]; then
-    refuse "staging is running $staging_sha, not $sha -- promote what was tested"
+step "staging runtime and rehearsal identity"
+staging_sha=$(sha_of "$STAGING" 2>/dev/null || true)
+staging_pid=$(systemctl show "$STAGING_UNIT" -p MainPID --value 2>/dev/null || true)
+staging_cwd=$(readlink -f "/proc/$staging_pid/cwd" 2>/dev/null || true)
+staging_body=$(curl -fsS --max-time 5 "$STAGING_URL" 2>/dev/null || true)
+if [[ $(systemctl is-active "$STAGING_UNIT" 2>/dev/null || true) != active || $staging_sha != "$sha" || $staging_cwd != "$(readlink -f "$STAGING")/server" || $staging_body != *"PTT Server"* ]]; then
+    refuse "staging is not actively running candidate source $sha"
+fi
+if [[ -z $rehearsal_receipt || $rehearsal_receipt != /* || ! -f $rehearsal_receipt ]]; then
+    refuse "an exact staging rehearsal receipt is required"
 else
-    echo "ok: staging is running the same source"
+    grep -Fxq "source_sha $sha" "$rehearsal_receipt" || refuse "staging rehearsal receipt source mismatch"
+    grep -Fxq "archive_sha256 $archive_sha256" "$rehearsal_receipt" || refuse "staging rehearsal receipt archive mismatch"
+    grep -Fxq "status verified" "$rehearsal_receipt" || refuse "staging rehearsal is not verified"
 fi
 
-# ── Gate 2. The candidate can start.
-step "candidate runtime"
-if "$release/infra/scripts/verify-release-runtime.sh" "$release" "$sha" >/dev/null 2>&1; then
-    echo "ok: candidate verifies"
-else
-    refuse "the candidate does not verify; run verify-release-runtime.sh to see why"
-fi
+step "candidate and rollback preflight"
+"$VERIFY_CURRENT" "$release" >/dev/null 2>&1 || refuse "candidate does not pass host-owned preflight"
+"$VERIFY_CURRENT" "$old" >/dev/null 2>&1 || refuse "rollback target does not pass host-owned preflight"
 
-# ── Gate 3. So can the thing we would roll back to.
-#
-# Recording a rollback target proves nothing if that release can no longer
-# start. A rollback nobody has checked is a hope, not a plan.
-step "rollback target runtime"
-if [[ $old == "$release" ]]; then
-    echo "ok: already current, nothing to roll back to"
-elif "$old/infra/scripts/verify-release-runtime.sh" "$old" "$old_sha" >/dev/null 2>&1; then
-    echo "ok: rollback target verifies"
-else
-    refuse "the rollback target does not verify -- promoting would leave nowhere to go back to"
-fi
-
-# ── Gate 4. It starts against production's own environment.
-#
-# Isolated cold start on a random loopback port, using the real env file. Not
-# the same as "it worked on staging": staging has its own database, its own
-# relay port and its own env.
-step "cold start against the production environment"
-if "$release/infra/scripts/smoke-release.sh" "$release" "$sha" /etc/am2/api.env 2>&1 | grep -q 'isolated release smoke OK'; then
+step "cold start against production environment"
+if "$release/infra/scripts/smoke-release.sh" "$release" "$sha" "$PRODUCTION_ENV" 2>&1 | grep -q 'isolated release smoke OK'; then
     echo "ok: smoke passed"
 else
-    refuse "the candidate did not survive a cold start with the production environment"
+    refuse "candidate did not survive isolated production smoke"
 fi
 
-# ── Gate 5. Does this disconnect anybody?
-#
-# PHP is read from disk per request, so the panel changes the moment the symlink
-# moves and nobody is interrupted. The relay holds its code in memory, so a
-# relay change needs a restart and a restart drops every connected unit. That is
-# a decision, not a detail, so it has to be asked for rather than discovered.
 step "relay impact"
-relay_digest() { (cd "$1/server" && find . -name '*.js' -not -path './node_modules/*' -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16); }
-if [[ $(relay_digest "$release") == $(relay_digest "$old") ]]; then
-    echo "ok: relay source is unchanged; no restart, nobody is disconnected"
-    restart_needed=0
-else
+if [[ -z $running_cwd || ! -d $running_cwd ]]; then
+    refuse "cannot resolve running production PID cwd"
     restart_needed=1
-    online=$(sudo -u postgres psql -d am2 -At -c "select count(*) from public.users where status='online';" 2>/dev/null || echo '?')
-    if (( allow_restart )); then
-        echo "note: relay source changed; $online unit(s) will be disconnected and must reconnect"
+else
+    candidate_digest=$($RELAY_DIGEST "$release/server" 2>/dev/null) || { refuse "cannot digest candidate relay"; candidate_digest=; }
+    running_digest=$($RELAY_DIGEST "$running_cwd" 2>/dev/null) || { refuse "cannot digest running relay"; running_digest=; }
+    if [[ -n $candidate_digest && $candidate_digest == "$running_digest" ]]; then
+        restart_needed=0
+        echo "ok: running relay bytes already match candidate"
     else
-        refuse "relay source changed and $online unit(s) are online -- pass --allow-relay-restart to accept that, or promote in a quiet window"
+        restart_needed=1
+        online=$(sudo -u postgres psql -d am2 -At -c "select count(*) from public.users where status='online';" 2>/dev/null || echo '?')
+        if (( allow_restart )); then
+            echo "note: relay differs; $online unit(s) will reconnect"
+        else
+            refuse "relay differs and $online unit(s) are online; explicit --allow-relay-restart is required"
+        fi
     fi
 fi
 
 if (( gate )); then
-    echo
     echo "production was not touched." >&2
     exit 1
 fi
-
-echo
-echo "all gates passed."
 if (( dry_run )); then
-    echo "dry run: production was not touched."
+    echo "all gates passed; dry run did not touch production."
     exit 0
 fi
 
-# ── Promote.
-step "moving $CURRENT"
-sudo ln -sfn "$release" "$CURRENT.new"
-sudo mv -Tf "$CURRENT.new" "$CURRENT"
-echo "current -> $(readlink -f "$CURRENT")"
+cutover_started=0
+rollback_on_failure() {
+    local rc=$?
+    trap - ERR INT TERM HUP
+    set +e
+    if (( cutover_started )); then
+        echo "promotion failed; restoring $old" >&2
+        ln -sfn "$old" "$CURRENT.rollback"
+        mv -Tf "$CURRENT.rollback" "$CURRENT"
+        systemctl reset-failed "$PRODUCTION_UNIT"
+        systemctl restart "$PRODUCTION_UNIT"
+        rollback_pid=$(wait_ready "$PRODUCTION_UNIT" "$PRODUCTION_URL" "$old" "${new_pid:-0}")
+        if [[ -z $rollback_pid ]]; then
+            echo "rollback service verification failed" >&2
+        fi
+        if ! "$VERIFY_CURRENT" "$old" >/dev/null 2>&1; then
+            echo "rollback release preflight failed" >&2
+        fi
+    fi
+    exit "$rc"
+}
+trap rollback_on_failure ERR INT TERM HUP
+
+step "atomic activation"
+ln -sfn "$release" "$CURRENT.new"
+mv -Tf "$CURRENT.new" "$CURRENT"
+cutover_started=1
 
 if (( restart_needed )); then
-    step "restarting the relay"
-    sudo systemctl restart am2-api
-    sleep 3
-    systemctl is-active --quiet am2-api || { echo "am2-api did not come back" >&2; exit 1; }
-    echo "ok: am2-api active as PID $(systemctl show am2-api -p MainPID --value)"
+    systemctl restart "$PRODUCTION_UNIT"
+    new_pid=$(wait_ready "$PRODUCTION_UNIT" "$PRODUCTION_URL" "$release" "$old_pid")
+else
+    new_pid=$old_pid
+    [[ $(readlink -f "/proc/$new_pid/cwd") == "$release/server" ]] || {
+        candidate_digest=$($RELAY_DIGEST "$release/server")
+        running_digest=$($RELAY_DIGEST "$(readlink -f "/proc/$new_pid/cwd")")
+        [[ $candidate_digest == "$running_digest" ]]
+    }
+    curl -fsS --max-time 5 "$PRODUCTION_URL" | grep -q 'PTT Server'
 fi
-
-# ── Prove the panel still refuses everyone it should.
-#
-# Run after the move rather than before, and after a pause: PHP's opcache serves
-# the previous bytecode for a second or two through a symlink whose path has not
-# changed, so a check run immediately reports the release that was just
-# replaced.
-step "guard, after the move"
-sleep 3
+[[ $(readlink -f "$CURRENT") == "$release" ]]
+[[ $(sha_of "$CURRENT") == "$sha" ]]
+[[ $(systemctl show "$PRODUCTION_UNIT" -p NRestarts --value) -le $old_restarts ]]
 "$release/infra/scripts/verify-webadmin-guard.sh" --lane production
 
-# ── Receipt.
-#
-# The only record that production moved at 11:29 was the symlink's own mtime.
 step "receipt"
-sudo install -d -m 0755 "$RECEIPTS"
+install -d -m 0755 "$RECEIPTS"
 receipt=$RECEIPTS/$(date -u +%Y%m%dT%H%M%SZ)-${sha:0:12}.txt
-sudo tee "$receipt" >/dev/null <<RECEIPT
-promoted_at   $(date -u +%Y-%m-%dT%H:%M:%SZ)
-actor         ${SUDO_USER:-$USER}
-release       $release
-source_sha    $sha
-rolled_from   $old
-previous_sha  $old_sha
-staging_sha   $staging_sha
+cat > "$receipt.incoming" <<RECEIPT
+promoted_at $(date -u +%Y-%m-%dT%H:%M:%SZ)
+actor ${SUDO_USER:-$USER}
+release $release
+source_sha $sha
+archive_sha256 $archive_sha256
+rolled_from $old
+previous_sha $old_sha
+staging_rehearsal_receipt $rehearsal_receipt
 relay_restart $restart_needed
+status verified
 RECEIPT
-echo "$receipt"
-
-echo
-echo "promoted. to undo:"
-echo "  sudo ln -sfn $old $CURRENT.new && sudo mv -Tf $CURRENT.new $CURRENT"
-(( restart_needed )) && echo "  sudo systemctl restart am2-api"
-exit 0
+chmod 0644 "$receipt.incoming"
+mv -T "$receipt.incoming" "$receipt"
+cutover_started=0
+trap - ERR INT TERM HUP
+echo "promoted: $receipt"

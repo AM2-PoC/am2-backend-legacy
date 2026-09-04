@@ -197,8 +197,15 @@ correctly, one command at a time. Both outcomes came from the same arrangement:
 a checklist a person executes.
 
 ```bash
-infra/scripts/promote-to-production.sh --release "$REL" --dry-run   # gates only
-infra/scripts/promote-to-production.sh --release "$REL"
+ARCHIVE_SHA=<staging-accepted-archive-sha256>
+REHEARSAL_RECEIPT=/var/www/am2/staging/shared/promotions/<verified-rehearsal>.txt
+infra/scripts/promote-to-production.sh \
+  --release "$REL" \
+  --archive-sha256 "$ARCHIVE_SHA" \
+  --staging-rehearsal-receipt "$REHEARSAL_RECEIPT" \
+  --dry-run
+# Run the same command without --dry-run only after separate production approval.
+# Add --allow-relay-restart only when reconnect disruption was explicitly approved.
 ```
 
 It refuses rather than warns. In order: staging must be running the same source

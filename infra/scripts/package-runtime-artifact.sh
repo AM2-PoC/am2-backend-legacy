@@ -173,7 +173,8 @@ for script in \
     relay-source-digest.sh \
     smoke-release.sh \
     verify-current-release.sh \
-    verify-release-runtime.sh
+    verify-release-runtime.sh \
+    verify-webadmin-guard.sh
 do
     copy_file "infra/scripts/$script"
     chmod 0755 "$payload/infra/scripts/$script"

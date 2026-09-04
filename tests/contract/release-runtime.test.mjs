@@ -128,6 +128,13 @@ test('artifact materializer creates immutable runnable release and leaves curren
       '--server-update', serverUpdate], { encoding: 'utf8', timeout: 110_000 });
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
     assert.equal(readFileSync(join(destination, '.release-sha'), 'utf8').trim(), sha);
+    const artifactIdentity = JSON.parse(readFileSync(join(destination, '.artifact-identity.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(ingress, 'artifact-manifest.json'), 'utf8'));
+    assert.deepEqual(artifactIdentity, {
+      source_sha: manifest.source_sha,
+      archive_sha256: manifest.archive_sha256,
+      payload_sha256: manifest.payload_sha256,
+    });
     assert.equal(readlinkSync(join(destination, 'WebAdmin/update')), webadminUpdate);
     assert.equal(readlinkSync(join(destination, 'server/update')), serverUpdate);
     assert.equal(existsSync(current), false, 'materializer changed current release pointer');

@@ -95,8 +95,21 @@ if not re.fullmatch(r'[0-9a-f]{40}', sha):
 print(sha)
 PYTHON
 )
-
 tar -xzf "$snapshot/am2-backend-runtime.tar.gz" -C "$temporary"
+python3 - "$snapshot/artifact-manifest.json" "$temporary/.artifact-identity.json" <<'PYTHON'
+import json
+import sys
+
+manifest = json.load(open(sys.argv[1], encoding='utf-8'))
+identity = {
+    'source_sha': manifest['source_sha'],
+    'archive_sha256': manifest['archive_sha256'],
+    'payload_sha256': manifest['payload_sha256'],
+}
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(identity, handle, separators=(',', ':'), sort_keys=True)
+    handle.write('\n')
+PYTHON
 for link in "$temporary/WebAdmin/update" "$temporary/server/update"; do
     [[ ! -e $link && ! -L $link ]] || { echo "sealed artifact unexpectedly contains runtime update path: $link" >&2; exit 1; }
 done
