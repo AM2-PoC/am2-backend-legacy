@@ -70,6 +70,34 @@ if (!function_exists('am2_signed_in')) {
     }
 }
 
+if (!function_exists('am2_answers_json_only')) {
+    /**
+     * True for an endpoint that renders no HTML under any circumstance.
+     *
+     * Header sniffing alone is not enough, and the gap is not theoretical: a
+     * browser fetch() sends `Accept: *\/*`, and the contract suite sends no
+     * Accept and no Sec-Fetch-Dest at all. A caller in that position asking
+     * fetch_logs.php for data would be handed a 302 to a login *page*, and
+     * following it yields 200 and a page of markup -- the exact "refusal
+     * nobody can see" that had Admin Native reporting an expired session as a
+     * broken feature.
+     *
+     * So the answer's shape is decided by what the endpoint is first, and by
+     * what the caller asked for second. These three families never render a
+     * page, so a redirect to one is never a useful answer from them.
+     *
+     * A presentation rule, not a security one. Guessing wrong costs a caller
+     * the wrong error format, never access: whether the caller is signed in
+     * has already been decided by the time this is consulted.
+     */
+    function am2_answers_json_only(string $entry): bool
+    {
+        return str_starts_with($entry, 'api_')
+            || str_starts_with($entry, 'fetch_')
+            || str_contains($entry, '-ajax.');
+    }
+}
+
 if (!function_exists('am2_require_identity')) {
     /**
      * Refuse anyone who is not signed in.
@@ -86,7 +114,8 @@ if (!function_exists('am2_require_identity')) {
         if (PHP_SAPI === 'cli') {
             return;
         }
-        if (in_array(am2_entry_point(), AM2_PUBLIC_ENTRY, true)) {
+        $entry = am2_entry_point();
+        if (in_array($entry, AM2_PUBLIC_ENTRY, true)) {
             return;
         }
         // Opened only when the caller presents one, so a request that never had
@@ -134,7 +163,8 @@ if (!function_exists('am2_require_identity')) {
         $dest = (string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '');
         $timedOut = function_exists('am2_session_timed_out') && am2_session_timed_out();
         $subresource = $dest !== '' && $dest !== 'document' && $dest !== 'iframe';
-        if ($subresource
+        if (am2_answers_json_only($entry)
+            || $subresource
             || str_contains($accept, 'json')
             || str_contains((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest')
         ) {

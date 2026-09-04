@@ -298,3 +298,32 @@ test('a refusal takes the shape the caller can act on', () => {
     assert.doesNotMatch(g, /!str_contains\(\$accept, 'text\/html'\)/,
         'a caller that sends no Accept header is treated as an API call');
 });
+
+test('an endpoint that only ever answers JSON never redirects', () => {
+    /*
+     * Header sniffing is not enough on its own, and the gap is not theoretical:
+     * the contract suite sends neither Accept nor Sec-Fetch-Dest, and a browser
+     * fetch() sends no useful Accept either. A caller in that position asking
+     * fetch_logs.php for data would be handed a 302 to an HTML login page, and
+     * following it yields 200 and a page of markup -- the exact "refusal nobody
+     * can see" that had Admin Native reporting an expired session as a broken
+     * feature.
+     *
+     * So the shape is decided by what the endpoint *is* first, and by what the
+     * caller asked for second. api_*.php, *-ajax.php and fetch_*.php render no
+     * HTML in any circumstance, so a redirect to a page is never a useful
+     * answer from them.
+     *
+     * This is a presentation rule, not a security one: guessing wrong costs a
+     * caller the wrong error format, never access. The security decision --
+     * signed in or not -- has already been made by the time this runs.
+     */
+    const g = phpFunction(guard, 'am2_require_identity');
+    assert.match(g, /am2_answers_json_only/,
+        'the refusal shape ignores what kind of endpoint was asked');
+    const shape = phpFunction(guard, 'am2_answers_json_only');
+    for (const pattern of ['api_', 'ajax', 'fetch_']) {
+        assert.ok(shape.includes(pattern),
+            `endpoints named ${pattern}* are not recognised as JSON-only`);
+    }
+});
