@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 --artifact /absolute/ci-artifact-dir [--update-dir /absolute/WebAdmin/update] [--reader USER]" >&2
+    echo "Usage: $0 --artifact /absolute/ci-artifact-dir [--lane production|staging] [--update-dir /absolute/WebAdmin/update] [--reader USER]" >&2
     echo "       $0 --verify-only [--update-dir /absolute/WebAdmin/update] [--reader USER]" >&2
 }
 
@@ -10,15 +10,43 @@ artifact=
 update_dir=
 reader=
 verify_only=
+lane=production
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --artifact)    [[ $# -ge 2 ]] || { usage; exit 64; }; artifact=$2; shift 2 ;;
         --update-dir)  [[ $# -ge 2 ]] || { usage; exit 64; }; update_dir=$2; shift 2 ;;
         --reader)      [[ $# -ge 2 ]] || { usage; exit 64; }; reader=$2; shift 2 ;;
+        --lane)        [[ $# -ge 2 ]] || { usage; exit 64; }; lane=$2; shift 2 ;;
         --verify-only) verify_only=1; shift ;;
         *) usage; exit 64 ;;
     esac
 done
+
+# The package and the URL are one decision, not two.
+#
+# This accepted only the production pair, so the staging channel had no
+# validating publisher at all and was fed by copying files into place by hand --
+# which is how it came to advertise a manifest whose version_name was empty, and
+# how a stale APK once sat behind a fresh manifest.
+#
+# Naming them as a pair per lane is what makes crossing lanes impossible: a
+# staging APK cannot satisfy the production URL and a production APK cannot
+# satisfy the staging one, so neither can be published to the other's channel
+# even by passing the wrong --update-dir.
+case "$lane" in
+    production)
+        expect_package=com.am2.admin
+        expect_url=https://webadmin.am2-poc.com/update/admin.apk
+        ;;
+    staging)
+        expect_package=com.am2.admin.staging
+        expect_url=https://staging-webadmin.am2-poc.com/update/admin.apk
+        ;;
+    *)
+        echo "unknown lane: $lane (expected production or staging)" >&2
+        exit 64
+        ;;
+esac
 
 update_dir=${update_dir:-/var/www/am2/shared/webadmin-update}
 [[ $update_dir == /* ]] || { usage; exit 64; }
@@ -117,10 +145,12 @@ update_url=$(read_field update_url)
 declared_sha=$(read_field sha256)
 signer=$(read_field signer_sha256)
 source_commit=$(read_field source_commit)
-[[ $package == com.am2.admin ]] || { echo "unexpected package: $package" >&2; exit 1; }
+[[ $package == "$expect_package" ]] \
+    || { echo "unexpected package for the $lane lane: $package (expected $expect_package)" >&2; exit 1; }
 [[ $version_code =~ ^[1-9][0-9]*$ ]] || { echo "version_code is invalid" >&2; exit 1; }
 [[ -n $version_name ]] || { echo "version_name is empty" >&2; exit 1; }
-[[ $update_url == https://webadmin.am2-poc.com/update/admin.apk ]] || { echo "update_url is not canonical" >&2; exit 1; }
+[[ $update_url == "$expect_url" ]] \
+    || { echo "update_url is not canonical for the $lane lane: $update_url (expected $expect_url)" >&2; exit 1; }
 [[ $declared_sha =~ ^[0-9a-f]{64}$ ]] || { echo "sha256 is invalid" >&2; exit 1; }
 [[ $signer =~ ^[0-9a-f]{64}$ ]] || { echo "signer_sha256 is invalid" >&2; exit 1; }
 [[ $source_commit =~ ^[0-9a-f]{40}$ ]] || { echo "source_commit is invalid" >&2; exit 1; }
