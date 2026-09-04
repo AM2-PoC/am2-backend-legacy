@@ -15,6 +15,17 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { SRC, readSrc } from './helpers.mjs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/*
+ * Source comes from the repository, built output from the deployed tree. An
+ * artifact release carries what the browser is served and deliberately not what
+ * it was built from, so reading asset/js/src/ out of the deployment fails with
+ * ENOENT and reads as "the bundle lost a function" rather than "you looked in
+ * the wrong place".
+ */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'WebAdmin');
 
 const BUNDLE = `${SRC}/asset/js/am2-ui.min.js`;
 
@@ -83,7 +94,7 @@ describe('the built bundle carries what the pages assume', () => {
     });
 
     test('AM2 exposes what the pages call', () => {
-        const src = readSrc('asset/js/src/am2-ui.js');
+        const src = fs.readFileSync(`${REPO}/asset/js/src/am2-ui.js`, 'utf8');
         for (const fn of ['enterOnce', 'countTo', 'revealOnScroll', 'filtered',
                           'toast', 'emit', 'qr']) {
             assert.match(src, new RegExp(`\\b${fn}\\b`), `AM2.${fn} is gone`);

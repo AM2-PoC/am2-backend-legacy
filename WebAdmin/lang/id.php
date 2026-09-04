@@ -266,6 +266,13 @@ return [
     'adm.locked_super' => 'Akun superadmin tidak dapat dihapus',
     'adm.locked_master' => 'Akun master sistem tidak dapat dihapus',
     'adm.locked_self' => 'Akun yang sedang dipakai tidak dapat dihapus',
+    // Menyebut angkanya, bukan sekadar menolak. Pada 2026-09-04 satu
+    // penghapusan admin menghapus 186 unit lewat cascade, dan angka itu
+    // tidak pernah muncul di layar siapa pun sebelum maupun sesudahnya.
+    // Perubahan database tetap tersimpan; yang tidak dikonfirmasi adalah
+    // relay memutus socket yang sedang terbuka.
+    'msg.relay_unconfirmed' => 'Tersimpan, tetapi relay tidak mengonfirmasi. Unit mungkin masih tersambung — periksa Livetrack.',
+    'adm.locked_owns_units' => 'Admin ini masih memiliki :count unit. Pindahkan atau hapus unitnya lebih dulu.',
     'adm.username' => 'Username',
     'adm.password' => 'Password',
     'adm.password_required' => 'Wajib diisi untuk akun baru.',

@@ -476,4 +476,5 @@ require_once __DIR__ . '/channel_access.php';
 require_once __DIR__ . '/activity_log.php';
 require_once __DIR__ . '/user_features.php';
 require_once __DIR__ . '/user_rules.php';
+require_once __DIR__ . '/admin_rules.php';
 ?>

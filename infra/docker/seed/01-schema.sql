@@ -676,7 +676,7 @@ ALTER TABLE ONLY public.user_channels
 --
 
 ALTER TABLE ONLY public.users
-    ADD CONSTRAINT fk_user_admin FOREIGN KEY (admin_id) REFERENCES public.admin(id) ON DELETE CASCADE;
+    ADD CONSTRAINT fk_user_admin FOREIGN KEY (admin_id) REFERENCES public.admin(id) ON DELETE RESTRICT;
 
 
 --

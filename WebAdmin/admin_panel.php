@@ -23,13 +23,9 @@ function am2_adm_json(array $payload): void
  * offer the act to every row and the handler refused three kinds of it after
  * the fact.
  */
-function am2_adm_undeletable(array $row, $my_id): string
-{
-    if ((string) $row['role'] === 'superadmin') return 'adm.locked_super';
-    if ((int) $row['id'] === 1)                 return 'adm.locked_master';
-    if ((int) $row['id'] === (int) $my_id)      return 'adm.locked_self';
-    return '';
-}
+// The rules moved to admin_rules.php so api_admin_panel.php enforces the same
+// ones. They disagreed: this page refused the master row and your own account,
+// the API refused neither.
 
 if (isset($_POST['delete_admin_id'])) {
     $id_to_delete = (int)$_POST['delete_admin_id'];
@@ -43,8 +39,9 @@ if (isset($_POST['delete_admin_id'])) {
 
         if (!$target) {
             $error_msg = t('msg.admin_not_found');
-        } elseif (($why = am2_adm_undeletable($target, $my_id)) !== '') {
-            $error_msg = t($why);
+        } elseif (([$why, $why_params] = am2_admin_undeletable($pdo, $target, $my_id))
+                  && $why !== '') {
+            $error_msg = t($why, $why_params);
         } else {
             $stmt = $pdo->prepare("DELETE FROM public.admin WHERE id = ? AND id != ?");
             $stmt->execute([$id_to_delete, $my_id]);
