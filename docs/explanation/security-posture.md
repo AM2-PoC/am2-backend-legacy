@@ -72,13 +72,6 @@ reachable until that app can present a credential.
 Nothing in the authentication path. The item that stood here — the Admin Native credential — is
 closed; see below. Two adjacent items remain and are tracked elsewhere:
 
-- **One session store for two lanes.** Production (`127.0.0.1:8080`) and staging (`:8081`) share
-  `/var/lib/php/sessions` with no per-vhost override, so a session id obtained on staging is a valid
-  session id on production. Differing cookie domains stop a browser carrying one across; nothing
-  stops `curl`. `infra/scripts/install-webadmin-guard.sh --drain-sessions` splits the store, and it
-  signs every operator out, so it is held for a window rather than done in passing.
-  Written down as a task in
-  `.hermes/plans/2026-08-19_004859-minimum-environment-separation.md`.
 - **Two writers on six tables.** The relay and the panel both write `users`, `user_channels`,
   `device_tokens`, `user_app_permissions`, `ptt_logs` and `admin_activity_logs`, and they overlap on
   `users.current_channel` and `users.force_logout`. Not an authentication problem; its own scope.
@@ -114,5 +107,14 @@ settles it.
   the bare `app.use(cors())`.
 - **Stored XSS in the log view.** `logs.php` builds every row with `textContent`; a contract test
   fails the build if `innerHTML` returns to that file.
+- **One session store for two lanes.** Closed 2026-09-04. Production (`127.0.0.1:8080`) and staging
+  (`:8081`) shared `/var/lib/php/sessions` with no per-vhost override, so a session obtained on
+  staging was accepted by production — measured, not inferred: the same `PHPSESSID` answered `200`
+  on both. That was a real escalation rather than a tidiness problem, because `ct_super` is a
+  fixture account created by `contract-test-fixtures.sh` on staging and has **no row on
+  production at all**, yet its session was served there as a superadmin. Each vhost now pins its
+  own `session.save_path` (`/var/lib/php/sessions/am2` and `…/am2-staging`); the same session now
+  answers `200` on staging and `401` on production. Splitting the store invalidated every session
+  on both lanes, which is why it needed a decision rather than a commit.
 - **API key comparison.** Constant-time on both sides now — `hash_equals()` in PHP,
   `crypto.timingSafeEqual` in Node.
