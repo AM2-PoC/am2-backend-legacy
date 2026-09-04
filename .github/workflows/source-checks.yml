@@ -118,7 +118,7 @@ jobs:
               esac
           done
           if [ ${#mjs[@]} -gt 0 ]; then
-              node --test "${mjs[@]}"
+              node --test --test-concurrency=1 "${mjs[@]}"
           fi
           for f in "${php[@]}"; do
               echo "--- $f"
@@ -139,7 +139,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - name: Run restart-safety contracts
         run: |
-          node --test \
+          node --test --test-concurrency=1 \
             tests/contract/needrestart-policy.test.mjs \
             tests/contract/release-runtime.test.mjs \
             tests/contract/release-smoke.test.mjs \

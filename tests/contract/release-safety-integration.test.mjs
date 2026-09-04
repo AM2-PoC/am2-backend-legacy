@@ -39,6 +39,13 @@ test('deploy runbook permits promotion only through exact-SHA safety scripts', (
   assert.doesNotMatch(runbook, /git -C \/home\/am2deploy\/am2-main archive main \| tar/);
 });
 
+test('CI serializes contract fixtures that run isolated npm installs', () => {
+  const workflow = read('.github/workflows/source-checks.yml');
+  const serial = /node --test --test-concurrency=1/g;
+  assert.equal((workflow.match(serial) || []).length, 2,
+    'offline and restart-safety contract runners may race isolated npm-ci fixtures');
+});
+
 test('offline selector declares every restart-safety contract', () => {
   const selector = read('tests/offline-tests.sh');
   for (const file of [
