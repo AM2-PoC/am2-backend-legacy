@@ -154,7 +154,7 @@ REHEARSAL_RECEIPT=/var/www/am2/staging/shared/rehearsals/<verified-receipt>
 # Add --allow-relay-restart only when reconnect disruption is approved.
 ```
 
-The gate owns `/var/lib/am2-relay-watchdog/deploy.lock`, compares canonical relay digests against the running PID cwd, requires stable readiness, writes an immutable receipt, and automatically restores the verified previous release if post-cutover validation fails.
+The gate owns `/var/lib/am2-relay-watchdog/deploy.lock`, uses `relay-source-digest.sh` against the running PID cwd to decide whether a restart is needed, requires stable readiness, writes an immutable receipt, and automatically restores the verified previous release if post-cutover validation fails. `check-relay-health.sh` uses the same canonical relay identity. The bounded deploy identity reads the lock (`exec 9</var/lib/am2-relay-watchdog/deploy.lock`); the privileged promotion wrapper obtains the exclusive lock. Keep `/etc/nginx/sites-enabled/am2-webadmin.conf` and `/etc/nginx/sites-enabled/am2-webadmin-staging.conf` enabled, and keep `/etc/needrestart/conf.d/am2-realtime.conf` installed.
 
 ## Post-activation verification
 
