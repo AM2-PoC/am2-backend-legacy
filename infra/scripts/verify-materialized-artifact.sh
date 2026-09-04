@@ -52,9 +52,13 @@ trap 'rm -rf -- "$work"' EXIT INT TERM HUP
 mkdir "$work/payload"
 cp -a "$release/." "$work/payload/"
 rm -f "$work/payload/.artifact-identity.json" "$work/payload/WebAdmin/update" "$work/payload/server/update"
-# The published release root is 0750 for web-group containment; the sealed
-# payload root was normalized to 0755 before hashing.
+# The materializer deliberately closes the release root to 0750 and the setgid
+# releases parent adds g+s to nested directories. Restore only those two known
+# publication effects before hashing; retain all other permission mutations as
+# integrity-relevant metadata.
 chmod 0755 "$work/payload"
+chmod g-s "$work/payload"
+find "$work/payload" -mindepth 1 -type d -exec chmod g-s {} +
 actual=$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
     -C "$work/payload" -cf - . | sha256sum | awk '{print $1}')
 [[ $actual == "$payload_sha256" ]] || { echo "materialized release payload digest mismatch" >&2; exit 1; }
