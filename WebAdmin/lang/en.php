@@ -266,6 +266,10 @@ return [
     'adm.locked_super' => 'A superadmin account cannot be deleted',
     'adm.locked_master' => 'The system master account cannot be deleted',
     'adm.locked_self' => 'The account you are signed in as cannot be deleted',
+    // The number, not just a refusal. On 2026-09-04 one admin deletion took
+    // 186 units with it by cascade, and that number never appeared on
+    // anyone's screen before or after.
+    'adm.locked_owns_units' => 'This admin still owns :count unit(s). Move or remove them first.',
     'adm.username' => 'Username',
     'adm.password' => 'Password',
     'adm.password_required' => 'Required for a new account.',
