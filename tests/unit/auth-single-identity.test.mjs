@@ -63,6 +63,17 @@ test('no auth mode survives anywhere in the tree', () => {
     walk('server');
     walk('infra');
     walk('tests');
+    // The repository root too. Walking only the subdirectories let
+    // docker-compose.yml keep setting AM2_API_AUTH_MODE=log for months after
+    // nothing read it -- in the one environment where a permissive panel
+    // teaches a developer that unauthenticated calls are fine.
+    for (const entry of readdirSync(ROOT, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (!/\.(yml|yaml|example|json|md|sh|conf)$/.test(entry.name)) continue;
+        if (readFileSync(join(ROOT, entry.name), 'utf8').includes('AUTH_MODE')) {
+            offenders.push(entry.name);
+        }
+    }
     assert.deepEqual(offenders, [],
         `an auth mode is back in: ${offenders.join(', ')}`);
 });
