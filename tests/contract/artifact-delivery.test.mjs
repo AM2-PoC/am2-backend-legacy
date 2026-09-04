@@ -35,10 +35,10 @@ function makeFixtureSource(base) {
 }
 
 function installProductionDependencies(source) {
-  const run = spawnSync('npm', ['ci', '--omit=dev', '--ignore-scripts'], {
+  const run = spawnSync('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: join(source, 'server'),
     encoding: 'utf8',
-    timeout: 110_000,
+    timeout: 300_000,
   });
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
 }
