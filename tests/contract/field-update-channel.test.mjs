@@ -33,10 +33,19 @@ async function shelf() {
     const html = await (await fetch(`${BASE}/settings.php`, {
         headers: { Host: HOST, Cookie: sup },
     })).text();
-    const SECTION = '<section class="rounded-control border border-edge p-4">';
     const start = html.indexOf('id="am2-shelf-version"');
-    const first = html.indexOf(SECTION, start);
-    const second = html.indexOf(SECTION, first + SECTION.length);
+    /*
+     * Matched on the classes that carry meaning, not on the exact attribute
+     * string. Pinning the literal broke the moment `min-w-0` was added to stop
+     * the card sizing itself to an unbreakable URL and overflowing its column.
+     * A test that fails when a utility class is added is testing the
+     * stylesheet, not the page.
+     */
+    const cards = [...html.matchAll(/<section class="[^"]*\brounded-control\b[^"]*\bborder-edge\b[^"]*">/g)]
+        .filter((m) => m.index > start);
+    assert.ok(cards.length > 0, 'the field channel section is not on the page');
+    const first = cards[0].index;
+    const second = cards.length > 1 ? cards[1].index : -1;
     assert.ok(second > first, 'the field channel section is not on the page');
     return html.slice(second, second + 3000);
 }

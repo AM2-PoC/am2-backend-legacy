@@ -30,17 +30,25 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const server = read('server/server.js');
 const config = read('WebAdmin/config.php');
 
-test('the credential control fails closed when nobody configures it', () => {
+test('the relay has no setting that stops it refusing', () => {
     /*
-     * The mode defaulted to 'log', which records and lets the request through.
-     * That was right while the callers were being migrated; it is wrong now
-     * that they are migrated, because the safe state must be the one you get by
-     * doing nothing.
+     * The control used to be a mode: one value recorded an unauthenticated
+     * admin call and ran it, the other refused. Defaulting it to the safe value
+     * was not enough, because the panel read a variable of the same name and
+     * production had it set to the permissive one -- so a single word in one
+     * env file disarmed a system nobody was looking at.
+     *
+     * Asserted by absence. Forbidding the value that hurt only ever forbids one
+     * spelling; forbidding the mechanism forbids the next one too.
      */
-    const mode = server.slice(server.indexOf('API_AUTH_MODE ='), server.indexOf('API_AUTH_MODE =') + 200);
-    assert.doesNotMatch(mode, /\|\|\s*'log'/,
-        "an unconfigured relay lets unauthenticated admin calls through");
-    assert.match(mode, /'enforce'/);
+    const middleware = server.slice(server.indexOf("app.use('/api/admin'"));
+    const guard = middleware.slice(0, middleware.indexOf('\n});'));
+    assert.doesNotMatch(guard, /process\.env/,
+        'the admin guard still consults the environment');
+    assert.match(guard, /return res\.status\(401\)/,
+        'the admin guard does not refuse');
+    assert.doesNotMatch(guard, /return next\(\);\s*$/,
+        'the guard still has a path that falls through to the handler');
 });
 
 test('the relay does not offer itself beyond the host by default', () => {
@@ -72,14 +80,22 @@ test('neither side takes the key from a URL', () => {
         'the panel accepts its shared key in a query string');
     assert.doesNotMatch(body, /\$_POST\['api_key'\]/,
         'the panel accepts its shared key in a form field');
-    assert.match(body, /HTTP_X_AM2_API_KEY/);
+    // Nor in a header any more. Nothing ever presented a key *to* the panel --
+    // the only reader was this guard and the only writer was a test written for
+    // it -- so a credential that authenticated but named nobody is gone. The
+    // panel still presents its key to the relay; that direction has a caller.
+    assert.doesNotMatch(body, /HTTP_X_AM2_API_KEY/,
+        'the panel still accepts a key in place of a session');
+    assert.match(config, /am2_node_auth_header/,
+        'the panel no longer presents a key to the relay');
 });
 
-test('the panel fails closed when nobody configures the mode either', () => {
-    // Node was not the only side defaulting to 'log'. Two guards in the panel
-    // read the same variable and made the same choice.
-    assert.doesNotMatch(config, /AM2_API_AUTH_MODE'\)\s*\?:\s*'log'/,
-        'an unconfigured panel lets an unauthenticated caller through');
+test('the panel has no setting that stops it refusing either', () => {
+    // Node was not the only side reading that variable. Two guards in the panel
+    // read the same name and made the same choice; both are gone.
+    const auth = config.slice(config.indexOf('function am2_api_auth('));
+    assert.doesNotMatch(auth.slice(0, auth.indexOf('\n}')), /getenv\s*\(/,
+        'the panel guard still consults the environment');
 });
 
 test('no panel endpoint writes a location for a unit the caller names', () => {

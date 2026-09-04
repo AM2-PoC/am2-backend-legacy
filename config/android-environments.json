@@ -16,8 +16,8 @@
         "min_api": 16,
         "label_suffix": " STAGING",
         "endpoints": {
-          "websocket_url": "wss://staging-api.am2-poc.com",
-          "update_manifest_url": "https://staging-api.am2-poc.com/update/version.json"
+          "websocket_url": "wss://staging-apiapi.am2-poc.com",
+          "update_manifest_url": "https://staging-apiapi.am2-poc.com/update/version.json"
         }
       },
       "production": {

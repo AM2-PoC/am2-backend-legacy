@@ -449,7 +449,6 @@ return [
     'set.build'                 => 'Build :code',
     'set.not_advertised'        => 'This package is not advertised to devices: :reason',
     'set.folder_missing'        => 'Update storage is unavailable. Contact the system administrator.',
-    'set.folder_readonly'       => 'Update storage is read-only. Contact the system administrator.',
     'set.on_shelf'              => 'In the update folder',
     'set.publish_via_release'   => 'This storage is intentionally read-only to the panel. Releases are published by the release pipeline.',
     'set.shelf_empty'           => 'No .apk files yet.',

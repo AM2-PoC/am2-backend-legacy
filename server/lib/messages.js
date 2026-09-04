@@ -16,6 +16,14 @@
  * A new operator-facing string belongs here before it belongs in a handler.
  */
 module.exports = Object.freeze({
+    /**
+     * The stored credential stopped being the current one mid-login -- revoked,
+     * rotated, or force-logged-out from the panel while the handset was signing
+     * in. Indonesian like the rest: this file's whole point is that a handler
+     * beside an Indonesian one must not answer in English.
+     */
+    AUTH_STATE_CHANGED: 'Status login berubah. Silakan masuk lagi.',
+
     /** The unit holds no row for the channel it asked to join. */
     NOT_A_CHANNEL_MEMBER: 'Bukan anggota channel ini',
 

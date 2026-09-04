@@ -7,8 +7,8 @@
  * copies had drifted:
  *
  *   - three of the six syncUserChannels copies never sent the API key, so they
- *     would have started failing silently the moment AM2_API_AUTH_MODE was set
- *     to enforce. The response is discarded, so nothing would have surfaced.
+ *     fail silently now that the relay refuses a keyless call. The response is
+ *     discarded, so nothing would have surfaced.
  *   - the two notifyPermissionUpdate copies disagreed on the duplex fallback,
  *     one defaulting to FULL and the other to HALF.
  *

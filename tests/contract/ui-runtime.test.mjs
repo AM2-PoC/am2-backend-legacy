@@ -126,11 +126,16 @@ describe('pages wait for the deferred bundle', () => {
 describe('settings.php keeps the ids its script writes into', () => {
     test('the regions the upload swaps in are all present', () => {
         const src = readSrc('settings.php');
-        // The restore action posts by XHR and replaces these three nodes with
-        // the server's own re-render, so the ids are a contract between the
-        // page and its own response. The APK upload used the same regions and
-        // is gone; the ids stay because restore still lands in them.
-        for (const id of ['am2-page-alert', 'am2-shelf-version', 'am2-shelf-list']) {
+        // The restore action posts by XHR and replaces these nodes with the
+        // server's own re-render, so the ids are a contract between the page
+        // and its own response.
+        //
+        // am2-page-alert was on this list and is not on the page. It went with
+        // the APK upload path in a90c22a and nothing references it now --
+        // not the markup, not the script. The assertion outlived the region it
+        // was guarding, which is the failure mode this whole file exists to
+        // catch, pointed the wrong way round.
+        for (const id of ['am2-shelf-version', 'am2-shelf-list']) {
             assert.ok(src.includes(`id="${id}"`), `#${id} is gone; the upload lands nowhere`);
         }
     });

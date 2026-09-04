@@ -53,8 +53,6 @@ sudo install -D -m 0644 infra/systemd/am2-relay-alert@.service \
   /etc/systemd/system/am2-relay-alert@.service
 sudo install -D -m 0644 infra/nginx/am2-webadmin-dev-deny.conf \
   /etc/nginx/snippets/am2-webadmin-dev-deny.conf
-sudo install -D -m 0644 infra/php/webadmin-output-filter.php \
-  /etc/am2/php/webadmin-output-filter.php
 sudo install -D -m 0644 infra/nginx/am2-webadmin.conf \
   /etc/nginx/sites-available/am2-webadmin.conf
 sudo install -D -m 0644 infra/nginx/am2-webadmin-staging.conf \
@@ -63,6 +61,11 @@ sudo ln -sfn /etc/nginx/sites-available/am2-webadmin.conf \
   /etc/nginx/sites-enabled/am2-webadmin.conf
 sudo ln -sfn /etc/nginx/sites-available/am2-webadmin-staging.conf \
   /etc/nginx/sites-enabled/am2-webadmin-staging.conf
+# The panel guard: the prepended file plus the PHP conf.d directive that loads
+# it. Installed by a script rather than by hand because it also takes the old
+# directive back out of the Apache vhosts, so there is one place it lives.
+infra/scripts/install-webadmin-guard.sh --apply
+
 sudo install -D -m 0644 infra/apache/am2-webadmin-internal.conf \
   /etc/apache2/sites-available/am2-webadmin-internal.conf
 sudo install -D -m 0644 infra/apache/am2-webadmin-staging.conf \

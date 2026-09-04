@@ -194,6 +194,9 @@ describe('the node relay contract', () => {
             'Panggilan video privat tidak tersedia untuk personel ini',
             'Personel sedang dalam panggilan lain',
             'Personel sedang offline',
+            // Moved out of protocol.js, where it was written inline and in
+            // English beside handlers that answered in Indonesian.
+            'Status login berubah. Silakan masuk lagi.',
             'Tidak ada undangan panggilan yang menunggu',
         ], 'an operator-facing message changed; decide what it says, then pin it here');
     });

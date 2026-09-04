@@ -608,7 +608,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             return ws.send(JSON.stringify({
                                 type: 'login_error',
                                 data: {
-                                    message: 'Login state changed. Please sign in again.',
+                                    message: MSG.AUTH_STATE_CHANGED,
                                     code: 'credential_rejected',
                                 },
                             }));

@@ -85,9 +85,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 //
 // Ten /api/admin/* routes had no authentication at all, and nginx forwards
 // every path, so they were reachable from the internet. Four are now denied at
-// the edge; the rest are used by the Admin Native app, which cannot present a
-// key until it is updated. So this records rather than rejects until
-// AM2_API_AUTH_MODE is set to "enforce".
+// the edge; the rest are called by the panel, which presents this key. The
+// panel is the only caller in this direction -- handsets speak the WebSocket
+// protocol and never touch /api/admin.
 const API_KEY = process.env.AM2_API_KEY || '';
 
 /**
@@ -97,8 +97,7 @@ const API_KEY = process.env.AM2_API_KEY || '';
  * comparison takes says how much of the key was right. PHP has always done this
  * side correctly with hash_equals(); this half of the same credential check did
  * not, which is the kind of asymmetry that survives precisely because both
- * halves "work". It becomes load-bearing the moment AM2_API_AUTH_MODE is set to
- * enforce.
+ * halves "work".
  *
  * timingSafeEqual throws on a length mismatch, so length is checked first --
  * and length is not the secret.
@@ -109,16 +108,22 @@ function sameKey(sent, real) {
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 /*
- * Fail closed when nobody configures it.
+ * There is no mode.
  *
- * This defaulted to 'log', which records an unauthenticated admin call and then
- * runs it. That was right while the callers were being migrated onto a key; it
- * is wrong now that they are, because the safe state has to be the one you get
- * by doing nothing. A control whose default is "allow" is a control waiting to
- * be forgotten on the next host somebody builds.
+ * This used to read an environment variable that chose between recording an
+ * unauthenticated admin call and refusing it -- and recording meant running it.
+ * Defaulting that to the safe value was an improvement and not a fix: the PHP
+ * panel read a variable of the same name, so one setting meant two different
+ * things on two systems, and production ran the panel on the permissive value
+ * for weeks while this side looked correct.
+ *
+ * The variable is not named here on purpose. A name in a comment is a name
+ * somebody greps for, and finding it suggests there is still something to set.
+ *
+ * A control with an off position is a control somebody will find in a hurry.
+ * The off position is gone: a wrong or missing key is refused, always, and
+ * there is no value anybody can set to change that.
  */
-const API_AUTH_MODE = (process.env.AM2_API_AUTH_MODE || 'enforce').toLowerCase();
-
 app.use('/api/admin', (req, res, next) => {
     /*
      * The header, and only the header.
@@ -132,16 +137,13 @@ app.use('/api/admin', (req, res, next) => {
     const sent = req.get('X-AM2-Api-Key') || '';
     if (API_KEY && sent && sameKey(sent, API_KEY)) return next();
 
-    console.warn('[api-auth] REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
+    console.warn('[api-auth] REJECT %s %s from %s ua=%s key=%s',
         req.method, req.originalUrl,
         req.get('X-Real-IP') || req.socket.remoteAddress,
         (req.get('User-Agent') || '-').slice(0, 120),
         sent ? 'wrong' : 'absent');
 
-    if (API_AUTH_MODE === 'enforce') {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-    return next();
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
 });
 
 
@@ -215,18 +217,21 @@ const BIND_ADDRESS = (process.env.AM2_BIND_ADDRESS || '').trim();
 /*
  * Say so loudly rather than failing quietly.
  *
- * Defaulting the mode to enforce is right -- the safe state should be the one
- * you get by doing nothing -- but on a host where nobody set a key it turns
- * every admin call into a 401, including the panel's own, with nothing in the
- * output explaining why. This is the third state: configured wrong, and said
- * out loud. The relay still starts, because handsets do not need the key and a
- * radio that will not boot is worse than one with a broken admin path.
+ * On a host where nobody set a key, every admin call becomes a 401 -- including
+ * the panel's own -- with nothing in the output explaining why. Refusing is
+ * correct; refusing silently is not. The relay still starts, because handsets
+ * do not need this key and a radio that will not boot is worse than one with a
+ * broken admin path.
+ *
+ * The message deliberately does not name a mode. There is no mode: naming one
+ * in a log line sends the next reader looking for the switch that turns this
+ * off, and the whole point is that no such switch exists.
  */
 
-if (API_AUTH_MODE === 'enforce' && API_KEY === '') {
+if (API_KEY === '') {
     console.error(
-        '[api-auth] AM2_API_AUTH_MODE=enforce with no AM2_API_KEY: every /api/admin '
-        + 'call will be refused, including the panel\'s own.'
+        '[api-auth] AM2_API_KEY is not set: every /api/admin call will be '
+        + 'refused, including the panel\'s own.'
     );
 }
 

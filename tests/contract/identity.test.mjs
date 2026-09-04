@@ -112,22 +112,18 @@ describe('identity is the server\'s to decide', () => {
     });
 });
 
-describe('KNOWN OPEN — closes when AM2_API_AUTH_MODE=enforce', () => {
-    // A caller with no session and no key still states its own role, because
-    // that is exactly what Admin Native does today. The switch cannot be
-    // thrown until the app ships a key; until then this test records the hole
-    // rather than pretending it is shut. Do not delete it — change it.
-    test('an anonymous caller can still claim superadmin while the mode is log', async () => {
+describe('CLOSED — an anonymous caller states nothing', () => {
+    // This block was headed KNOWN OPEN and asserted the hole: with no session
+    // and no key, a caller stated its own role and was served, because that is
+    // what Admin Native did. It carried the instruction "do not delete it --
+    // change it", and this is the change. The app has held a session since
+    // build 83, identity now comes only from that session, and there is no
+    // longer a setting under which the permissive branch can be reached.
+    test('an anonymous caller claiming superadmin is refused', async () => {
         const res = await fetch(`${BASE}/api_admin_panel.php?${CLAIM()}`, {
-            headers: { Host: HOST },
+            headers: { Host: HOST, Accept: 'application/json' },
         });
-        const mode = (process.env.AM2_API_AUTH_MODE || 'log').toLowerCase();
-        if (mode === 'enforce') {
-            assert.ok(res.status === 401 || res.status === 403,
-                'in enforce mode an anonymous caller must be refused');
-        } else {
-            assert.strictEqual(res.status, 200,
-                'log mode is deliberately permissive; this is the documented gap');
-        }
+        assert.strictEqual(res.status, 401,
+            'an unauthenticated caller is still served');
     });
 });

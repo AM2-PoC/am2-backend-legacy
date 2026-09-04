@@ -75,26 +75,32 @@ define('AM2_ADMIN_UPDATE_DENIED_SIGNERS', array_values(array_unique(array_filter
 ), static fn (string $v): bool => $v !== ''))));
 
 require_once __DIR__ . '/admin_update_validation.php';
+// Identity, the public entry list and the guard itself. Shared with the
+// auto_prepend copy so there is exactly one definition of who may get in.
+require_once __DIR__ . '/auth_guard.php';
 
 /**
- * Refuse an unauthorized machine-to-machine call — or, while the credential is
- * still in log mode, record it and carry on.
+ * Refuse a caller who is authenticated but not allowed to do this.
  *
- * Returns true when the caller should be stopped.
+ * Returns true when the caller has been stopped, which it now always has: this
+ * used to consult a mode that could turn the refusal into a log line, and the
+ * request would then proceed. Authorization that can be switched off is not
+ * authorization, so there is nothing left here to configure.
+ *
+ * 403, not 401 — the session is fine, the permission is not. Admin Native
+ * depends on the distinction: its interceptor signs the operator out on 401
+ * and deliberately leaves 403 alone, so that touching something outside your
+ * rights does not end your session.
  */
 function am2_api_authz_denied(string $reason): bool
 {
     error_log(sprintf(
-        'AM2 api-authz REJECT-CANDIDATE %s %s from %s reason=%s',
+        'AM2 api-authz REJECT %s %s from %s reason=%s',
         $_SERVER['REQUEST_METHOD'] ?? '?',
         $_SERVER['REQUEST_URI'] ?? '?',
         am2_client_ip(),
         $reason
     ));
-
-    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'enforce')) !== 'enforce') {
-        return false;
-    }
 
     http_response_code(403);
     header('Content-Type: application/json');
@@ -110,15 +116,21 @@ function am2_node_auth_header(): string
 }
 
 /**
- * Authenticate a machine-to-machine caller.
+ * Authenticate the caller. One way in: a panel session.
  *
- * Accepts either a panel session (dashboard.php calls api_dashboard_chart.php
- * from the browser) or the shared key.
+ * There were three ways before, and that was the whole problem. A mode could
+ * downgrade the refusal to a log line; a shared key could stand in for a
+ * session; and identity could simply be asserted in the query string. Nothing
+ * ever sent the key to the panel — the only reader was here and the only writer
+ * was a test written for it — while the mode was set to `log` in production,
+ * which meant the panel recorded unauthenticated writes and then performed
+ * them.
  *
- * AM2_API_AUTH_MODE:
- *   log     — record what would have been rejected, then continue. The default,
- *             so that turning this on cannot take the Admin Native app down.
- *   enforce — answer 401.
+ * So the key is gone from the inbound direction (the panel still *presents* one
+ * to the relay; see am2_node_auth_header()), the mode is gone, and what remains
+ * is the credential every real caller already carries. Admin Native has held a
+ * cookie jar and a CSRF token since build 83 and acts on 401 by signing out, so
+ * this closes the hole without a handset release.
  */
 function am2_api_auth(): void
 {
@@ -132,48 +144,35 @@ function am2_api_auth(): void
         return;
     }
 
-    $expected = (string) (getenv('AM2_API_KEY') ?: '');
-    // The header, and only the header. A query string is copied into the access
-    // log of every proxy in front of this, into browser history, and into the
-    // Referer of the next request; a form field is copied into anything that
-    // logs request bodies. The callers that matter already send the header.
-    $sent = $_SERVER['HTTP_X_AM2_API_KEY'] ?? '';
-    $ok = $expected !== '' && is_string($sent) && $sent !== '' && hash_equals($expected, $sent);
-
-    if ($ok) {
-        return;
-    }
-
     error_log(sprintf(
-        'AM2 api-auth REJECT-CANDIDATE %s %s from %s ua=%s key=%s',
+        'AM2 api-auth REJECT %s %s from %s ua=%s',
         $_SERVER['REQUEST_METHOD'] ?? '?',
         $_SERVER['REQUEST_URI'] ?? '?',
         am2_client_ip(),
-        substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120),
-        $sent === '' ? 'absent' : 'wrong'
+        substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120)
     ));
 
-    if (strtolower((string) (getenv('AM2_API_AUTH_MODE') ?: 'enforce')) === 'enforce') {
-        http_response_code(401);
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Unauthorized']);
-        exit;
-    }
+    http_response_code(401);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
 }
 
 /**
  * Who the caller is, decided by the server.
  *
  * Every api_*.php file used to read `admin_id` and `role` straight off the
- * query string. That is the Admin Native contract and it cannot change, but
- * it also meant any authenticated browser session could append
- * `&role=superadmin` and act as one -- api_settings.php `action=export`
- * hands back the whole database on that basis.
+ * query string, so any caller could append `&role=superadmin` and act as one --
+ * api_settings.php `action=export` hands back the whole database on that basis.
+ * A first pass preferred the session when one was present but still honoured
+ * the request fields when one was not, which left the hole open for exactly the
+ * caller that had not authenticated.
  *
- * So: when the caller proved itself with a panel session, identity comes from
- * the session and the request fields are ignored. Only a caller holding the
- * shared key -- the mobile app, which has no session -- may still state its
- * own identity, which is the contract those endpoints were written against.
+ * There is now no second source. Identity is what login.php wrote into the
+ * session after reading the row from public.admin, and nothing a request can
+ * say changes it. Admin Native still sends admin_id on fourteen endpoints; it
+ * is ignored rather than rejected, so the URL and JSON contracts are unchanged
+ * and the shipped handset keeps working.
  *
  * @return array{0: ?string, 1: string, 2: string}  [admin_id, role, via]
  */
@@ -192,47 +191,31 @@ function am2_api_identity(): array
         ];
     }
 
-    $claimed = $_GET['admin_id'] ?? $_POST['admin_id'] ?? null;
-    return [
-        ($claimed === null || $claimed === '') ? null : (string) $claimed,
-        (string) ($_GET['role'] ?? $_POST['role'] ?? 'admin'),
-        'key',
-    ];
+    // No session, no identity. Reaching here means a guard was skipped, so name
+    // nobody rather than guessing: every caller of this treats a null admin_id
+    // as "resolve nothing", which fails closed.
+    return [null, '', 'none'];
 }
 
 /**
  * Stop a caller that is not a superadmin. Returns true when the response has
  * been written and the endpoint must exit.
  *
- * A browser session is refused straight away: the panel never asks these
- * endpoints to do anything a branch admin is allowed to do, so a session
- * arriving here with role=admin is either a bug or an escalation attempt.
- * A key-bearing caller still goes through the AM2_API_AUTH_MODE switch,
- * because that is the Admin Native contract and it has not been updated yet.
+ * The panel never asks these endpoints to do anything a branch admin is
+ * allowed to do, so a caller arriving here without the superadmin role is
+ * either a bug or an escalation attempt. There used to be two answers to that
+ * -- refuse a session outright, but put a key-bearing caller through the mode
+ * switch -- which meant the same attempt was refused or served depending on how
+ * it arrived. One answer now, because there is one kind of caller.
  */
 function am2_api_require_super(string $what): bool
 {
-    [, $role, $via] = am2_api_identity();
+    [, $role] = am2_api_identity();
     if (strtolower($role) === 'superadmin') {
         return false;
     }
 
-    if ($via === 'session') {
-        error_log(sprintf(
-            'AM2 api-authz REJECT %s %s from %s reason=%s role=%s',
-            $_SERVER['REQUEST_METHOD'] ?? '?',
-            $_SERVER['REQUEST_URI'] ?? '?',
-            am2_client_ip(),
-            $what,
-            $role
-        ));
-        http_response_code(403);
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
-        return true;
-    }
-
-    return am2_api_authz_denied($what);
+    return am2_api_authz_denied($what . ' role=' . ($role === '' ? 'none' : $role));
 }
 
 /**
@@ -259,9 +242,16 @@ function am2_csrf_field(): string
 /**
  * Reject a state-changing request that did not carry the token.
  *
- * Applied only to requests that already carry a panel session. The api_*.php
- * files are called by the Admin Native app, which has no session and no token;
- * enforcing here would break it. Those get their own credential separately.
+ * The exemption used to be "no session, no check", written when Admin Native
+ * had neither a session nor a token. That is the condition an unauthenticated
+ * caller is in, so it exempted precisely the caller it should have stopped —
+ * and the app has carried both since build 83, so it protected nobody.
+ *
+ * It cannot simply be deleted either: a sign-in POST arrives with no session
+ * and therefore no stored token, so an unconditional check makes the first
+ * sign-in impossible. The exemption is now the same two-name constant the
+ * guard uses. Signing in is protected by the credential it carries; every
+ * other write is protected by the token.
  */
 function am2_csrf_require(): void
 {
@@ -270,7 +260,7 @@ function am2_csrf_require(): void
     if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
         return;
     }
-    if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION['admin_logged_in'])) {
+    if (PHP_SAPI === 'cli' || in_array(am2_entry_point(), AM2_PUBLIC_ENTRY, true)) {
         return;
     }
     $expected = (string) ($_SESSION['csrf_token'] ?? '');
@@ -457,16 +447,30 @@ try {
         am2_session_boot();
     }
     am2_expire_idle_session();
-    am2_csrf_require();
 } catch (PDOException $e) {
     error_log('AM2 DB connection failed: ' . $e->getMessage());
     http_response_code(500);
     die('Koneksi database gagal.');
 }
 
+// i18n first, so a refusal can be phrased in the operator's language.
+require_once __DIR__ . '/i18n.php';
+
+/*
+ * The guard, for every request that reaches any file including this one.
+ *
+ * Order is the whole point and it is the order the incidents taught:
+ * session started, idle expiry applied, *then* authentication, *then* CSRF.
+ * Authenticating before CSRF is what makes an anonymous POST answer 401 rather
+ * than 403 -- and Admin Native signs the operator out on one and not the other,
+ * so getting it the wrong way round leaves a handset holding a dead session
+ * while every screen reports its own feature as broken.
+ */
+am2_require_identity();
+am2_csrf_require();
+
 // The relay client. Loaded last: it needs AM2_NODE_BASE and the auth header
 // helper defined above.
-require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/node_client.php';
 require_once __DIR__ . '/channel_access.php';
 require_once __DIR__ . '/activity_log.php';
