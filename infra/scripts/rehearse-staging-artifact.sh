@@ -36,6 +36,8 @@ for key,width in (('source_sha',40),('archive_sha256',64),('payload_sha256',64))
 PYTHON
 )
 source_sha=${identity[0]}; archive_sha256=${identity[1]}; payload_sha256=${identity[2]}
+exec 9>"$LOCK"
+flock -x 9
 "$VERIFY_ARTIFACT" --release "$release" --manifest "$manifest" >/dev/null
 "$VERIFY_CURRENT" "$release" >/dev/null
 old=$(readlink -f "$CURRENT")
@@ -43,17 +45,22 @@ old=$(readlink -f "$CURRENT")
 "$VERIFY_CURRENT" "$old" >/dev/null
 "$release/infra/scripts/smoke-release.sh" "$release" "$source_sha" "$ENV_FILE" | grep -q 'isolated release smoke OK'
 (( allow_restart )) || { echo "staging relay restart approval is required" >&2; exit 1; }
-
-exec 9>"$LOCK"
-flock -x 9
 wait_ready() {
-    local expected=$1 before=$2 pid cwd body
+    local expected=$1 before=$2 pid cwd body restarts stable_pid= stable_restarts= healthy_samples=0
     for _ in $(seq 1 60); do
         pid=$(systemctl show "$UNIT" -p MainPID --value 2>/dev/null || true)
+        restarts=$(systemctl show "$UNIT" -p NRestarts --value 2>/dev/null || true)
         cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
         body=$(curl -fsS --max-time 2 "$URL" 2>/dev/null || true)
         if systemctl is-active --quiet "$UNIT" && [[ $pid =~ ^[1-9][0-9]*$ && $pid != "$before" && $cwd == "$expected/server" && $body == *"PTT Server"* ]]; then
-            printf '%s\n' "$pid"; return 0
+            if [[ $pid == "$stable_pid" && $restarts == "$stable_restarts" ]]; then
+                healthy_samples=$((healthy_samples + 1))
+            else
+                stable_pid=$pid; stable_restarts=$restarts; healthy_samples=1
+            fi
+            if (( healthy_samples >= 3 )); then printf '%s\n' "$pid"; return 0; fi
+        else
+            healthy_samples=0; stable_pid=; stable_restarts=
         fi
         sleep 1
     done

@@ -112,6 +112,8 @@ describe('production promotion gate', () => {
             'promotion compares against the old pointer instead of the running PID cwd');
         assert.match(s, /curl[\s\S]*(?:PTT Server|http)/i,
             'post-restart verification accepts systemd active without application readiness');
+        assert.match(s, /healthy_samples[\s\S]*NRestarts/,
+            'production readiness accepts one transient healthy sample');
     });
 
     test('staging gate requires runtime identity and an exact rehearsal receipt', () => {
@@ -127,6 +129,10 @@ describe('production promotion gate', () => {
         for (const evidence of ['candidate_pid', 'rollback_pid', 'repromoted_pid', 'archive_sha256', 'payload_sha256']) {
             assert.match(rehearsal, new RegExp(evidence), `staging rehearsal omits ${evidence}`);
         }
+        assert.ok(rehearsal.indexOf('flock -x 9') < rehearsal.indexOf('old=$(readlink -f "$CURRENT")'),
+            'staging rollback identity is captured before owning the deployment lock');
+        assert.match(rehearsal, /healthy_samples[\s\S]*NRestarts/,
+            'staging readiness accepts one transient healthy sample');
     });
 
     test('candidate and rollback use the stable host-owned compatibility verifier', () => {

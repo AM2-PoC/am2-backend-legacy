@@ -63,15 +63,22 @@ step() { printf '\n-- %s\n' "$*"; }
 refuse() { echo "REFUSED: $*" >&2; gate=1; }
 wait_ready() {
     local unit=$1 url=$2 expected_root=$3 before_pid=$4
-    local pid cwd body
+    local pid cwd body restarts stable_pid= stable_restarts= healthy_samples=0
     for _ in $(seq 1 60); do
         if systemctl is-active --quiet "$unit"; then
             pid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null || true)
+            restarts=$(systemctl show "$unit" -p NRestarts --value 2>/dev/null || true)
             cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
             body=$(curl -fsS --max-time 2 "$url" 2>/dev/null || true)
             if [[ $pid =~ ^[1-9][0-9]*$ && $pid != "$before_pid" && $cwd == "$expected_root/server" && $body == *"PTT Server"* ]]; then
-                printf '%s\n' "$pid"
-                return 0
+                if [[ $pid == "$stable_pid" && $restarts == "$stable_restarts" ]]; then
+                    healthy_samples=$((healthy_samples + 1))
+                else
+                    stable_pid=$pid; stable_restarts=$restarts; healthy_samples=1
+                fi
+                if (( healthy_samples >= 3 )); then printf '%s\n' "$pid"; return 0; fi
+            else
+                healthy_samples=0; stable_pid=; stable_restarts=
             fi
         fi
         sleep 1
