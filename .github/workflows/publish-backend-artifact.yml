@@ -61,7 +61,7 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           gh api \
             "repos/${{ github.repository }}/actions/workflows/source-checks.yml/runs?head_sha=$SOURCE_SHA&event=push&status=completed&per_page=100" \
-            --jq '.workflow_runs[] | select(.conclusion == "success" && .head_branch == "main") | .id' \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" and .head_branch == "main") | .id] | first // empty' \
             | grep -q .
 
       - name: Install locked production dependency closure
