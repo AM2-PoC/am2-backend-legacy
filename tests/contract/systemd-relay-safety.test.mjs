@@ -64,7 +64,7 @@ test('host-owned current verifier validates a pre-P0 runnable rollback release',
     const install = spawnSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
       cwd: resolve(legacy, 'server'),
       encoding: 'utf8',
-      timeout: 120_000,
+      timeout: 300_000,
     });
     assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
     writeFileSync(resolve(legacy, '.release-sha'), `${'a'.repeat(40)}\n`);

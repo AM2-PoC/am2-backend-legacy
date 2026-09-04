@@ -69,4 +69,25 @@ console.log(`runtime dependency closure OK (${dependencies.length} packages)`);
 NODE
 )
 
+(
+    cd "$release_root/server"
+    node <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+if (!lock.packages || typeof lock.packages !== 'object') {
+  throw new Error('package-lock.json does not contain a package map');
+}
+for (const [relative, metadata] of Object.entries(lock.packages)) {
+  if (!relative.startsWith('node_modules/') || metadata.dev === true) continue;
+  const installed = path.join(process.cwd(), relative);
+  if (!fs.statSync(installed, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`missing locked production dependency: ${relative}`);
+  }
+  if (!fs.statSync(path.join(installed, 'package.json'), { throwIfNoEntry: false })?.isFile()) {
+    throw new Error(`locked production dependency lacks package.json: ${relative}`);
+  }
+}
+NODE
+)
 printf 'release runtime verified: %s\n' "$expected_sha"
