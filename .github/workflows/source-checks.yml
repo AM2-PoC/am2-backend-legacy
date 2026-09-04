@@ -16,7 +16,7 @@ name: source checks
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 
 permissions:
@@ -91,11 +91,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
           coverage: none
       - name: Run the tests that need no credentials and no network
+        env:
+          NPM_CONFIG_PREFER_OFFLINE: 'true'
+          NPM_CONFIG_AUDIT: 'false'
+          NPM_CONFIG_FUND: 'false'
         run: |
           # The set is computed, not listed: a hand-maintained list goes stale
           # the first time somebody adds a test and forgets, and a test that
@@ -138,6 +144,10 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - name: Run restart-safety contracts
+        env:
+          NPM_CONFIG_PREFER_OFFLINE: 'true'
+          NPM_CONFIG_AUDIT: 'false'
+          NPM_CONFIG_FUND: 'false'
         run: |
           node --test --test-concurrency=1 \
             tests/contract/needrestart-policy.test.mjs \

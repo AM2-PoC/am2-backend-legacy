@@ -27,7 +27,7 @@ function packageArtifactFixture(base, sha) {
   const source = join(base, 'source');
   const clone = spawnSync('git', ['clone', '--shared', root, source], { encoding: 'utf8' });
   assert.equal(clone.status, 0, clone.stderr);
-  const install = spawnSync('npm', ['ci', '--omit=dev', '--ignore-scripts'], { cwd: join(source, 'server'), encoding: 'utf8', timeout: 110_000 });
+  const install = spawnSync('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: join(source, 'server'), encoding: 'utf8', timeout: 300_000 });
   assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
   const output = join(base, 'ingress');
   const pack = spawnSync('bash', [packageArtifact, '--source-root', source, '--sha', sha, '--output-dir', output], { encoding: 'utf8', timeout: 110_000 });
