@@ -5,6 +5,15 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
+const publisherWorkflow = () => read('.github/workflows/publish-backend-artifact.yml');
+
+test('artifact publisher uses GitHub CLI jq syntax when requiring exact-main source checks', () => {
+  const source = publisherWorkflow();
+  assert.match(source, /select\(\.conclusion == "success" and \.head_branch == "main"\)/,
+    'publisher source-check query uses jq syntax rejected by the GitHub CLI');
+  assert.doesNotMatch(source, /select\(\.conclusion == "success" && \.head_branch == "main"\)/,
+    'publisher source-check query still uses shell boolean syntax inside jq');
+});
 
 test('CI executes every restart-safety contract and builds a production artifact', () => {
   const workflow = read('.github/workflows/source-checks.yml');
