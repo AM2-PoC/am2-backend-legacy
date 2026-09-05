@@ -32,7 +32,7 @@ test('host-security contract closes every tracked WebAdmin and real-IP input out
   assert.deepEqual(contract.files.map((file) => file.id).sort(), expectedFileIds);
 
   for (const file of contract.files) {
-    const origin = file.source ?? file.generator;
+    const origin = file.source;
     assert.match(origin, /^(infra\/php|infra\/apache|infra\/nginx|infra\/scripts)\/.+/);
     assert.ok(existsSync(resolve(ROOT, origin)), `missing tracked host-security origin: ${origin}`);
     assert.equal(file.mode, '0644');
@@ -44,9 +44,13 @@ test('host-security contract closes every tracked WebAdmin and real-IP input out
 
   const ini = contract.files.find((file) => file.id === 'php-auto-prepend-ini');
   assert.equal(ini.consumer, 'php-sapi');
+  assert.equal(ini.source, 'infra/php/99-am2-webadmin-guard.ini');
   assert.equal(ini.target_kind, 'php-sapi-conf.d');
   assert.equal(ini.filename, '99-am2-webadmin-guard.ini');
   assert.deepEqual(ini.sapis, ['apache2', 'fpm']);
+  assert.match(readFileSync(resolve(ROOT, ini.source), 'utf8'),
+    /^auto_prepend_file = \/etc\/am2\/php\/webadmin-prepend\.php$/m,
+    'the sealed PHP configuration template does not name the bounded prepend');
 
   for (const id of ['apache-production-webadmin', 'apache-staging-webadmin']) {
     assert.match(contract.files.find((file) => file.id === id).target, /^\/etc\/apache2\/sites-available\//);

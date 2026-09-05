@@ -16,10 +16,17 @@ function sourceSha() {
   return run.stdout.trim();
 }
 
-function packageBundle(base, sha = sourceSha()) {
+function cloneSource(base) {
+  const source = join(base, 'source');
+  const run = spawnSync('git', ['clone', '--shared', ROOT, source], { encoding: 'utf8' });
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  return source;
+}
+
+function packageBundle(base, sha = sourceSha(), source = ROOT) {
   const output = join(base, 'bundle');
   const run = spawnSync('bash', [packagerPath,
-    '--source-root', ROOT,
+    '--source-root', source,
     '--sha', sha,
     '--output-dir', output], { encoding: 'utf8' });
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
@@ -68,6 +75,28 @@ test('host-security packager rejects a source identity other than its checked-ou
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-sha-'));
   try {
     assert.throws(() => packageBundle(base, '0'.repeat(40)), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security packager rejects a dirty source checkout', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-dirty-'));
+  try {
+    const source = cloneSource(base);
+    appendFileSync(join(source, 'infra/php/webadmin-prepend.php'), '\n// uncommitted mutation\n');
+    assert.throws(() => packageBundle(base, sourceSha(), source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security packager rejects untracked source input', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-untracked-'));
+  try {
+    const source = cloneSource(base);
+    writeFileSync(join(source, 'infra/php/unsealed-host-setting.ini'), 'unsealed\n');
+    assert.throws(() => packageBundle(base, sourceSha(), source), /!== 0/);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

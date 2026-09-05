@@ -4,7 +4,7 @@
   "source_binding": "exact-source-sha",
   "files": [
     {"id":"php-webadmin-prepend","source":"infra/php/webadmin-prepend.php","target":"/etc/am2/php/webadmin-prepend.php","mode":"0644","consumer":"php-sapi"},
-    {"id":"php-auto-prepend-ini","generator":"infra/scripts/install-webadmin-guard.sh","target_kind":"php-sapi-conf.d","filename":"99-am2-webadmin-guard.ini","sapis":["apache2","fpm"],"mode":"0644","consumer":"php-sapi"},
+    {"id":"php-auto-prepend-ini","source":"infra/php/99-am2-webadmin-guard.ini","target_kind":"php-sapi-conf.d","filename":"99-am2-webadmin-guard.ini","sapis":["apache2","fpm"],"mode":"0644","consumer":"php-sapi"},
     {"id":"apache-production-webadmin","source":"infra/apache/am2-webadmin-internal.conf","target":"/etc/apache2/sites-available/am2-webadmin-internal.conf","mode":"0644","consumer":"apache2"},
     {"id":"apache-staging-webadmin","source":"infra/apache/am2-webadmin-staging.conf","target":"/etc/apache2/sites-available/am2-webadmin-staging.conf","mode":"0644","consumer":"apache2"},
     {"id":"nginx-api","source":"infra/nginx/am2-api.conf","target":"/etc/nginx/sites-available/am2-api.conf","mode":"0644","consumer":"nginx"},

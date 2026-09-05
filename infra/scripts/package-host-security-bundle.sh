@@ -22,6 +22,8 @@ done
 [[ ! -e $output_dir && ! -L $output_dir ]] || { echo "output directory already exists" >&2; exit 1; }
 actual_sha=$(git -C "$source_root" rev-parse HEAD 2>/dev/null || true)
 [[ $actual_sha == "$source_sha" ]] || { echo "requested source SHA is not the checked-out source identity" >&2; exit 1; }
+git -C "$source_root" diff --quiet --ignore-submodules -- || { echo "source checkout has unstaged tracked modifications" >&2; exit 1; }
+git -C "$source_root" diff --cached --quiet --ignore-submodules -- || { echo "source checkout has staged tracked modifications" >&2; exit 1; }
 
 contract=$source_root/infra/contracts/host-security-contract.json
 [[ -f $contract && ! -L $contract ]] || { echo "host-security contract is missing" >&2; exit 1; }
@@ -44,11 +46,11 @@ if not isinstance(contract['files'], list) or not contract['files']:
     raise SystemExit('host-security contract has no files')
 seen=set()
 for item in contract['files']:
-    if not isinstance(item, dict) or set(item) - {'id','source','generator','target','target_kind','filename','sapis','mode','consumer'}:
+    if not isinstance(item, dict) or set(item) - {'id','source','target','target_kind','filename','sapis','mode','consumer'}:
         raise SystemExit('host-security contract file schema is invalid')
-    if set(item) & {'source','generator'} == set() or set(item) & {'source','generator'} == {'source','generator'}:
+    if 'source' not in item:
         raise SystemExit('host-security contract file has invalid origin')
-    origin=item.get('source', item.get('generator'))
+    origin=item['source']
     if not re.fullmatch(r'infra/(?:php|apache|nginx|scripts)/[A-Za-z0-9._/-]+', str(origin)) or '..' in origin.split('/'):
         raise SystemExit('host-security contract origin is invalid')
     if item.get('id') in seen or item.get('mode') != '0644' or item.get('consumer') not in {'apache2','nginx','php-sapi'}:
@@ -84,7 +86,7 @@ contract_path, out, source, payload, archive = sys.argv[1:]
 contract=json.load(open(contract_path, encoding='utf-8'))
 files=[]
 for item in contract['files']:
-    origin=item.get('source', item.get('generator'))
+    origin=item['source']
     files.append({'id':item['id'], 'origin':origin, 'sha256':hashlib.file_digest(open(contract_path.rsplit('/infra/contracts/',1)[0] + '/' + origin, 'rb'),'sha256').hexdigest()})
 manifest={'schema_version':1,'application':'am2-host-security','source_sha':source,'payload_sha256':payload,'archive_sha256':archive,'files':files}
 open(out,'w',encoding='utf-8').write(json.dumps(manifest,sort_keys=True,separators=(',',':'))+'\n')
