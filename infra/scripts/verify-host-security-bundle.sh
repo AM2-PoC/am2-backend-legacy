@@ -52,6 +52,27 @@ PY
     sha256sum -c "$checksums"
 ) >/dev/null || { echo "host-security checksum verification failed" >&2; exit 1; }
 
+python3 - "$manifest" "$expected_manifest" "$archive" <<'PY'
+import hashlib, json, pathlib, re, sys
+manifest_path, expected_path, archive_path = map(pathlib.Path, sys.argv[1:])
+manifest=json.load(open(manifest_path,encoding='utf-8'))
+expected=json.load(open(expected_path,encoding='utf-8'))
+if manifest != expected:
+    raise SystemExit('host-security manifest does not match trusted expected manifest')
+if set(manifest) != {'schema_version','application','source_sha','payload_sha256','archive_sha256','files'}:
+    raise SystemExit('host-security manifest key set is invalid')
+if manifest['schema_version'] != 1 or manifest['application'] != 'am2-host-security':
+    raise SystemExit('host-security manifest identity is invalid')
+for field, width in [('source_sha',40),('payload_sha256',64),('archive_sha256',64)]:
+    if not re.fullmatch(r'[0-9a-f]{%d}' % width, str(manifest.get(field,''))):
+        raise SystemExit('host-security manifest %s is invalid' % field)
+if hashlib.file_digest(open(archive_path,'rb'),'sha256').hexdigest() != manifest['archive_sha256']:
+    raise SystemExit('host-security archive digest mismatch')
+files=manifest.get('files')
+if not isinstance(files,list) or not files:
+    raise SystemExit('host-security manifest files are invalid')
+PY
+
 work=$(mktemp -d)
 cleanup() { rm -rf -- "$work"; }
 trap cleanup EXIT INT TERM HUP
@@ -75,16 +96,7 @@ manifest_path, expected_path, archive_path, payload_root = map(pathlib.Path, sys
 manifest=json.load(open(manifest_path,encoding='utf-8'))
 expected=json.load(open(expected_path,encoding='utf-8'))
 if manifest != expected:
-    raise SystemExit('host-security manifest does not match trusted expected manifest')
-if set(manifest) != {'schema_version','application','source_sha','payload_sha256','archive_sha256','files'}:
-    raise SystemExit('host-security manifest key set is invalid')
-if manifest['schema_version'] != 1 or manifest['application'] != 'am2-host-security':
-    raise SystemExit('host-security manifest identity is invalid')
-for field, width in [('source_sha',40),('payload_sha256',64),('archive_sha256',64)]:
-    if not re.fullmatch(r'[0-9a-f]{%d}' % width, str(manifest.get(field,''))):
-        raise SystemExit('host-security manifest %s is invalid' % field)
-if hashlib.file_digest(open(archive_path,'rb'),'sha256').hexdigest() != manifest['archive_sha256']:
-    raise SystemExit('host-security archive digest mismatch')
+    raise SystemExit('host-security manifest changed after trusted pre-authentication')
 marker=(payload_root/'.host-security-source-sha').read_text(encoding='utf-8').strip()
 if marker != manifest['source_sha']:
     raise SystemExit('host-security payload source marker mismatch')

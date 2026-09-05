@@ -432,6 +432,34 @@ test('host-security verifier rejects checksum entries outside the canonical bund
   }
 });
 
+test('host-security verifier authenticates the archive before invoking tar', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-preauth-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const marker = join(base, 'tar-was-called');
+    writeFileSync(join(bin, 'tar'), `#!/usr/bin/env bash\n: > "$AM2_TAR_MARKER"\nexit 99\n`);
+    spawnSync('chmod', ['0755', join(bin, 'tar')]);
+    appendFileSync(join(output, 'am2-host-security.tar.gz'), 'tampered');
+    writeFileSync(join(output, 'SHA256SUMS'),
+      `${sha256(join(output, 'am2-host-security.tar.gz'))}  am2-host-security.tar.gz\n` +
+      `${sha256(join(output, 'host-security-manifest.json'))}  host-security-manifest.json\n`);
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', trustedManifest(base, output)], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AM2_TAR_MARKER: marker },
+    });
+    assert.notEqual(verify.status, 0);
+    assert.equal(existsSync(marker), false, 'tar ran before trusted manifest authenticated the archive');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier rejects altered bundle bytes even when the manifest is unchanged', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-archive-tamper-'));
   try {
