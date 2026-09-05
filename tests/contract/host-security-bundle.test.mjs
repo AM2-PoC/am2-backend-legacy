@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -68,6 +68,22 @@ test('host-security packager rejects a source identity other than its checked-ou
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-sha-'));
   try {
     assert.throws(() => packageBundle(base, '0'.repeat(40)), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security verifier rejects altered bundle bytes even when the manifest is unchanged', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-archive-tamper-'));
+  try {
+    const output = packageBundle(base);
+    appendFileSync(join(output, 'am2-host-security.tar.gz'), 'tampered');
+
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS')], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'altered host-security archive retained trusted bundle status');
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
