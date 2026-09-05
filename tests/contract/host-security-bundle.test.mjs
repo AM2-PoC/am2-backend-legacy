@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -201,6 +201,23 @@ test('host-security verifier rejects a nested bundle-manifest trust anchor', () 
       '--checksums', join(output, 'SHA256SUMS'),
       '--expected-manifest', expected], { encoding: 'utf8' });
     assert.notEqual(verify.status, 0, 'nested bundle manifest was accepted as trusted provenance');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security verifier rejects a hard-linked bundle-manifest trust anchor', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-hardlink-anchor-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const expected = join(base, 'hard-linked-manifest.json');
+    linkSync(join(output, 'host-security-manifest.json'), expected);
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', expected], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'hard-linked bundle manifest was accepted as trusted provenance');
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
