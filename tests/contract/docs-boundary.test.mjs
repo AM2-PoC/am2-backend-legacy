@@ -90,6 +90,10 @@ test('staging documentation uses artifact materialization rather than Git deploy
     'staging documentation still carries incident narrative or unsafe restart minimization');
   assert.match(source, /production receives the exact digest accepted in staging/i,
     'staging documentation does not state the candidate-to-production promotion boundary');
+  assert.match(source, /:\s+"\$\{SOURCE_SHA:\?export the exact 40-character source SHA\}"/,
+    'staging documentation does not fail closed when SOURCE_SHA is unset');
+  assert.match(source, /:\s+"\$\{ARCHIVE_SHA:\?export the exact 64-character archive SHA-256\}"/,
+    'staging documentation does not fail closed when ARCHIVE_SHA is unset');
 });
 
 test('security posture stays current instead of becoming an incident ledger', () => {
@@ -106,4 +110,8 @@ test('security posture stays current instead of becoming an incident ledger', ()
   }
   assert.doesNotMatch(source, /retained window|one unauthenticated POST could|used to explain|closed since this document|fixture account|before this guard existed/i,
     'security posture still carries incident or historical implementation narrative');
+  assert.match(source, /API-key validation uses Node's constant-time comparison/i,
+    'security posture does not name Node as the API-key validator');
+  assert.match(source, /PHP presents the protected key only to the loopback relay and does not compare it itself/i,
+    'security posture misstates PHP API-key responsibility');
 });
