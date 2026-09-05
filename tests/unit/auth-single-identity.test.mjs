@@ -429,6 +429,13 @@ test('each lane pins its own session store, in a tracked file', () => {
     assert.notEqual(a, b, 'both lanes point at the same session store');
 });
 
+test('authentication bootstrap libraries refuse direct HTTP execution', () => {
+    for (const file of ['WebAdmin/session_boot.php', 'WebAdmin/auth_guard.php']) {
+        assert.match(read(file), /am2_refuse_direct_request\(__FILE__\)/,
+            `${file} can still be requested as a public endpoint`);
+    }
+});
+
 test('layer one reaches every file, so layer two is a net and not the floor', () => {
     const files = readdirSync(join(ROOT, 'WebAdmin'))
         .filter((f) => f.endsWith('.php'));

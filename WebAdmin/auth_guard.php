@@ -28,6 +28,7 @@
  */
 
 require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
 
 if (!defined('AM2_PUBLIC_ENTRY')) {
     /**
