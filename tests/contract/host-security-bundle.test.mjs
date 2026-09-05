@@ -135,6 +135,32 @@ test('host-security packager rejects untracked source input', () => {
   }
 });
 
+test('host-security packager rejects an untracked origin hidden by ignore rules', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-ignored-origin-'));
+  try {
+    const source = cloneSource(base);
+    const contractPath = join(source, 'infra/contracts/host-security-contract.json');
+    const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+    contract.files.push({
+      id: 'ignored-origin',
+      source: 'infra/php/ignored-host-setting.ini',
+      target: '/etc/am2/php/ignored-host-setting.ini',
+      mode: '0644',
+      consumer: 'php-sapi',
+    });
+    writeFileSync(contractPath, `${JSON.stringify(contract)}\n`);
+    writeFileSync(join(source, 'infra/php/ignored-host-setting.ini'), 'ignored\n');
+    appendFileSync(join(source, '.git/info/exclude'), '\ninfra/php/ignored-host-setting.ini\n');
+    const commit = spawnSync('git', ['add', contractPath], { cwd: source, encoding: 'utf8' });
+    assert.equal(commit.status, 0, `${commit.stdout}\n${commit.stderr}`);
+    const saved = spawnSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'contract references ignored origin'], { cwd: source, encoding: 'utf8' });
+    assert.equal(saved.status, 0, `${saved.stdout}\n${saved.stderr}`);
+    assert.throws(() => packageBundle(base, spawnSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).stdout.trim(), source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security packager rejects tracked source hidden by assume-unchanged', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-assume-unchanged-'));
   try {
