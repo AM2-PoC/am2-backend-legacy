@@ -175,3 +175,56 @@ test('an externally refreshed real-IP file is audited by shape, not by app-relea
     discard(base);
   }
 });
+
+test('the real-IP exemption cannot smuggle arbitrary nginx configuration', () => {
+  // Skipping byte equality must not become "anything goes". This snippet is
+  // included into nginx server context, so an injected directive here is an
+  // nginx directive on a live vhost, and lower-bound counts alone would let it
+  // through while the audit kept reporting health.
+  const base = mkdtempSync(join(tmpdir(), 'am2-cloudflare-injection-'));
+  try {
+    const lifecycle = JSON.parse(readFileSync(lifecyclePath, 'utf8'));
+    const { receipt, receiptData } = sealedReceipt(base);
+    const governed = receiptData.files.find((file) => file.id === lifecycle.host_security_file_id);
+    const today = new Date().toISOString().slice(0, 10);
+
+    const audit = (root) => spawnSync('bash', [driftAuditPath,
+      '--receipt', receipt, '--root', root, '--unprivileged-root'], { encoding: 'utf8' });
+
+    // An unrelated directive appended to otherwise genuine content.
+    const injected = installFromReceipt(receiptData, join(base, 'root-injected'), (root) => {
+      const target = join(root, governed.target);
+      writeFileSync(target, readFileSync(target, 'utf8').replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`)
+        + '\nlocation /admin { allow all; auth_basic off; }\n');
+    });
+    const injectedRun = audit(injected);
+    assert.notEqual(injectedRun.status, 0, 'audit accepted an injected nginx directive');
+    assert.match(injectedRun.stderr, /directive|unexpected|line/i);
+
+    // Cloudflare's networks wholesale replaced by the attacker's, in the right
+    // shape and quantity: this is what defeats every real-client-IP control.
+    const substituted = installFromReceipt(receiptData, join(base, 'root-substituted'), (root) => {
+      const v4 = Array.from({ length: 12 }, (_, i) => `set_real_ip_from 10.0.${i}.0/24;`).join('\n');
+      const v6 = Array.from({ length: 6 }, (_, i) => `set_real_ip_from 2001:db8:${i}::/32;`).join('\n');
+      writeFileSync(join(root, governed.target),
+        `# Regenerated ${today}\n\n${v4}\n${v6}\n\nreal_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n`);
+    });
+    const substitutedRun = audit(substituted);
+    assert.notEqual(substitutedRun.status, 0, 'audit accepted attacker networks as Cloudflare ranges');
+    assert.match(substitutedRun.stderr, /cloudflare|network|range/i);
+
+    // A genuine refresh that adds a range must still pass, or the whole point
+    // of the separate lifecycle is lost.
+    const refreshed = installFromReceipt(receiptData, join(base, 'root-refreshed'), (root) => {
+      const target = join(root, governed.target);
+      writeFileSync(target, readFileSync(target, 'utf8')
+        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`)
+        .replace('real_ip_header CF-Connecting-IP;', 'set_real_ip_from 199.27.128.0/21;\n\nreal_ip_header CF-Connecting-IP;'));
+    });
+    const refreshedRun = audit(refreshed);
+    assert.equal(refreshedRun.status, 0,
+      `a genuine Cloudflare refresh was rejected\n${refreshedRun.stdout}\n${refreshedRun.stderr}`);
+  } finally {
+    discard(base);
+  }
+});

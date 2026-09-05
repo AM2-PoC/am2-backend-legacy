@@ -31,6 +31,7 @@ Usage: verify-host-security-installed.sh
          [--root /absolute/root]        (default /)
          [--unprivileged-root]          (the root is a fixture, not the host)
          [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
+         [--expected-manifest /absolute/trusted-host-security-manifest.json]
 USAGE
 }
 
@@ -38,12 +39,14 @@ receipt=
 root=/
 unprivileged_root=0
 lifecycle=
+expected_manifest=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
         --root) [[ $# -ge 2 ]] || { usage; exit 64; }; root=$2; shift 2 ;;
         --unprivileged-root) unprivileged_root=1; shift ;;
         --lifecycle) [[ $# -ge 2 ]] || { usage; exit 64; }; lifecycle=$2; shift 2 ;;
+        --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
         *) usage; exit 64 ;;
     esac
 done
@@ -57,10 +60,22 @@ if [[ -z $lifecycle ]]; then
 fi
 [[ -f $lifecycle && ! -L $lifecycle ]] || { echo "Cloudflare real-IP lifecycle contract is missing: $lifecycle" >&2; exit 1; }
 
-python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" <<'PY'
+# The trusted manifest is the one thing here obtained independently of the host,
+# so on a real host it is required: without it the check reduces to asking an
+# unsigned file on that host whether that host is fine.
+if [[ -z $expected_manifest && $unprivileged_root -eq 0 ]]; then
+    echo "checking a real host requires --expected-manifest; a receipt alone is the host vouching for itself" >&2
+    exit 64
+fi
+if [[ -n $expected_manifest ]]; then
+    [[ $expected_manifest == /* && -f $expected_manifest && ! -L $expected_manifest ]] \
+        || { echo "trusted expected manifest is missing: $expected_manifest" >&2; exit 1; }
+fi
+
+python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" "${expected_manifest:-}" <<'PY'
 import datetime, hashlib, json, os, pathlib, re, stat, sys
 
-receipt_path, root_argument, unprivileged_root, lifecycle_path = sys.argv[1:]
+receipt_path, root_argument, unprivileged_root, lifecycle_path, expected_manifest_path = sys.argv[1:]
 unprivileged_root = unprivileged_root == '1'
 receipt = json.load(open(receipt_path, encoding='utf-8'))
 lifecycle = json.load(open(lifecycle_path, encoding='utf-8'))
@@ -87,6 +102,33 @@ if str(root) == '/' and unprivileged_root:
 
 if receipt.get('application') != 'am2-host-security-materialization':
     raise SystemExit('receipt is not a host-security materialization receipt')
+
+# A receipt is an unsigned file on the host it describes. `privileged`,
+# `materialized_by_uid` and every digest in it are self-declared, so rewriting
+# them to match tampered bytes would otherwise produce a clean bill of health.
+# Bind them to the independently obtained manifest instead of taking the
+# receipt's word.
+if expected_manifest_path:
+    expected = json.load(open(expected_manifest_path, encoding='utf-8'))
+    for field in ('source_sha', 'payload_sha256', 'archive_sha256'):
+        if receipt.get(field) != expected.get(field):
+            raise SystemExit(f'receipt {field} does not match the trusted manifest')
+    trusted_digests = {item['id']: item['sha256'] for item in expected['files']}
+    receipt_digests = {item['id']: item['sha256'] for item in receipt['files']}
+    if receipt_digests != trusted_digests:
+        differing = sorted(
+            identifier for identifier in set(trusted_digests) | set(receipt_digests)
+            if trusted_digests.get(identifier) != receipt_digests.get(identifier))
+        raise SystemExit(f'receipt file digests do not match the trusted manifest: {differing[:3]}')
+
+# On a real host the receipt must also be protected, or anyone who can edit it
+# decides what "verified" means.
+if not unprivileged_root:
+    info = pathlib.Path(receipt_path).lstat()
+    if info.st_uid != 0:
+        raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
+    if stat.S_IMODE(info.st_mode) & 0o022:
+        raise SystemExit(f'receipt is writable beyond root (mode {stat.S_IMODE(info.st_mode):04o})')
 
 
 def resolve_targets(entry):
@@ -178,6 +220,26 @@ if text is not None:
     for directive in validation['required_directives']:
         if directive not in text:
             report(f'cloudflare real-IP: missing required directive {directive!r}')
+
+    # Skipping byte equality must not become "anything goes". These bytes are
+    # included into nginx server context, so an unrelated directive here -- an
+    # `allow all`, an `auth_basic off`, a `proxy_pass` -- is live configuration
+    # that the exemption would otherwise wave through.
+    allowed = [re.compile(pattern) for pattern in validation['allowed_line_patterns']]
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not any(pattern.match(line) for pattern in allowed):
+            report(f'cloudflare real-IP: unexpected directive on line {number}: {line.strip()[:60]!r}')
+            break
+
+    # Additions are a refresh and stay quiet. Wholesale substitution is not:
+    # replacing Cloudflare's networks with somebody else's hands them the right
+    # to speak for any visitor, in exactly the right shape and quantity.
+    declared = set(re.findall(r'^\s*set_real_ip_from\s+(\S+);', text, re.MULTILINE))
+    for network in validation['required_networks']:
+        if network not in declared:
+            report(f'cloudflare real-IP: long-standing Cloudflare network {network} is absent; '
+                   'this is a substituted list rather than a refresh')
+            break
 
     marker = lifecycle['provenance']['generated_marker']
     found = re.search(re.escape(marker) + r'(\d{4}-\d{2}-\d{2})', text)

@@ -68,9 +68,15 @@ verifier=$here/verify-host-security-bundle.sh
 # write. Anything else is a fixture, and must not be able to claim otherwise --
 # so it is confined away from system paths and stamped as unprivileged in its
 # receipt. That keeps "this receipt describes the host" an honest statement.
+#
+# Resolved before it is judged: a leading-string match lets `/tmp/../etc/am2`
+# and `//etc/am2` walk straight past the bound and land a fixture receipt on
+# the very path the drift timer reads.
 system_paths='^/(etc|usr|bin|sbin|lib|lib64|boot|opt|var|srv|root)(/|$)'
+resolved_store=$(realpath -m -- "$store_root")
+resolved_receipt=$(realpath -m -- "$receipt")
 if (( unprivileged )); then
-    if [[ $store_root =~ $system_paths || $receipt =~ $system_paths ]]; then
+    if [[ $resolved_store =~ $system_paths || $resolved_receipt =~ $system_paths ]]; then
         echo "an unprivileged materialization may not target a system path: $store_root" >&2
         exit 1
     fi
@@ -107,42 +113,93 @@ if find "$staged" -type l -print -quit | grep -q .; then
     exit 1
 fi
 
-# The contract travels inside the payload, so the install targets are read from
-# authenticated bytes rather than from a checkout that may have moved on.
-contract=$staged/infra/contracts/host-security-contract.json
-[[ -f $contract && ! -L $contract ]] || { echo "authenticated payload carries no host-security contract" >&2; exit 1; }
-
-if [[ -e $destination ]]; then
-    # Same digest, already materialized. Prove the bytes on disk are still the
-    # bytes the manifest names before treating this as a no-op: a store somebody
-    # edited in place would otherwise be silently reused forever.
-    #
-    # Compared file by file against the manifest rather than by re-deriving the
-    # payload digest, because materialized files are sealed read-only and a tar
-    # digest would then disagree with the packager's over permissions alone.
-    python3 - "$manifest" "$destination/payload" <<'PY' || exit 1
-import hashlib, json, pathlib, sys
+# Authenticate the bytes this script extracted, not merely the bytes some other
+# process approved a moment ago.
+#
+# The bundle verifier judges a private snapshot of the archive and deletes it.
+# Between that and this extraction the archive on disk can change -- and whoever
+# can write the delivery directory is exactly the party the checksum design
+# exists to distrust. Re-deriving the digests here means a swapped archive is
+# caught rather than sealed into the store under an authenticated name.
+#
+# This also covers the contract, which the manifest's file list does not name:
+# the payload digest spans every byte in the payload, so an edited contract --
+# the file that decides where everything installs -- changes it.
+python3 - "$manifest" "$staged" <<'PY' || exit 1
+import hashlib, json, pathlib, subprocess, sys
 manifest_path, payload_root = sys.argv[1:]
 manifest = json.load(open(manifest_path, encoding='utf-8'))
 root = pathlib.Path(payload_root)
+
+marker = (root / '.host-security-source-sha').read_text(encoding='utf-8').strip()
+if marker != manifest['source_sha']:
+    raise SystemExit('extracted payload source marker differs from the manifest')
+
 expected = {item['origin']: item['sha256'] for item in manifest['files']}
 for origin, digest in expected.items():
     path = root / origin
     if not path.is_file() or path.is_symlink():
-        raise SystemExit(f'existing materialization is missing {origin}; refusing to reuse it')
+        raise SystemExit(f'extracted payload is missing {origin}')
     if hashlib.file_digest(path.open('rb'), 'sha256').hexdigest() != digest:
-        raise SystemExit(f'existing materialization differs from its manifest at {origin}; refusing to reuse or overwrite it')
-marker = (root / '.host-security-source-sha').read_text(encoding='utf-8').strip()
-if marker != manifest['source_sha']:
-    raise SystemExit('existing materialization carries a different source marker; refusing to reuse it')
-present = {
-    str(path.relative_to(root))
-    for path in root.rglob('*')
-    if path.is_file() or path.is_symlink()
-}
+        raise SystemExit(f'extracted payload digest mismatch at {origin}')
+
+contract = root / 'infra/contracts/host-security-contract.json'
+if not contract.is_file() or contract.is_symlink():
+    raise SystemExit('extracted payload carries no host-security contract')
+
+present = {str(path.relative_to(root)) for path in root.rglob('*') if path.is_file() or path.is_symlink()}
 unexpected = present - set(expected) - {'.host-security-source-sha', 'infra/contracts/host-security-contract.json'}
 if unexpected:
-    raise SystemExit(f'existing materialization carries unexpected files: {sorted(unexpected)[:3]}')
+    raise SystemExit(f'extracted payload carries unexpected files: {sorted(unexpected)[:3]}')
+
+derived = subprocess.run(
+    ['tar', '--sort=name', '--mtime=UTC 1970-01-01', '--owner=0', '--group=0', '--numeric-owner',
+     '-C', str(root), '-cf', '-', '.'], capture_output=True, check=True).stdout
+if hashlib.sha256(derived).hexdigest() != manifest['payload_sha256']:
+    raise SystemExit('extracted payload digest differs from the manifest; the archive changed after it was verified')
+PY
+
+contract=$staged/infra/contracts/host-security-contract.json
+
+if [[ -e $destination ]]; then
+    # Same digest, already materialized. Prove the bytes on disk are still the
+    # bytes just authenticated before treating this as a no-op: a store somebody
+    # edited in place would otherwise be silently reused forever.
+    #
+    # Compared against the freshly extracted tree rather than against the
+    # manifest alone, because the manifest does not name the contract, and the
+    # contract is what decides where every file installs. Compared by content
+    # rather than by re-deriving the payload digest, because a materialized
+    # store is sealed read-only and a tar digest would then disagree with the
+    # packager's over permissions alone.
+    python3 - "$staged" "$destination/payload" <<'PY' || exit 1
+import hashlib, pathlib, sys
+staged_root, store_root = (pathlib.Path(argument) for argument in sys.argv[1:])
+
+
+def digests(root):
+    if not root.is_dir():
+        raise SystemExit(f'existing materialization has no payload at {root}')
+    found = {}
+    for path in root.rglob('*'):
+        if path.is_symlink():
+            raise SystemExit(f'existing materialization contains a symlink: {path.relative_to(root)}')
+        if path.is_file():
+            found[str(path.relative_to(root))] = hashlib.file_digest(path.open('rb'), 'sha256').hexdigest()
+    return found
+
+
+staged, stored = digests(staged_root), digests(store_root)
+missing = sorted(set(staged) - set(stored))
+extra = sorted(set(stored) - set(staged))
+changed = sorted(name for name in set(staged) & set(stored) if staged[name] != stored[name])
+if missing:
+    raise SystemExit(f'existing materialization is missing {missing[:3]}; refusing to reuse it')
+if extra:
+    raise SystemExit(f'existing materialization carries unexpected files {extra[:3]}; refusing to reuse it')
+if changed:
+    raise SystemExit(f'existing materialization differs from the authenticated payload at {changed[:3]}; '
+                     'refusing to reuse or overwrite it')
 PY
 else
     mkdir -p "$store_root"

@@ -381,14 +381,38 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
-    const root = installFromReceipt(receiptData, join(base, 'root'));
+    const root = installFromReceipt(receiptData, join(base, 'root'), freshenRealIp);
 
-    // Without the flag that admits the root is a fixture, an unprivileged
-    // receipt must not be accepted as evidence about the real host.
-    const run = spawnSync('bash', [installedVerifierPath,
-      '--receipt', receipt, '--root', root], { encoding: 'utf8' });
-    assert.notEqual(run.status, 0, 'verifier treated a fixture root as the real host');
-    assert.match(run.stderr, /unprivileged|privileg/i);
+    // Each guard is exercised on its own. A fixture that trips both at once
+    // only proves at least one exists, and either could then be deleted with
+    // the suite still green.
+
+    // 1. The receipt says the materialization was unprivileged. That is a
+    //    fixture, whatever root it is pointed at.
+    const unprivilegedReceipt = spawnSync('bash', [installedVerifierPath,
+      '--receipt', receipt, '--root', root,
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+    assert.notEqual(unprivilegedReceipt.status, 0, 'verifier read a fixture receipt as host evidence');
+    assert.match(unprivilegedReceipt.stderr, /unprivileged materialization/i);
+
+    // 2. With that flag flipped, the fixture root must still be refused --
+    //    otherwise editing one boolean is enough to make a scratch directory
+    //    speak for the host.
+    const claimsPrivileged = join(base, 'claims-privileged.json');
+    writeFileSync(claimsPrivileged,
+      JSON.stringify({ ...JSON.parse(readFileSync(receipt, 'utf8')), privileged: true }));
+    const fixtureRoot = spawnSync('bash', [installedVerifierPath,
+      '--receipt', claimsPrivileged, '--root', root,
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+    assert.notEqual(fixtureRoot.status, 0, 'verifier accepted a fixture root as the real host');
+    assert.match(fixtureRoot.stderr, /fixture/i);
+
+    // 3. And a real-host check with no independently obtained manifest is the
+    //    host vouching for itself.
+    const noManifest = spawnSync('bash', [installedVerifierPath,
+      '--receipt', claimsPrivileged, '--root', root], { encoding: 'utf8' });
+    assert.notEqual(noManifest.status, 0, 'verifier checked a host with nothing independent to check against');
+    assert.match(noManifest.stderr, /expected-manifest/i);
   } finally {
     discard(base);
   }
@@ -437,5 +461,133 @@ test('every host-security contract test is actually selected to run in CI', () =
     'host-security-contract.test.mjs',
   ]) {
     assert.ok(selected.has(file), `${file} is not selected by the offline test runner, so CI never runs it`);
+  }
+});
+
+test('materialization re-verifies extracted bytes instead of trusting the bundle check', () => {
+  // The bundle verifier authenticates a private snapshot and deletes it. If the
+  // materializer then extracts the original archive without re-checking it,
+  // anyone who can write the delivery directory between those two moments gets
+  // arbitrary bytes sealed into the store under an authenticated digest.
+  //
+  // Reproduced deterministically by neutering the delegated verifier: the
+  // materializer must still refuse, because it is not entitled to assume the
+  // archive it extracts is the archive somebody else approved.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-toctou-'));
+  try {
+    const bundle = sealedBundle(base);
+    const bin = join(base, 'bin');
+    mkdirSync(bin, { recursive: true });
+    for (const script of ['verify-host-security-bundle.sh', 'materialize-host-security.sh']) {
+      writeFileSync(join(bin, script), readFileSync(resolve(ROOT, 'infra/scripts', script)));
+      chmodSync(join(bin, script), 0o755);
+    }
+    mkdirSync(join(base, 'contracts'), { recursive: true });
+    writeFileSync(join(bin, 'verify-host-security-bundle.sh'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(bin, 'verify-host-security-bundle.sh'), 0o755);
+
+    // Swap in an archive whose bytes were never authenticated.
+    const payload = join(base, 'swapped');
+    mkdirSync(payload, { recursive: true });
+    const extract = spawnSync('tar', ['-xzf', bundle.archive, '-C', payload], { encoding: 'utf8' });
+    assert.equal(extract.status, 0, extract.stderr);
+    writeFileSync(join(payload, 'infra/nginx/am2-webadmin-security.conf'), '# EVIL: allow all\n');
+    const repack = spawnSync('tar', ['-czf', bundle.archive, '-C', payload, '.'], { encoding: 'utf8' });
+    assert.equal(repack.status, 0, repack.stderr);
+
+    const run = spawnSync('bash', [join(bin, 'materialize-host-security.sh'),
+      '--archive', bundle.archive,
+      '--manifest', bundle.manifest,
+      '--checksums', bundle.checksums,
+      '--expected-manifest', bundle.expected,
+      '--store-root', join(base, 'store'),
+      '--receipt', join(base, 'receipt.json'),
+      '--unprivileged-store'], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'materializer sealed bytes it never authenticated itself');
+    assert.match(run.stderr, /digest|differ|mismatch/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('materialization detects an edited contract inside an existing store', () => {
+  // The contract is not listed in the manifest's file set, and it is what names
+  // the install targets. If the reuse check skips it, one edit repoints the
+  // receipt at decoy paths, the real /etc files stop being examined, and the
+  // drift audit reports health forever.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-contract-tamper-'));
+  try {
+    const bundle = sealedBundle(base);
+    const first = materializedReceipt(bundle, base);
+    const contract = join(first.receiptData.store_path, 'payload/infra/contracts/host-security-contract.json');
+
+    chmodSync(dirname(contract), 0o755);
+    chmodSync(contract, 0o644);
+    const edited = JSON.parse(readFileSync(contract, 'utf8'));
+    edited.files = edited.files.map((file) => file.id === 'nginx-webadmin-production'
+      ? { ...file, target: '/etc/nginx/sites-available/decoy.conf' }
+      : file);
+    writeFileSync(contract, JSON.stringify(edited));
+
+    const again = materialize(bundle, base, ['--unprivileged-store'],
+      { storeRoot: first.storeRoot, receipt: join(base, 'receipt-2.json') });
+    assert.notEqual(again.run.status, 0, 'materializer reused a store whose contract was edited');
+    assert.match(again.run.stderr, /differ|tamper|mismatch|contract/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('materialization resolves a store path before deciding it is not a system path', () => {
+  // A string match on the leading path lets /tmp/../etc walk straight past the
+  // bound, and land a fixture receipt on the path the timer reads.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-traversal-'));
+  try {
+    const bundle = sealedBundle(base);
+    for (const sneaky of ['/tmp/../etc/am2/host-security', '//etc/am2/host-security']) {
+      const { run } = materialize(bundle, base, ['--unprivileged-store'], { storeRoot: sneaky });
+      assert.notEqual(run.status, 0, `unprivileged materialization accepted a disguised system path: ${sneaky}`);
+      assert.match(run.stderr, /system|privileg/i);
+    }
+    assert.ok(!existsSync('/etc/am2/host-security'), 'materializer created a system path');
+  } finally {
+    discard(base);
+  }
+});
+
+test('installed-state verifier binds a receipt to the trusted manifest rather than its own claims', () => {
+  // privileged/materialized_by_uid are self-declared fields in an unsigned
+  // file. Flipping one boolean must not turn a fixture receipt into evidence,
+  // and a receipt whose digests were rewritten to match tampered bytes must not
+  // verify. The trusted manifest is the thing that was independently obtained.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-receipt-trust-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const root = installFromReceipt(receiptData, join(base, 'root'), freshenRealIp);
+
+    const honest = verifyInstalled(receipt, root, ['--expected-manifest', bundle.expected]);
+    assert.equal(honest.status, 0, `${honest.stdout}\n${honest.stderr}`);
+
+    // Digests rewritten to match bytes an attacker installed.
+    const forgedPath = join(base, 'forged-receipt.json');
+    const forged = JSON.parse(readFileSync(receipt, 'utf8'));
+    const tampered = join(base, 'root-tampered');
+    installFromReceipt(receiptData, tampered, (where) => {
+      writeFileSync(join(where, '/etc/am2/php/webadmin-prepend.php'), '<?php /* attacker */');
+    });
+    forged.files = forged.files.map((file) => file.id === 'php-webadmin-prepend'
+      ? { ...file, sha256: createHash('sha256').update('<?php /* attacker */').digest('hex') }
+      : file);
+    forged.privileged = true;
+    writeFileSync(forgedPath, JSON.stringify(forged));
+
+    const run = spawnSync('bash', [installedVerifierPath,
+      '--receipt', forgedPath, '--root', tampered, '--unprivileged-root',
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'verifier believed a receipt whose digests were rewritten');
+    assert.match(run.stderr, /trusted|manifest/i);
+  } finally {
+    discard(base);
   }
 });
