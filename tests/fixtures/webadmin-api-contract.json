@@ -1,0 +1,533 @@
+{
+  "schema_version": 2,
+  "android_admin_source": {
+    "repository": "AM2-PoC/am2-android-admin",
+    "source_sha": "f18dbcdd7b5873f77ccf23dbd2956a47e8fc17ea",
+    "path": "app/src/main/java/com/am2/admin/data/api/ApiService.kt"
+  },
+  "operations": [
+    {
+      "id": "login",
+      "method": "POST",
+      "path": "api_login.php",
+      "action": null,
+      "auth": "credential",
+      "csrf": false,
+      "request_fields": [
+        "username",
+        "password"
+      ],
+      "response_keys": [
+        "success",
+        "message",
+        "csrf_token"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "logout",
+      "method": "POST",
+      "path": "api_logout.php",
+      "action": null,
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "dashboard-stats",
+      "method": "GET",
+      "path": "api_dashboard_stats.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role"
+      ],
+      "response_keys": [
+        "total_users"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "dashboard-chart",
+      "method": "GET",
+      "path": "api_dashboard_chart.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role"
+      ],
+      "response_keys": [
+        "labels",
+        "datasets"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-list",
+      "method": "GET",
+      "path": "api_users.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role",
+        "search"
+      ],
+      "response_keys": [
+        "id",
+        "name"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-add",
+      "method": "POST",
+      "path": "api_users.php",
+      "action": "add",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "id",
+        "name",
+        "password"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-update-feature",
+      "method": "POST",
+      "path": "api_users.php",
+      "action": "update_feature",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "u_id",
+        "feature",
+        "val"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-delete",
+      "method": "POST",
+      "path": "api_users.php",
+      "action": "delete",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "id"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-get-channels",
+      "method": "GET",
+      "path": "api_users.php",
+      "action": "get_user_channels",
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "action",
+        "u_id"
+      ],
+      "response_keys": [],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "users-save-channels",
+      "method": "POST",
+      "path": "api_users.php",
+      "action": "save_user_channels",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "u_id",
+        "channels"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "channels-list",
+      "method": "GET",
+      "path": "api_channels.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role"
+      ],
+      "response_keys": [
+        "id",
+        "name",
+        "display_name"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "channels-add",
+      "method": "POST",
+      "path": "api_channels.php",
+      "action": "add",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "display_name",
+        "category"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "channels-edit",
+      "method": "POST",
+      "path": "api_channels.php",
+      "action": "edit",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "role",
+        "id",
+        "display_name"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "legacy-unsupported"
+    },
+    {
+      "id": "channels-delete",
+      "method": "POST",
+      "path": "api_channels.php",
+      "action": "delete",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "role",
+        "id"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "channels-get-users-access",
+      "method": "GET",
+      "path": "api_channels.php",
+      "action": "get_users_access",
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "action",
+        "channel_id"
+      ],
+      "response_keys": [],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "channels-save-access",
+      "method": "POST",
+      "path": "api_channels.php",
+      "action": "save_access",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "role",
+        "channel_id",
+        "users"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "user-access-list",
+      "method": "GET",
+      "path": "api_user_access.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role",
+        "search"
+      ],
+      "response_keys": [
+        "id",
+        "name"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "user-access-force-logout",
+      "method": "POST",
+      "path": "api_user_access.php",
+      "action": "force_logout",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "user_id",
+        "admin_id"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "user-access-update",
+      "method": "POST",
+      "path": "api_user_access.php",
+      "action": "update_access",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "user_id",
+        "channels[]",
+        "default_channel",
+        "permissions"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "track-units",
+      "method": "GET",
+      "path": "api_get_users.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role"
+      ],
+      "response_keys": [
+        "id",
+        "name"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "logs-list",
+      "method": "GET",
+      "path": "api_logs.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role",
+        "category"
+      ],
+      "response_keys": [
+        "timestamp",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "admins-list",
+      "method": "GET",
+      "path": "api_admin_panel.php",
+      "action": null,
+      "auth": "session-superadmin",
+      "csrf": false,
+      "request_fields": [],
+      "response_keys": [
+        "id",
+        "username",
+        "role"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "admins-save",
+      "method": "POST",
+      "path": "api_admin_panel.php",
+      "action": "save",
+      "auth": "session-superadmin",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "username",
+        "password",
+        "role",
+        "user_quota",
+        "channel_quota",
+        "expired_at",
+        "can_manage_maps",
+        "can_manage_p2p",
+        "can_manage_video"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "admins-delete",
+      "method": "POST",
+      "path": "api_admin_panel.php",
+      "action": "delete",
+      "auth": "session-superadmin",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "id"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "admins-delegate",
+      "method": "POST",
+      "path": "api_admin_panel.php",
+      "action": "delegate",
+      "auth": "session-superadmin",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "target_admin_id",
+        "channels[]"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "settings-profile",
+      "method": "GET",
+      "path": "api_settings.php",
+      "action": null,
+      "auth": "session",
+      "csrf": false,
+      "request_fields": [
+        "admin_id",
+        "role"
+      ],
+      "response_keys": [
+        "username",
+        "role"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "settings-check-update",
+      "method": "GET",
+      "path": "api_settings.php",
+      "action": "check_update",
+      "auth": "public",
+      "csrf": false,
+      "request_fields": [
+        "action"
+      ],
+      "response_keys": [
+        "latest_version",
+        "download_url",
+        "version_code",
+        "version_name",
+        "update_url",
+        "sha256",
+        "signer_sha256"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "settings-update-password",
+      "method": "POST",
+      "path": "api_settings.php",
+      "action": "update_password",
+      "auth": "session",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "new_password"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    },
+    {
+      "id": "settings-import-database",
+      "method": "POST",
+      "path": "api_settings.php",
+      "action": "import_db",
+      "auth": "session-superadmin",
+      "csrf": true,
+      "request_fields": [
+        "action",
+        "admin_id",
+        "sql_file"
+      ],
+      "response_keys": [
+        "success",
+        "message"
+      ],
+      "legacy_status": "implemented"
+    }
+  ]
+}
