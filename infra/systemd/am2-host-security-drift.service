@@ -1,0 +1,26 @@
+[Unit]
+Description=AM2 host-security drift audit
+Documentation=file:/etc/am2/host-security/README
+After=network.target
+
+[Service]
+Type=oneshot
+# Reads installed state and reports. It never installs, repairs, activates or
+# reloads anything -- fixing drift is a decision a human makes, and an auditor
+# that can also change things is one whose findings nobody has to take
+# seriously.
+ExecStart=/etc/am2/host-security/bin/audit-host-security-drift.sh --receipt /etc/am2/host-security/receipt.json
+# Silent when healthy, so any mail from this unit is news.
+StandardOutput=null
+StandardError=journal
+
+# It only ever reads, so it is given nothing it does not need.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+MemoryDenyWriteExecute=yes
