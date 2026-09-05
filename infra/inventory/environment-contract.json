@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "environments": {
+    "dev": {
+      "name": "dev",
+      "runtime_kind": "local-synthetic-compose",
+      "domain": "local-only",
+      "relay": {"unit": "docker-compose relay", "port": 0},
+      "database": {"name": "am2", "scope": "ephemeral-compose"},
+      "redis": {"identifier": "compose redis", "namespace": "ephemeral"},
+      "release_root": "developer-workstation compose project",
+      "webadmin_env_file": "docker-compose environment",
+      "writable_paths": ["compose volumes"],
+      "deploy_identity": "developer-local"
+    },
+    "staging": {
+      "name": "staging",
+      "runtime_kind": "artifact-runtime",
+      "domain": "staging-apiapi.am2-poc.com; staging-webadmin.am2-poc.com",
+      "relay": {"unit": "am2-api-staging", "port": 5001},
+      "database": {"name": "am2_staging", "scope": "postgres database"},
+      "redis": {"identifier": "redis-server", "namespace": "database 3"},
+      "release_root": "/var/www/am2/staging/releases",
+      "webadmin_env_file": "/etc/am2/webadmin.env.staging",
+      "writable_paths": ["/var/www/am2/staging/shared"],
+      "deploy_identity": "am2release"
+    },
+    "production": {
+      "name": "production",
+      "runtime_kind": "artifact-runtime",
+      "domain": "apiapi.am2-poc.com; webadmin.am2-poc.com",
+      "relay": {"unit": "am2-api", "port": 5000},
+      "database": {"name": "am2", "scope": "postgres database"},
+      "redis": {"identifier": "redis-server", "namespace": "database 0"},
+      "release_root": "/var/www/am2/releases",
+      "webadmin_env_file": "/etc/am2/webadmin.env.production",
+      "writable_paths": ["/var/www/am2/shared"],
+      "deploy_identity": "am2release"
+    }
+  },
+  "shared_blockers": [
+    {
+      "field": "redis-server process and host",
+      "environments": ["staging", "production"],
+      "status": "open",
+      "remediation": "Prove separate Redis ACL/users or separate instances before Laravel reaches staging."
+    },
+    {
+      "field": "deploy identity account",
+      "environments": ["staging", "production"],
+      "status": "open",
+      "remediation": "Split bounded staging and production activation identities before Laravel staging entry."
+    },
+    {
+      "field": "runtime VPS host",
+      "environments": ["staging", "production"],
+      "status": "open",
+      "remediation": "Treat co-residency as a hardening/portability concern; preserve distinct runtime roots and state until host separation is approved."
+    }
+  ]
+}
