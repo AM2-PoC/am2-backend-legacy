@@ -2,27 +2,30 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 --archive /absolute/am2-host-security.tar.gz --manifest /absolute/host-security-manifest.json --checksums /absolute/SHA256SUMS" >&2
+    echo "Usage: $0 --archive /absolute/am2-host-security.tar.gz --manifest /absolute/host-security-manifest.json --checksums /absolute/SHA256SUMS --expected-manifest /absolute/trusted-host-security-manifest.json" >&2
 }
 
 archive=
 manifest=
 checksums=
+expected_manifest=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --archive) [[ $# -ge 2 ]] || { usage; exit 64; }; archive=$2; shift 2 ;;
         --manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; manifest=$2; shift 2 ;;
         --checksums) [[ $# -ge 2 ]] || { usage; exit 64; }; checksums=$2; shift 2 ;;
+        --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
         *) usage; exit 64 ;;
     esac
 done
 
-[[ $archive == /* && $manifest == /* && $checksums == /* ]] || { usage; exit 64; }
-for path in "$archive" "$manifest" "$checksums"; do
+[[ $archive == /* && $manifest == /* && $checksums == /* && $expected_manifest == /* ]] || { usage; exit 64; }
+for path in "$archive" "$manifest" "$checksums" "$expected_manifest"; do
     [[ -f $path && ! -L $path ]] || { echo "required host-security bundle input is missing: $path" >&2; exit 1; }
 done
 bundle_dir=$(dirname "$archive")
 [[ $(dirname "$manifest") == "$bundle_dir" && $(dirname "$checksums") == "$bundle_dir" ]] || { echo "bundle inputs must share a directory" >&2; exit 1; }
+[[ $(realpath -e -- "$expected_manifest") != $(realpath -e -- "$manifest") ]] || { echo "trusted expected manifest must be independent of the bundle manifest" >&2; exit 1; }
 [[ $(basename "$archive") == am2-host-security.tar.gz && $(basename "$manifest") == host-security-manifest.json && $(basename "$checksums") == SHA256SUMS ]] || { echo "bundle input names are not canonical" >&2; exit 1; }
 (
     cd "$bundle_dir"
@@ -46,10 +49,13 @@ if find "$work/payload" -type l -print -quit | grep -q .; then
     exit 1
 fi
 
-python3 - "$manifest" "$archive" "$work/payload" <<'PY'
+python3 - "$manifest" "$expected_manifest" "$archive" "$work/payload" <<'PY'
 import hashlib, json, pathlib, re, subprocess, sys
-manifest_path, archive_path, payload_root = map(pathlib.Path, sys.argv[1:])
+manifest_path, expected_path, archive_path, payload_root = map(pathlib.Path, sys.argv[1:])
 manifest=json.load(open(manifest_path,encoding='utf-8'))
+expected=json.load(open(expected_path,encoding='utf-8'))
+if manifest != expected:
+    raise SystemExit('host-security manifest does not match trusted expected manifest')
 if set(manifest) != {'schema_version','application','source_sha','payload_sha256','archive_sha256','files'}:
     raise SystemExit('host-security manifest key set is invalid')
 if manifest['schema_version'] != 1 or manifest['application'] != 'am2-host-security':
