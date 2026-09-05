@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "application": "am2-host-security",
+  "source_binding": "exact-source-sha",
+  "files": [
+    {"id":"php-webadmin-prepend","source":"infra/php/webadmin-prepend.php","target":"/etc/am2/php/webadmin-prepend.php","mode":"0644","consumer":"php-sapi"},
+    {"id":"php-auto-prepend-ini","source":"infra/php/99-am2-webadmin-guard.ini","target_kind":"php-sapi-conf.d","filename":"99-am2-webadmin-guard.ini","sapis":["apache2","fpm"],"mode":"0644","consumer":"php-sapi"},
+    {"id":"apache-production-webadmin","source":"infra/apache/am2-webadmin-internal.conf","target":"/etc/apache2/sites-available/am2-webadmin-internal.conf","mode":"0644","consumer":"apache2"},
+    {"id":"apache-staging-webadmin","source":"infra/apache/am2-webadmin-staging.conf","target":"/etc/apache2/sites-available/am2-webadmin-staging.conf","mode":"0644","consumer":"apache2"},
+    {"id":"nginx-api","source":"infra/nginx/am2-api.conf","target":"/etc/nginx/sites-available/am2-api.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-api-staging","source":"infra/nginx/am2-api-staging.conf","target":"/etc/nginx/sites-available/am2-api-staging.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-cloudflare-realip","source":"infra/nginx/am2-cloudflare-realip.conf","target":"/etc/nginx/snippets/am2-cloudflare-realip.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-proxy-common","source":"infra/nginx/am2-proxy-common.conf","target":"/etc/nginx/snippets/am2-proxy-common.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-webadmin-assets","source":"infra/nginx/am2-webadmin-assets.conf","target":"/etc/nginx/snippets/am2-webadmin-assets.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-webadmin-dev-deny","source":"infra/nginx/am2-webadmin-dev-deny.conf","target":"/etc/nginx/snippets/am2-webadmin-dev-deny.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-webadmin-production","source":"infra/nginx/am2-webadmin.conf","target":"/etc/nginx/sites-available/am2-webadmin.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-webadmin-security","source":"infra/nginx/am2-webadmin-security.conf","target":"/etc/nginx/snippets/am2-webadmin-security.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-webadmin-staging","source":"infra/nginx/am2-webadmin-staging.conf","target":"/etc/nginx/sites-available/am2-webadmin-staging.conf","mode":"0644","consumer":"nginx"}
+  ],
+  "activation": {
+    "config_tests": ["apache2ctl configtest", "nginx -t"],
+    "services": ["apache2", "nginx"],
+    "receipt_owner": "root",
+    "receipt_mode": "0644"
+  }
+}
