@@ -30,11 +30,16 @@ test('environment inventory records DEV, staging, and production identities plus
   assert.notEqual(dev.runtime_kind, production.runtime_kind);
 
   assert.ok(Array.isArray(contract.shared_blockers));
+  const expectedBlockers = [
+    'redis-server process and host',
+    'deploy identity account',
+    'runtime VPS host',
+  ].sort();
+  assert.deepEqual(contract.shared_blockers.map((blocker) => blocker.field).sort(), expectedBlockers,
+    'a known staging/production boundary blocker was silently removed');
   for (const blocker of contract.shared_blockers) {
     assert.equal(blocker.status, 'open');
-    assert.ok(blocker.field);
-    assert.ok(blocker.environments.includes('staging'));
-    assert.ok(blocker.environments.includes('production'));
+    assert.deepEqual([...blocker.environments].sort(), ['production', 'staging']);
     assert.ok(blocker.remediation);
   }
 });
