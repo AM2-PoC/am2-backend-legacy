@@ -24,6 +24,7 @@ actual_sha=$(git -C "$source_root" rev-parse HEAD 2>/dev/null || true)
 [[ $actual_sha == "$source_sha" ]] || { echo "requested source SHA is not the checked-out source identity" >&2; exit 1; }
 git -C "$source_root" diff --quiet --ignore-submodules -- || { echo "source checkout has unstaged tracked modifications" >&2; exit 1; }
 git -C "$source_root" diff --cached --quiet --ignore-submodules -- || { echo "source checkout has staged tracked modifications" >&2; exit 1; }
+[[ -z $(git -C "$source_root" ls-files --others --exclude-standard) ]] || { echo "source checkout has untracked files" >&2; exit 1; }
 
 contract=$source_root/infra/contracts/host-security-contract.json
 [[ -f $contract && ! -L $contract ]] || { echo "host-security contract is missing" >&2; exit 1; }
