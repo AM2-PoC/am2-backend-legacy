@@ -85,3 +85,19 @@ test('staging documentation uses artifact materialization rather than Git deploy
   assert.doesNotMatch(source, /reset\s+--hard\s+origin\//,
     'staging documentation still treats an environment branch as deployment input');
 });
+
+test('security posture stays current instead of becoming an incident ledger', () => {
+  const source = read('docs/explanation/security-posture.md');
+  for (const required of [
+    'WebAdmin invariants',
+    'Host-security configuration lifecycle',
+    'Remaining adjacent risks',
+    'protected installation receipt',
+    'write ownership',
+  ]) {
+    assert.match(source, new RegExp(required.replaceAll('.', '\\.'), 'i'),
+      `security posture omits ${required}`);
+  }
+  assert.doesNotMatch(source, /retained window|one unauthenticated POST could|used to explain|closed since this document|fixture account|before this guard existed/i,
+    'security posture still carries incident or historical implementation narrative');
+});
