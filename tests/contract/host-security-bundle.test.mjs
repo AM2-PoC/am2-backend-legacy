@@ -432,6 +432,30 @@ test('host-security verifier rejects checksum entries outside the canonical bund
   }
 });
 
+test('host-security verifier does not delegate checksum paths to sha256sum', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-checksum-parser-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const marker = join(base, 'sha256sum-called');
+    writeFileSync(join(bin, 'sha256sum'), `#!/usr/bin/env bash\n: > "$AM2_SHA_MARKER"\nexit 99\n`);
+    spawnSync('chmod', ['0755', join(bin, 'sha256sum')]);
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', trustedManifest(base, output)], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AM2_SHA_MARKER: marker },
+    });
+    assert.equal(verify.status, 0, `${verify.stdout}\n${verify.stderr}`);
+    assert.equal(existsSync(marker), false, 'verifier delegated untrusted checksum paths to sha256sum');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier authenticates the archive before invoking tar', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-preauth-'));
   try {
