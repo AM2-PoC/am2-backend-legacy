@@ -187,6 +187,25 @@ test('host-security verifier rejects a bundle-adjacent expected manifest through
   }
 });
 
+test('host-security verifier rejects a nested bundle-manifest trust anchor', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-nested-anchor-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const trustedDir = join(output, 'trusted');
+    mkdirSync(trustedDir);
+    const expected = join(trustedDir, 'expected-manifest.json');
+    writeFileSync(expected, readFileSync(join(output, 'host-security-manifest.json')));
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', expected], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'nested bundle manifest was accepted as trusted provenance');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier requires an independent trusted manifest', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-trust-anchor-'));
   try {
