@@ -67,6 +67,12 @@ The remaining six routes — `set-app-version`, `update-user-profile`, `update-c
 `assign-channel`, `remove-channel`, `set-permission` — are used by the Admin Native app and stay
 reachable until that app can present a credential.
 
+## Host-security configuration is a separate lifecycle
+
+The layer-two PHP prepend currently refuses anonymous access before individual files run, and production and staging use distinct PHP session stores. Those behavior checks do not make `/etc/am2/php`, PHP SAPI, Apache/Nginx, or refreshed Cloudflare real-IP bytes part of the backend runtime artifact.
+
+Static host-security source is packaged and verified against an independent expected manifest. Before claiming installed-host provenance, AM2 still requires a root-owned materializer, syntax/config checks, protected installation receipt, installed-state verifier, rollback/reload rehearsal, and periodic drift audit. Cloudflare range refresh has its own timestamped external-data receipt and stale-data policy.
+
 ## Still open
 
 Nothing in the authentication path. The item that stood here — the Admin Native credential — is

@@ -46,3 +46,42 @@ test('release boundary separates source, artifact, release, and activation ident
   assert.match(source, /deployment[\s\S]*must not[\s\S]*(?:read|use)[\s\S]*operator checkout/i,
     'the operator exception can be mistaken for a deployment input');
 });
+
+test('release boundary documents host security as a separate release lifecycle', () => {
+  const source = boundary();
+  for (const phrase of [
+    'Host-security release boundary',
+    'host-security-manifest.json',
+    'independent trusted channel',
+    'materializer',
+    'protected receipt',
+    'installed-state verifier',
+    'Cloudflare real-IP',
+  ]) {
+    assert.match(source, new RegExp(phrase.replaceAll('.', '\\.'), 'i'),
+      `release boundary omits ${phrase}`);
+  }
+  assert.match(source, /must not be folded into the backend runtime archive/i,
+    'host configuration may be mistaken for runtime artifact content');
+  assert.match(source, /source contract and deterministic bundle\/verifier[\s\S]*implemented/i,
+    'current host-security completion boundary is not recorded');
+  assert.match(source, /installation, activation, receipt, and drift-audit work[\s\S]*not implemented/i,
+    'unfinished host-security lifecycle is not recorded');
+});
+
+test('staging documentation uses artifact materialization rather than Git deployment', () => {
+  const source = read('docs/how-to/use-the-staging-environment.md');
+  for (const required of [
+    'materialize-runtime-release.sh',
+    'verify-current-release.sh',
+    'verify-materialized-artifact.sh',
+    'protected staging rehearsal',
+  ]) {
+    assert.match(source, new RegExp(required.replaceAll('.', '\\.'), 'i'),
+      `staging documentation omits ${required}`);
+  }
+  assert.doesNotMatch(source, /git\s+(?:-C\s+\S+\s+)?(?:clone|fetch|pull|checkout)\b/,
+    'staging documentation still deploys code from Git');
+  assert.doesNotMatch(source, /reset\s+--hard\s+origin\//,
+    'staging documentation still treats an environment branch as deployment input');
+});
