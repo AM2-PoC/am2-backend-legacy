@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -23,6 +24,10 @@ function cloneSource(base) {
   return source;
 }
 
+function cleanSource(base) {
+  return cloneSource(base);
+}
+
 function packageBundle(base, sha = sourceSha(), source = ROOT) {
   const output = join(base, 'bundle');
   const run = spawnSync('bash', [packagerPath,
@@ -40,7 +45,8 @@ test('host-security bundle seals the exact source contract outside the runtime p
 
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-bundle-'));
   try {
-    const output = packageBundle(base);
+    const source = cleanSource(base);
+    const output = packageBundle(base, sourceSha(), source);
     const manifestPath = join(output, 'host-security-manifest.json');
     const archivePath = join(output, 'am2-host-security.tar.gz');
     const checksumsPath = join(output, 'SHA256SUMS');
@@ -65,6 +71,21 @@ test('host-security bundle seals the exact source contract outside the runtime p
       const path = `./${file.origin}`;
       assert.match(listed.stdout, new RegExp(`(?:^|\\n)${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\n|$)`),
         `bundle omits host-security origin: ${file.origin}`);
+    }
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security bundle is reproducible for the same exact source identity', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-reproducible-'));
+  try {
+    const first = packageBundle(join(base, 'first'), sourceSha(), cleanSource(join(base, 'first-source')));
+    const second = packageBundle(join(base, 'second'), sourceSha(), cleanSource(join(base, 'second-source')));
+    for (const file of ['am2-host-security.tar.gz', 'host-security-manifest.json', 'SHA256SUMS']) {
+      const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+      assert.equal(digest(join(first, file)), digest(join(second, file)),
+        `${file} changes for the same source identity`);
     }
   } finally {
     rmSync(base, { recursive: true, force: true });
@@ -105,7 +126,7 @@ test('host-security packager rejects untracked source input', () => {
 test('host-security verifier rejects altered bundle bytes even when the manifest is unchanged', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-archive-tamper-'));
   try {
-    const output = packageBundle(base);
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
     appendFileSync(join(output, 'am2-host-security.tar.gz'), 'tampered');
 
     const verify = spawnSync('bash', [verifierPath,
@@ -121,7 +142,7 @@ test('host-security verifier rejects altered bundle bytes even when the manifest
 test('host-security verifier rejects altered manifest provenance', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-tamper-'));
   try {
-    const output = packageBundle(base);
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
     const manifestPath = join(output, 'host-security-manifest.json');
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     manifest.source_sha = '0'.repeat(40);
