@@ -414,6 +414,24 @@ test('host-security verifier requires checksums for the complete canonical bundl
   }
 });
 
+test('host-security verifier rejects checksum entries outside the canonical bundle set', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-extra-checksum-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const external = join(base, 'external-input');
+    writeFileSync(external, 'external\n');
+    appendFileSync(join(output, 'SHA256SUMS'), `${sha256(external)}  ${external}\n`);
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(output, 'am2-host-security.tar.gz'),
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', trustedManifest(base, output)], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'verifier accepted a checksum entry outside the canonical bundle set');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier rejects altered bundle bytes even when the manifest is unchanged', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-archive-tamper-'));
   try {

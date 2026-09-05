@@ -33,9 +33,20 @@ esac
 [[ $expected_manifest_real != $(realpath -e -- "$manifest") ]] || { echo "trusted expected manifest must be independent of the bundle manifest" >&2; exit 1; }
 [[ $(stat -c '%d:%i' -- "$expected_manifest") != $(stat -c '%d:%i' -- "$manifest") ]] || { echo "trusted expected manifest must not alias the bundle manifest" >&2; exit 1; }
 [[ $(basename "$archive") == am2-host-security.tar.gz && $(basename "$manifest") == host-security-manifest.json && $(basename "$checksums") == SHA256SUMS ]] || { echo "bundle input names are not canonical" >&2; exit 1; }
-for expected in am2-host-security.tar.gz host-security-manifest.json; do
-    grep -Eq "^[0-9a-f]{64}  \*?${expected}$" "$checksums" || { echo "host-security checksums do not seal required input: $expected" >&2; exit 1; }
-done
+python3 - "$checksums" <<'PY'
+import pathlib, re, sys
+path=pathlib.Path(sys.argv[1])
+lines=path.read_text(encoding='utf-8').splitlines()
+expected={'am2-host-security.tar.gz','host-security-manifest.json'}
+seen=set()
+for line in lines:
+    match=re.fullmatch(r'([0-9a-f]{64})  \*?([^/]+)', line)
+    if not match or match.group(2) not in expected or match.group(2) in seen:
+        raise SystemExit('host-security checksums are not the exact canonical set')
+    seen.add(match.group(2))
+if seen != expected:
+    raise SystemExit('host-security checksums omit a canonical input')
+PY
 (
     cd "$bundle_dir"
     sha256sum -c "$checksums"
