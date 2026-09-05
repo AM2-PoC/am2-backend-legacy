@@ -28,6 +28,7 @@
  */
 
 require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
 
 if (!defined('AM2_PUBLIC_ENTRY')) {
     /**
@@ -50,13 +51,20 @@ if (!defined('AM2_PUBLIC_ENTRY')) {
 }
 
 if (!function_exists('am2_entry_point')) {
-    /** The script actually being executed, as a bare file name. */
+    /** Resolve only a plain, real script directly below the document root. */
     function am2_entry_point(): string
     {
-        // Resolved by the server, never taken from the URL. SCRIPT_FILENAME is
-        // what PHP is running; REQUEST_URI would let `/api_users.php?x=login.php`,
-        // `//login.php` or an encoded traversal argue its way onto the list.
-        return basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+        if (($_SERVER['PATH_INFO'] ?? '') !== '') {
+            return '';
+        }
+
+        $script = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+        $root = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        if ($script === false || $root === false || dirname($script) !== $root) {
+            return '';
+        }
+
+        return basename($script);
     }
 }
 
@@ -132,7 +140,13 @@ if (!function_exists('am2_require_identity')) {
             'AM2 auth REJECT %s %s from %s ua=%s',
             $_SERVER['REQUEST_METHOD'] ?? '?',
             $_SERVER['REQUEST_URI'] ?? '?',
-            function_exists('am2_client_ip') ? am2_client_ip() : ($_SERVER['REMOTE_ADDR'] ?? '?'),
+            // config.php is not loaded yet on the prepend path, so resolve the
+            // trusted X-Real-IP value here and otherwise fall back safely.
+            (static function (): string {
+                $real = $_SERVER['HTTP_X_REAL_IP'] ?? '';
+                return (is_string($real) && filter_var($real, FILTER_VALIDATE_IP))
+                    ? $real : (string) ($_SERVER['REMOTE_ADDR'] ?? '?');
+            })(),
             substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120)
         ));
 

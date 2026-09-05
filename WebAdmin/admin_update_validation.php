@@ -7,6 +7,10 @@ declare(strict_types=1);
  * Returns null unless both URLs are simple HTTPS origins and the candidate is
  * directly below the configured update path.
  */
+
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
 function am2_admin_update_file(string $baseUrl, string $downloadUrl, string $updateDir): ?string
 {
     $base = parse_url($baseUrl);

@@ -23,6 +23,10 @@
  * caller can put its own log write in the same one.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 /**
  * Register a unit under an admin.
  *

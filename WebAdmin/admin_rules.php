@@ -17,6 +17,10 @@
  * what to do next. This says it in words, before the query runs.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 if (!function_exists('am2_admin_undeletable')) {
     /**
      * Why this admin may not be deleted, as a catalogue key, or '' if it may.

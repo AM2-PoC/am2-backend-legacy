@@ -16,6 +16,10 @@
  * there is now only one of it.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 /** The switches, and the admin right that governs each. */
 const AM2_FEATURES = [
     'enable_maps'      => 'can_manage_maps',

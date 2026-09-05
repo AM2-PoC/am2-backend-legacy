@@ -78,9 +78,11 @@ fi
 # Written to every SAPI directory that exists. apache2 is what serves the panel
 # today and fpm is what will; installing both now means the FPM cutover inherits
 # the guard instead of having to remember it.
+installed_into=0
 for sapi in apache2 fpm; do
     dir=/etc/php/$php_version/$sapi/conf.d
     [[ -d $dir ]] || continue
+    installed_into=$((installed_into + 1))
     target=$dir/$ini_name
     if [[ -r $target ]] && grep -qF "auto_prepend_file = $installed" "$target"; then
         say "directive already present for $sapi"
@@ -136,6 +138,14 @@ if (( drain )); then
     say "NOTE: every operator on both lanes is signed out when Apache reloads."
 else
     say "session store: unchanged (pass --drain-sessions to split it per lane)"
+fi
+
+# Fail closed if the CLI PHP version maps to no supported web SAPI directory.
+if (( installed_into == 0 )); then
+    echo "REFUSED: no conf.d directory found under /etc/php/$php_version/" >&2
+    echo "  php -v reports $php_version, which is the CLI binary. The web SAPI may be" >&2
+    echo "  a different version -- check: apache2ctl -M | grep php, or the FPM unit." >&2
+    exit 1
 fi
 
 if (( apply )); then

@@ -60,7 +60,6 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://redis:6379
       AM2_API_KEY: ${AM2_API_KEY:-dev-local-key}
-      AM2_API_AUTH_MODE: log
       AM2_CORS_ORIGINS: http://localhost:${WEBADMIN_PORT:-8080}
     volumes:
       # The source is live-editable; node_modules is not shared with the
@@ -95,7 +94,6 @@ services:
       AM2_TIMEZONE: Asia/Jakarta
       AM2_NODE_URL: http://relay:5000
       AM2_API_KEY: ${AM2_API_KEY:-dev-local-key}
-      AM2_API_AUTH_MODE: log
       AM2_THROTTLE_DIR: /tmp/am2-login-throttle
     volumes:
       - ./WebAdmin:/var/www/html
