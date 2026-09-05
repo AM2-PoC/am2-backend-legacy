@@ -23,7 +23,7 @@ AM2 has three caller surfaces with separate authentication boundaries.
 
 - Internal Node admin callbacks used only by WebAdmin are denied at the public edge and remain loopback-only.
 - Public Node routes use an explicit CORS allowlist.
-- API-key comparisons use constant-time comparison in PHP and Node.
+- API-key validation uses Node's constant-time comparison. PHP presents the protected key only to the loopback relay and does not compare it itself.
 - Update manifest/APK routes are intentionally public. Their integrity boundary is the canonical URL, signer and SHA-256 validation, atomic publication, and `no-store`; they are not protected by WebAdmin session auth.
 - Rendered logs and other untrusted fields use text-safe rendering rather than raw HTML insertion.
 

@@ -84,6 +84,12 @@ test('staging documentation uses artifact materialization rather than Git deploy
     'staging documentation still deploys code from Git');
   assert.doesNotMatch(source, /reset\s+--hard\s+origin\//,
     'staging documentation still treats an environment branch as deployment input');
+  assert.doesNotMatch(source, /sudo\s+\/usr\/local\/libexec\/am2\/(?:verify-current-release|verify-materialized-artifact)\.sh/,
+    'staging documentation runs artifact-sensitive verification as root');
+  assert.doesNotMatch(source, /before this indirection|hardcoded to|would have disconnected|Restarting .* is free/i,
+    'staging documentation still carries incident narrative or unsafe restart minimization');
+  assert.match(source, /production receives the exact digest accepted in staging/i,
+    'staging documentation does not state the candidate-to-production promotion boundary');
 });
 
 test('security posture stays current instead of becoming an incident ledger', () => {
