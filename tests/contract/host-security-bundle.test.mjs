@@ -32,12 +32,12 @@ function cleanSource(base) {
   return cloneSource(base);
 }
 
-function packageBundle(base, sha = sourceSha(), source = ROOT) {
+function packageBundle(base, sha = sourceSha(), source = ROOT, environment = {}) {
   const output = join(base, 'bundle');
   const run = spawnSync('bash', [packagerPath,
     '--source-root', source,
     '--sha', sha,
-    '--output-dir', output], { encoding: 'utf8' });
+    '--output-dir', output], { encoding: 'utf8', env: { ...process.env, ...environment } });
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
   return output;
 }
@@ -130,6 +130,84 @@ test('host-security packager rejects untracked source input', () => {
     const source = cloneSource(base);
     writeFileSync(join(source, 'infra/php/unsealed-host-setting.ini'), 'unsealed\n');
     assert.throws(() => packageBundle(base, sourceSha(), source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security packager rejects tracked source hidden by assume-unchanged', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-assume-unchanged-'));
+  try {
+    const source = cloneSource(base);
+    const target = 'infra/php/webadmin-prepend.php';
+    const mark = spawnSync('git', ['update-index', '--assume-unchanged', target], { cwd: source, encoding: 'utf8' });
+    assert.equal(mark.status, 0, `${mark.stdout}\n${mark.stderr}`);
+    appendFileSync(join(source, target), '\n// hidden by assume-unchanged\n');
+    assert.throws(() => packageBundle(base, sourceSha(), source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security packager rejects tracked source hidden by skip-worktree', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-skip-worktree-'));
+  try {
+    const source = cloneSource(base);
+    const target = 'infra/php/webadmin-prepend.php';
+    const mark = spawnSync('git', ['update-index', '--skip-worktree', target], { cwd: source, encoding: 'utf8' });
+    assert.equal(mark.status, 0, `${mark.stdout}\n${mark.stderr}`);
+    appendFileSync(join(source, target), '\n// hidden by skip-worktree\n');
+    assert.throws(() => packageBundle(base, sourceSha(), source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security packager seals exact Git tree bytes despite post-cleanliness worktree mutation', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-tree-bytes-'));
+  try {
+    const source = cloneSource(base);
+    const target = join(source, 'infra/php/webadmin-prepend.php');
+    const contractTarget = join(source, 'infra/contracts/host-security-contract.json');
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const wrapper = join(bin, 'git');
+    const marker = join(base, 'mutated');
+    writeFileSync(wrapper, `#!/usr/bin/env bash
+set -euo pipefail
+"$AM2_REAL_GIT" "$@"
+status=$?
+case " $* " in
+  *" diff --cached --quiet "*)
+    if [[ $status -eq 0 && ! -e $AM2_MUTATION_MARKER ]]; then
+      printf '\\n// worktree race\\n' >> "$AM2_MUTATION_TARGET"
+      printf '\\n ' >> "$AM2_MUTATION_CONTRACT"
+      : > "$AM2_MUTATION_MARKER"
+    fi
+    ;;
+esac
+exit "$status"
+`);
+    const chmod = spawnSync('chmod', ['0755', wrapper], { encoding: 'utf8' });
+    assert.equal(chmod.status, 0, `${chmod.stdout}\n${chmod.stderr}`);
+    const realGit = spawnSync('bash', ['-lc', 'command -v git'], { encoding: 'utf8' });
+    assert.equal(realGit.status, 0, realGit.stderr);
+    const output = packageBundle(base, sourceSha(), source, {
+      PATH: `${bin}:${process.env.PATH}`,
+      AM2_REAL_GIT: realGit.stdout.trim(),
+      AM2_MUTATION_TARGET: target,
+      AM2_MUTATION_CONTRACT: contractTarget,
+      AM2_MUTATION_MARKER: marker,
+    });
+    assert.ok(existsSync(marker), 'test wrapper did not mutate after the cleanliness check');
+    const payload = join(base, 'payload');
+    mkdirSync(payload);
+    const extract = spawnSync('tar', ['-xzf', join(output, 'am2-host-security.tar.gz'), '-C', payload], { encoding: 'utf8' });
+    assert.equal(extract.status, 0, `${extract.stdout}\n${extract.stderr}`);
+    assert.doesNotMatch(readFileSync(join(payload, 'infra/php/webadmin-prepend.php'), 'utf8'), /worktree race/);
+    assert.doesNotMatch(readFileSync(join(payload, 'infra/contracts/host-security-contract.json'), 'utf8'), /\n $/m);
+    assert.match(readFileSync(target, 'utf8'), /worktree race/);
+    assert.match(readFileSync(contractTarget, 'utf8'), /\n $/m);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
