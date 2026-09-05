@@ -87,7 +87,8 @@ mkdir -p "$work/payload/infra/contracts"
 git_cmd cat-file blob "$contract_oid" > "$contract"
 install -m 0644 "$contract" "$work/payload/$contract_relative"
 
-mapfile -t origins < <(python3 - "$contract" <<'PY'
+origins_file=$work/origins
+python3 - "$contract" > "$origins_file" <<'PY'
 import json, re, sys
 contract=json.load(open(sys.argv[1], encoding='utf-8'))
 if set(contract) != {'schema_version','application','source_binding','files','activation'}:
@@ -110,7 +111,8 @@ for item in contract['files']:
     seen.add(item['id'])
     print(origin)
 PY
-)
+mapfile -t origins < "$origins_file"
+[[ ${#origins[@]} -gt 0 ]] || { echo "host-security contract has no origins" >&2; exit 1; }
 
 for origin in "${origins[@]}"; do
     origin_oid=$(blob_from_tree "$origin" 100644)

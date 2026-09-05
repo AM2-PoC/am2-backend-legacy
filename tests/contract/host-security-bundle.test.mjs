@@ -135,6 +135,25 @@ test('host-security packager rejects untracked source input', () => {
   }
 });
 
+test('host-security packager rejects an empty contract file set', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-empty-contract-'));
+  try {
+    const source = cloneSource(base);
+    const contractPath = join(source, 'infra/contracts/host-security-contract.json');
+    const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
+    contract.files = [];
+    writeFileSync(contractPath, `${JSON.stringify(contract)}\n`);
+    let run = spawnSync('git', ['add', 'infra/contracts/host-security-contract.json'], { cwd: source, encoding: 'utf8' });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    run = spawnSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'empty host contract'], { cwd: source, encoding: 'utf8' });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).stdout.trim();
+    assert.throws(() => packageBundle(base, sha, source), /!== 0/);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security packager rejects an untracked origin hidden by ignore rules', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-ignored-origin-'));
   try {
