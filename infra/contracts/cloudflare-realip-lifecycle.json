@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "application": "am2-cloudflare-realip",
+  "source_binding": "externally-refreshed",
+  "description": "Cloudflare publishes these ranges on its own cadence, so the bytes cannot be pinned to one reviewed application source SHA the way the rest of the host-security contract is. Binding them to a byte-identical app release would turn every legitimate Cloudflare change into a false alarm, and would make refreshing the list wait on an unrelated code review. This lifecycle governs the same file by shape and provenance instead.",
+  "host_security_file_id": "nginx-cloudflare-realip",
+  "generator": "infra/scripts/refresh-cloudflare-ranges.sh",
+  "generated_file": "infra/nginx/am2-cloudflare-realip.conf",
+  "upstreams": [
+    "https://www.cloudflare.com/ips-v4",
+    "https://www.cloudflare.com/ips-v6"
+  ],
+  "provenance": {
+    "generated_marker": "# Regenerated ",
+    "generated_marker_format": "%Y-%m-%d"
+  },
+  "validation": {
+    "min_ipv4_ranges": 10,
+    "min_ipv6_ranges": 5,
+    "required_directives": [
+      "real_ip_header CF-Connecting-IP;",
+      "real_ip_recursive on;"
+    ]
+  },
+  "staleness": {
+    "warn_after_days": 30,
+    "fail_after_days": 90
+  },
+  "drift_policy": "shape-and-provenance"
+}
