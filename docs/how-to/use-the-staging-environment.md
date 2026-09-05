@@ -40,11 +40,11 @@ resolves to 5001.
 
 ## Refresh staging
 
-Staging code is delivered from the same verified backend artifact contract as production, with distinct configuration and writable paths. Do not refresh staging from a source checkout or environment branch.
+Staging code is delivered from the same verified backend artifact contract as production, with distinct configuration and writable paths. Do not refresh staging from a source checkout or environment branch. Export the exact identities before running the commands:
 
 ```bash
-SOURCE_SHA=<40-lowercase-hex>
-ARCHIVE_SHA=<64-lowercase-hex>
+: "${SOURCE_SHA:?export the exact 40-character source SHA}"
+: "${ARCHIVE_SHA:?export the exact 64-character archive SHA-256}"
 CACHE=/var/lib/am2-artifacts/$SOURCE_SHA/$ARCHIVE_SHA
 REL=/var/www/am2/staging/releases/artifact-$ARCHIVE_SHA
 
