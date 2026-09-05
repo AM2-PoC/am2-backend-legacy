@@ -200,6 +200,25 @@ test('host-security verifier requires an independent trusted manifest', () => {
   }
 });
 
+test('host-security verifier requires checksums for the complete canonical bundle', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-checksums-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const archive = join(output, 'am2-host-security.tar.gz');
+    const checksums = join(output, 'SHA256SUMS');
+    writeFileSync(checksums, `${sha256(archive)}  am2-host-security.tar.gz\n`);
+
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', archive,
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', checksums,
+      '--expected-manifest', trustedManifest(base, output)], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'incomplete checksum set retained trusted bundle status');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier rejects altered bundle bytes even when the manifest is unchanged', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-archive-tamper-'));
   try {

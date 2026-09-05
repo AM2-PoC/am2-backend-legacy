@@ -27,6 +27,9 @@ bundle_dir=$(dirname "$archive")
 [[ $(dirname "$manifest") == "$bundle_dir" && $(dirname "$checksums") == "$bundle_dir" ]] || { echo "bundle inputs must share a directory" >&2; exit 1; }
 [[ $(realpath -e -- "$expected_manifest") != $(realpath -e -- "$manifest") ]] || { echo "trusted expected manifest must be independent of the bundle manifest" >&2; exit 1; }
 [[ $(basename "$archive") == am2-host-security.tar.gz && $(basename "$manifest") == host-security-manifest.json && $(basename "$checksums") == SHA256SUMS ]] || { echo "bundle input names are not canonical" >&2; exit 1; }
+for expected in am2-host-security.tar.gz host-security-manifest.json; do
+    grep -Eq "^[0-9a-f]{64}  \*?${expected}$" "$checksums" || { echo "host-security checksums do not seal required input: $expected" >&2; exit 1; }
+done
 (
     cd "$bundle_dir"
     sha256sum -c "$checksums"
