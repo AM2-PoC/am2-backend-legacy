@@ -24,8 +24,9 @@ for path in "$archive" "$manifest" "$checksums" "$expected_manifest"; do
     [[ -f $path && ! -L $path ]] || { echo "required host-security bundle input is missing: $path" >&2; exit 1; }
 done
 bundle_dir=$(dirname "$archive")
+bundle_dir_real=$(realpath -e -- "$bundle_dir")
 [[ $(dirname "$manifest") == "$bundle_dir" && $(dirname "$checksums") == "$bundle_dir" ]] || { echo "bundle inputs must share a directory" >&2; exit 1; }
-[[ $(dirname "$(realpath -e -- "$expected_manifest")") != "$bundle_dir" ]] || { echo "trusted expected manifest must be outside the bundle directory" >&2; exit 1; }
+[[ $(dirname "$(realpath -e -- "$expected_manifest")") != "$bundle_dir_real" ]] || { echo "trusted expected manifest must be outside the bundle directory" >&2; exit 1; }
 [[ $(realpath -e -- "$expected_manifest") != $(realpath -e -- "$manifest") ]] || { echo "trusted expected manifest must be independent of the bundle manifest" >&2; exit 1; }
 [[ $(basename "$archive") == am2-host-security.tar.gz && $(basename "$manifest") == host-security-manifest.json && $(basename "$checksums") == SHA256SUMS ]] || { echo "bundle input names are not canonical" >&2; exit 1; }
 for expected in am2-host-security.tar.gz host-security-manifest.json; do

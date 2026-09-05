@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -163,6 +163,25 @@ test('host-security verifier rejects an expected manifest stored beside the bund
       '--checksums', join(output, 'SHA256SUMS'),
       '--expected-manifest', expected], { encoding: 'utf8' });
     assert.notEqual(verify.status, 0, 'bundle-adjacent expected manifest was accepted as trusted provenance');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('host-security verifier rejects a bundle-adjacent expected manifest through a symlinked bundle path', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-symlinked-anchor-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const expected = join(output, 'expected-manifest.json');
+    writeFileSync(expected, readFileSync(join(output, 'host-security-manifest.json')));
+    const linked = join(base, 'linked-bundle');
+    symlinkSync(output, linked, 'dir');
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', join(linked, 'am2-host-security.tar.gz'),
+      '--manifest', join(linked, 'host-security-manifest.json'),
+      '--checksums', join(linked, 'SHA256SUMS'),
+      '--expected-manifest', join(linked, 'expected-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(verify.status, 0, 'symlinked bundle accepted a bundle-adjacent trust anchor');
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
