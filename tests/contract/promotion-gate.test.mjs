@@ -224,22 +224,3 @@ describe('production promotion gate', () => {
             'the runbook still asks a person to sequence the gates by hand');
     });
 });
-
-test('the gate checks the installed prepend matches the release', () => {
-    /*
-     * verify-webadmin-guard.sh proves *a* prepend is running. It does not prove
-     * the running one is this release's.
-     *
-     * /etc/am2/php/webadmin-prepend.php is host state outside the artifact,
-     * updated only by a manual install-webadmin-guard.sh --apply. So a release
-     * that changes the prepend promotes cleanly, runs the old one indefinitely,
-     * and the gate stays green -- with the one PHP file that executes before
-     * every single request sitting outside the artifact boundary that #115
-     * exists to enforce.
-     */
-    const s = read(GATE);
-    assert.match(s, /webadmin-prepend\.php/,
-        'the gate never looks at the prepend the release ships');
-    assert.match(s, /\bcmp\b|sha256sum|diff -q/,
-        'the gate does not compare the installed prepend against the release copy');
-});

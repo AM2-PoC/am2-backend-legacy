@@ -340,6 +340,14 @@ test('an endpoint that only ever answers JSON never redirects', () => {
     }
 });
 
+test('the admin delete backstop never reports success when no row was deleted', () => {
+    const api = read('WebAdmin/api_admin_panel.php');
+    assert.match(api, /\$stmtDelete->rowCount\(\)\s*!==\s*1/,
+        'conditional admin delete can report success after deleting zero rows');
+    assert.match(api, /rowCount\(\)[\s\S]*success'\s*=>\s*false/,
+        'zero-row delete does not return a safe refusal');
+});
+
 test('the public entry check cannot be spoofed by a path suffix', () => {
     /*
      * Run the real function rather than grep it. An earlier version of this
@@ -391,7 +399,7 @@ test('the public entry check cannot be spoofed by a path suffix', () => {
     assert.equal(apiLogin, 'public', 'api_login.php is refused; nobody could sign in');
     assert.equal(dashboard, 'guarded');
     assert.equal(spoofedJoined, 'guarded',
-        'a joined path satisfied the public allowlist -- 2026-09-04 reproduced by URL suffix');
+        'a joined path satisfied the public allowlist');
     assert.equal(spoofedPathInfo, 'guarded',
         'a request carrying PATH_INFO satisfied the public allowlist');
     assert.equal(subdir, 'guarded',
@@ -422,23 +430,10 @@ test('each lane pins its own session store, in a tracked file', () => {
 });
 
 test('layer one reaches every file, so layer two is a net and not the floor', () => {
-    /*
-     * The stated hierarchy is that config.php carries the guard for everything
-     * and the auto_prepend copy catches what slips. For eight files it was the
-     * other way round: they include no config.php at all, so only the prepend
-     * stood between them and an anonymous caller. Production proved it -- six of
-     * them answered 200 between the symlink flip at 16:24 and the installer run
-     * at 16:28.
-     *
-     * Seven are libraries that define functions and render nothing; the right
-     * answer for them is not to authenticate but to refuse being an endpoint at
-     * all. logout.php is a real page and gets the ordinary guard.
-     */
     const files = readdirSync(join(ROOT, 'WebAdmin'))
         .filter((f) => f.endsWith('.php'));
     const uncovered = files.filter((f) => {
-        if (['login.php', 'api_login.php', 'config.php',
-             'auth_guard.php', 'session_boot.php'].includes(f)) return false;
+        if (['login.php', 'api_login.php', 'config.php'].includes(f)) return false;
         const src = read(`WebAdmin/${f}`);
         if (/require(_once)?[^;]*(config|auth_guard)\.php/.test(src)) return false;
         // A library that refuses to be executed directly needs nothing else.

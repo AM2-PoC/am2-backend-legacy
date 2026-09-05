@@ -32,6 +32,23 @@
  * this cannot live there.
  */
 
+if (!function_exists('am2_refuse_direct_request')) {
+    /** Return 404 when a library file is requested as an HTTP endpoint. */
+    function am2_refuse_direct_request(string $file): void
+    {
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
+        $script = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+        if ($script !== false && $script === realpath($file)) {
+            http_response_code(404);
+            exit;
+        }
+    }
+}
+
+am2_refuse_direct_request(__FILE__);
+
 if (!function_exists('am2_session_boot')) {
     function am2_session_boot(): void
     {
@@ -130,37 +147,5 @@ if (!function_exists('am2_session_login')) {
             'httponly' => $params['httponly'],
             'samesite' => $params['samesite'],
         ]);
-    }
-}
-
-if (!function_exists('am2_refuse_direct_request')) {
-    /**
-     * A library is not an endpoint. Refuse to be one.
-     *
-     * Eight files in the panel define functions and render nothing, and they
-     * sit in the document root like everything else, so they can be requested
-     * by URL. None of them included config.php, which meant the only thing
-     * between them and an anonymous caller was the auto_prepend net -- exactly
-     * the inversion of the stated design, where config.php is the floor and the
-     * prepend is the net.
-     *
-     * Production demonstrated it rather than theorised it: six of them answered
-     * 200 between the release symlink moving at 16:24 on 2026-09-04 and the
-     * guard being installed four minutes later.
-     *
-     * Authenticating them would be the wrong fix. They have nothing to show a
-     * signed-in caller either. 404 is the honest answer: as far as the web is
-     * concerned this file does not exist.
-     */
-    function am2_refuse_direct_request(string $file): void
-    {
-        if (PHP_SAPI === 'cli') {
-            return;
-        }
-        $script = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
-        if ($script !== false && $script === realpath($file)) {
-            http_response_code(404);
-            exit;
-        }
     }
 }

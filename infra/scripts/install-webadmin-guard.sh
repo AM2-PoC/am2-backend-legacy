@@ -140,14 +140,7 @@ else
     say "session store: unchanged (pass --drain-sessions to split it per lane)"
 fi
 
-# Installing into nothing, and saying "Config test passed".
-#
-# php_version comes from the CLI binary. On a host where CLI is 8.3 and mod_php
-# or FPM is 8.2 -- routine on Debian with more than one PHP installed -- neither
-# conf.d directory exists, the loop above skips both without a word, and this
-# script would go on to report success having installed the guard nowhere. That
-# is the failure shape this whole change exists to remove, in the script that
-# installs the removal.
+# Fail closed if the CLI PHP version maps to no supported web SAPI directory.
 if (( installed_into == 0 )); then
     echo "REFUSED: no conf.d directory found under /etc/php/$php_version/" >&2
     echo "  php -v reports $php_version, which is the CLI binary. The web SAPI may be" >&2

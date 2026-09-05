@@ -50,31 +50,7 @@ if (!defined('AM2_PUBLIC_ENTRY')) {
 }
 
 if (!function_exists('am2_entry_point')) {
-    /**
-     * The script actually being executed, as a bare file name — or '' when that
-     * cannot be established, which is never a public entry point.
-     *
-     * Resolved by the server, never taken from the URL: REQUEST_URI would let
-     * `/api_users.php?x=login.php`, `//login.php` or an encoded traversal argue
-     * their way onto the allowlist.
-     *
-     * SCRIPT_FILENAME alone is not enough either, and the gap opens on exactly
-     * the platform this design was written to survive. Apache resolves the real
-     * file and splits PATH_INFO off, so `/api_admin_panel.php/login.php` gives
-     * `api_admin_panel.php`. nginx with the common FastCGI snippet -- no
-     * try_files, no fastcgi_split_path_info, and cgi.fix_pathinfo on, which is
-     * Debian's default -- can hand PHP
-     * `/docroot/api_admin_panel.php/login.php`. basename() would then answer
-     * `login.php`, the guard would return early, and am2_csrf_require() would
-     * return early on the same constant: 2026-09-04 reproduced, after the FPM
-     * cutover, by a URL suffix.
-     *
-     * So two more conditions, both failing closed. A request carrying PATH_INFO
-     * is not a plain script request and is never public. And the resolved file
-     * must sit directly in the document root -- `login.php` reached through a
-     * symlink, an alias or a subdirectory is not the login page this allowlist
-     * means.
-     */
+    /** Resolve only a plain, real script directly below the document root. */
     function am2_entry_point(): string
     {
         if (($_SERVER['PATH_INFO'] ?? '') !== '') {
@@ -163,15 +139,8 @@ if (!function_exists('am2_require_identity')) {
             'AM2 auth REJECT %s %s from %s ua=%s',
             $_SERVER['REQUEST_METHOD'] ?? '?',
             $_SERVER['REQUEST_URI'] ?? '?',
-            /*
-             * Inlined rather than delegated. In the auto_prepend path config.php
-             * has not run, so am2_client_ip() does not exist and every refusal
-             * logged 127.0.0.1 -- the loopback nginx connects from. That is
-             * precisely the case the attribution work was written for, and it
-             * was the one case it did not reach. X-Real-IP is what nginx
-             * resolved, and since am2-cloudflare-realip.conf that is the
-             * visitor rather than the edge.
-             */
+            // config.php is not loaded yet on the prepend path, so resolve the
+            // trusted X-Real-IP value here and otherwise fall back safely.
             (static function (): string {
                 $real = $_SERVER['HTTP_X_REAL_IP'] ?? '';
                 return (is_string($real) && filter_var($real, FILTER_VALIDATE_IP))

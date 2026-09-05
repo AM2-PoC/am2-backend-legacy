@@ -4,17 +4,8 @@ require_once 'config.php';
 am2_api_auth();
 am2_csrf_require();
 
-// SECURITY: this endpoint knows exactly who is calling. Both halves of the
-// paragraph that used to sit here -- "carries no caller identity" and "its only
-// control is the shared key" -- stopped being true when identity moved into the
-// session and the inbound key was deleted. It said the opposite of the truth on
-// the one endpoint that was actually exploited, which is worse than saying
-// nothing.
-//
-// am2_api_auth() refuses anyone without a session. am2_api_identity() reads
-// $_SESSION and nothing else, so the caller cannot name itself. The delete path
-// applies the same four rules as the page, through am2_admin_undeletable(), and
-// the statement carries its own conditions besides.
+// Identity comes only from the authenticated session. Destructive operations
+// retain both shared policy checks and conditional SQL backstops.
 $method = $_SERVER['REQUEST_METHOD'];
 
 // This file manages the admin table itself: who exists, what quota they
@@ -120,30 +111,20 @@ elseif ($method == 'POST') {
                 if ($why !== '') {
                     echo json_encode(['success' => false, 'message' => t($why, $why_params)]);
                 } else {
-                    /*
-                     * The rule ran, and the statement still carries its own
-                     * conditions. Two reasons to keep both.
-                     *
-                     * The count in am2_admin_undeletable() and this DELETE are
-                     * separate statements: a unit created between them makes
-                     * the delete hit migration 006's RESTRICT and surface as
-                     * "Terjadi kesalahan sistem" -- the unactionable message
-                     * that function exists to avoid. Rare, and worth catching
-                     * by name rather than by luck.
-                     *
-                     * And migration 006 protects owned units. It does not
-                     * protect the superadmin row, the master row, or the
-                     * caller's own account: those three rest entirely on the
-                     * PHP above, on the path that was exploited on 2026-09-04.
-                     * The page kept its `AND id != ?` backstop; this had none.
-                     */
+                    // Reassert immutable targets and self-protection in SQL so
+                    // a policy/query race cannot turn a refusal into deletion.
                     $me = (int) ($_SESSION['admin_id'] ?? 0);
                     try {
-                        $pdo->prepare(
+                        $stmtDelete = $pdo->prepare(
                             "DELETE FROM public.admin
                              WHERE id = ? AND id <> ? AND id <> 1 AND role <> 'superadmin'"
-                        )->execute([$id, $me]);
-                        echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+                        );
+                        $stmtDelete->execute([$id, $me]);
+                        if ($stmtDelete->rowCount() !== 1) {
+                            echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+                        } else {
+                            echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+                        }
                     } catch (PDOException $e) {
                         // 23503 is foreign_key_violation: a unit appeared after
                         // the count. Name it rather than calling it a system error.
