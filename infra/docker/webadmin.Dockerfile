@@ -14,6 +14,11 @@ RUN apt-get update \
 COPY infra/docker/apache-webadmin.conf /etc/apache2/sites-available/000-default.conf
 COPY infra/docker/webadmin-entrypoint.sh /usr/local/bin/webadmin-entrypoint.sh
 
+# Match the host's PHP-level second guard so local DEV is not more permissive.
+COPY infra/php/webadmin-prepend.php /etc/am2/php/webadmin-prepend.php
+RUN printf '; AM2 panel guard, matching infra/scripts/install-webadmin-guard.sh\nauto_prepend_file = /etc/am2/php/webadmin-prepend.php\n' \
+        > /usr/local/etc/php/conf.d/99-am2-webadmin-guard.ini
+
 RUN chmod +x /usr/local/bin/webadmin-entrypoint.sh \
     && mkdir -p /var/www/html/update /tmp/am2-login-throttle \
     && chown -R www-data:www-data /var/www/html/update /tmp/am2-login-throttle

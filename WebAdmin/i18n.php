@@ -10,6 +10,10 @@
  * visible on every navigation.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 const AM2_LOCALES = ['id', 'en'];
 const AM2_DEFAULT_LOCALE = 'id';
 const AM2_THEMES = ['light', 'dark'];

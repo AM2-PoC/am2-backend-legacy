@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,6 +64,17 @@ test('no auth mode survives anywhere in the tree', () => {
     walk('server');
     walk('infra');
     walk('tests');
+    // The repository root too. Walking only the subdirectories let
+    // docker-compose.yml keep setting AM2_API_AUTH_MODE=log for months after
+    // nothing read it -- in the one environment where a permissive panel
+    // teaches a developer that unauthenticated calls are fine.
+    for (const entry of readdirSync(ROOT, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (!/\.(yml|yaml|example|json|md|sh|conf)$/.test(entry.name)) continue;
+        if (readFileSync(join(ROOT, entry.name), 'utf8').includes('AUTH_MODE')) {
+            offenders.push(entry.name);
+        }
+    }
     assert.deepEqual(offenders, [],
         `an auth mode is back in: ${offenders.join(', ')}`);
 });
@@ -326,4 +338,114 @@ test('an endpoint that only ever answers JSON never redirects', () => {
         assert.ok(shape.includes(pattern),
             `endpoints named ${pattern}* are not recognised as JSON-only`);
     }
+});
+
+test('the admin delete backstop never reports success when no row was deleted', () => {
+    const api = read('WebAdmin/api_admin_panel.php');
+    assert.match(api, /\$stmtDelete->rowCount\(\)\s*!==\s*1/,
+        'conditional admin delete can report success after deleting zero rows');
+    assert.match(api, /rowCount\(\)[\s\S]*success'\s*=>\s*false/,
+        'zero-row delete does not return a safe refusal');
+});
+
+test('the public entry check cannot be spoofed by a path suffix', () => {
+    /*
+     * Run the real function rather than grep it. An earlier version of this
+     * test asserted that the strings "PATH_INFO" and "realpath(" appeared in
+     * am2_entry_point(), and a mutation that removed realpath() from the script
+     * path still passed -- because the word survived on the line below. A test
+     * that reads the implementation cannot tell you the implementation works.
+     *
+     * The property: under Apache, /api_admin_panel.php/login.php yields
+     * api_admin_panel.php because Apache resolves the file and splits PATH_INFO
+     * off. Under nginx with the common FastCGI snippet -- no try_files, no
+     * fastcgi_split_path_info, cgi.fix_pathinfo on, Debian's default -- PHP can
+     * be handed /docroot/api_admin_panel.php/login.php, and a bare basename()
+     * would answer login.php: the allowlist satisfied by a URL suffix, on the
+     * platform the migration plan says this is moving to.
+     *
+     * The three checks in am2_entry_point() are deliberately redundant, so
+     * removing any one of them leaves this green -- realpath() alone and the
+     * dirname comparison alone each defeat a joined path. Reverting the whole
+     * function to a bare basename(), which is the code that shipped, turns this
+     * red. Do not read one passing mutation as a dead check.
+     */
+    const php = `
+        require '${join(ROOT, 'WebAdmin/auth_guard.php')}';
+        $root = '${join(ROOT, 'WebAdmin')}';
+        function probe($root, $script, $pathInfo) {
+            $_SERVER['DOCUMENT_ROOT'] = $root;
+            $_SERVER['SCRIPT_FILENAME'] = $script;
+            if ($pathInfo === null) { unset($_SERVER['PATH_INFO']); }
+            else { $_SERVER['PATH_INFO'] = $pathInfo; }
+            $entry = am2_entry_point();
+            return in_array($entry, AM2_PUBLIC_ENTRY, true) ? 'public' : 'guarded';
+        }
+        echo probe($root, $root . '/login.php', null), ',';
+        echo probe($root, $root . '/api_login.php', null), ',';
+        echo probe($root, $root . '/dashboard.php', null), ',';
+        // The nginx shape, and the one that matters: PHP is handed the joined
+        // path, not a clean script plus PATH_INFO. A bare basename() answers
+        // login.php here.
+        echo probe($root, $root . '/api_admin_panel.php/login.php', '/login.php'), ',';
+        // The Apache shape, for completeness: clean script, PATH_INFO beside it.
+        echo probe($root, $root . '/api_admin_panel.php', '/login.php'), ',';
+        echo probe($root, $root . '/lang/login.php', null);
+    `;
+    const out = execFileSync('php', ['-r', php], { encoding: 'utf8' }).trim().split(',');
+    const [login, apiLogin, dashboard, spoofedJoined, spoofedPathInfo, subdir] = out;
+
+    assert.equal(login, 'public', 'login.php is refused; nobody could sign in');
+    assert.equal(apiLogin, 'public', 'api_login.php is refused; nobody could sign in');
+    assert.equal(dashboard, 'guarded');
+    assert.equal(spoofedJoined, 'guarded',
+        'a joined path satisfied the public allowlist');
+    assert.equal(spoofedPathInfo, 'guarded',
+        'a request carrying PATH_INFO satisfied the public allowlist');
+    assert.equal(subdir, 'guarded',
+        'a login.php in a subdirectory counted as the login page');
+});
+
+test('each lane pins its own session store, in a tracked file', () => {
+    /*
+     * A staging session was accepted by production because both lanes shared
+     * /var/lib/php/sessions. Now that identity comes only from $_SESSION, a
+     * shared store is not untidiness -- it is the authentication system.
+     *
+     * The split was applied to the host by a sed in the installer and lived
+     * nowhere else, so redeploying the vhosts from this repository would have
+     * silently undone it, and so would the move to PHP-FPM.
+     */
+    for (const [f, dir] of [['infra/apache/am2-webadmin-internal.conf', '/var/lib/php/sessions/am2'],
+                            ['infra/apache/am2-webadmin-staging.conf', '/var/lib/php/sessions/am2-staging']]) {
+        const conf = read(f);
+        assert.match(conf, new RegExp(`session\\.save_path\\s+${dir.replace(/\//g, '\\/')}\\s*$`, 'm'),
+            `${f} does not pin its own session store`);
+    }
+    // Distinct, not merely present: two vhosts naming the same directory is the
+    // bug with extra steps.
+    const a = read('infra/apache/am2-webadmin-internal.conf').match(/session\.save_path\s+(\S+)/)[1];
+    const b = read('infra/apache/am2-webadmin-staging.conf').match(/session\.save_path\s+(\S+)/)[1];
+    assert.notEqual(a, b, 'both lanes point at the same session store');
+});
+
+test('authentication bootstrap libraries refuse direct HTTP execution', () => {
+    for (const file of ['WebAdmin/session_boot.php', 'WebAdmin/auth_guard.php']) {
+        assert.match(read(file), /am2_refuse_direct_request\(__FILE__\)/,
+            `${file} can still be requested as a public endpoint`);
+    }
+});
+
+test('layer one reaches every file, so layer two is a net and not the floor', () => {
+    const files = readdirSync(join(ROOT, 'WebAdmin'))
+        .filter((f) => f.endsWith('.php'));
+    const uncovered = files.filter((f) => {
+        if (['login.php', 'api_login.php', 'config.php'].includes(f)) return false;
+        const src = read(`WebAdmin/${f}`);
+        if (/require(_once)?[^;]*(config|auth_guard)\.php/.test(src)) return false;
+        // A library that refuses to be executed directly needs nothing else.
+        return !/am2_refuse_direct_request\(__FILE__\)/.test(src);
+    });
+    assert.deepEqual(uncovered, [],
+        `neither guarded nor refusing direct execution: ${uncovered.join(', ')}`);
 });

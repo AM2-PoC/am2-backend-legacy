@@ -32,6 +32,23 @@
  * this cannot live there.
  */
 
+if (!function_exists('am2_refuse_direct_request')) {
+    /** Return 404 when a library file is requested as an HTTP endpoint. */
+    function am2_refuse_direct_request(string $file): void
+    {
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
+        $script = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+        if ($script !== false && $script === realpath($file)) {
+            http_response_code(404);
+            exit;
+        }
+    }
+}
+
+am2_refuse_direct_request(__FILE__);
+
 if (!function_exists('am2_session_boot')) {
     function am2_session_boot(): void
     {

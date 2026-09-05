@@ -17,7 +17,7 @@
  * This is the net, not the floor. It hangs off host configuration, and the host
  * is scheduled to swap Apache for nginx and PHP-FPM; a directive in a vhost
  * does not survive that on its own. Which is exactly why it must be installed
- * into PHP's own configuration -- see infra/scripts/install-webadmin-prepend.sh
+ * into PHP's own configuration -- see infra/scripts/install-webadmin-guard.sh
  * -- rather than into a vhost, and why config.php does not depend on it.
  *
  * Static files are untouched: auto_prepend_file applies to PHP execution only,
@@ -41,6 +41,17 @@ $am2GuardPath = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/') . '/auth_
 if ($am2GuardPath !== '/auth_guard.php' && is_readable($am2GuardPath)) {
     require_once $am2GuardPath;
     am2_require_identity();
+} elseif (PHP_SAPI !== 'cli') {
+    /*
+     * Say so. An empty DOCUMENT_ROOT, a permissions change, a rename of
+     * auth_guard.php -- any of these and this net is simply not there, and the
+     * header above says exactly why that matters: "a guard that fails to load
+     * is a guard that is not there, silently, in the direction of open."
+     * Silently was the part worth fixing. config.php still guards every file
+     * that includes it, so this is a warning rather than a refusal.
+     */
+    error_log('AM2 guard: auto_prepend could not load ' . $am2GuardPath
+        . ' -- layer two is not running for ' . ($_SERVER['REQUEST_URI'] ?? '?'));
 }
 unset($am2GuardPath);
 

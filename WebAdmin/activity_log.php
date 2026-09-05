@@ -18,6 +18,10 @@
  * server.js deletes anything older than that.
  */
 
+// Not an endpoint. See am2_refuse_direct_request().
+require_once __DIR__ . '/session_boot.php';
+am2_refuse_direct_request(__FILE__);
+
 /**
  * The mutations in this transaction that still owe an audit event.
  *

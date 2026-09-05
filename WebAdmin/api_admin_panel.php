@@ -4,11 +4,8 @@ require_once 'config.php';
 am2_api_auth();
 am2_csrf_require();
 
-// SECURITY: this endpoint carries no caller identity, so it cannot distinguish
-// one admin from another. Its only control is the shared key checked by
-// am2_api_auth(). Anyone holding that key can create or delete an admin,
-// including a superadmin. Giving it a real actor requires a contract change to
-// the Admin Native app.
+// Identity comes only from the authenticated session. Destructive operations
+// retain both shared policy checks and conditional SQL backstops.
 $method = $_SERVER['REQUEST_METHOD'];
 
 // This file manages the admin table itself: who exists, what quota they
@@ -114,8 +111,31 @@ elseif ($method == 'POST') {
                 if ($why !== '') {
                     echo json_encode(['success' => false, 'message' => t($why, $why_params)]);
                 } else {
-                    $pdo->prepare('DELETE FROM public.admin WHERE id = ?')->execute([$id]);
-                    echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+                    // Reassert immutable targets and self-protection in SQL so
+                    // a policy/query race cannot turn a refusal into deletion.
+                    $me = (int) ($_SESSION['admin_id'] ?? 0);
+                    try {
+                        $stmtDelete = $pdo->prepare(
+                            "DELETE FROM public.admin
+                             WHERE id = ? AND id <> ? AND id <> 1 AND role <> 'superadmin'"
+                        );
+                        $stmtDelete->execute([$id, $me]);
+                        if ($stmtDelete->rowCount() !== 1) {
+                            echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+                        } else {
+                            echo json_encode(['success' => true, 'message' => 'Admin deleted']);
+                        }
+                    } catch (PDOException $e) {
+                        // 23503 is foreign_key_violation: a unit appeared after
+                        // the count. Name it rather than calling it a system error.
+                        if (($e->getCode() ?? '') === '23503') {
+                            [$why2, $why2p] = am2_admin_undeletable($pdo, $target, $me);
+                            echo json_encode(['success' => false,
+                                'message' => t($why2 !== '' ? $why2 : 'adm.locked_owns_units', $why2p)]);
+                        } else {
+                            throw $e;
+                        }
+                    }
                 }
             }
         } catch (PDOException $e) {
