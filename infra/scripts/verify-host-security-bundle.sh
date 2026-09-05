@@ -52,8 +52,8 @@ PY
     sha256sum -c "$checksums"
 ) >/dev/null || { echo "host-security checksum verification failed" >&2; exit 1; }
 
-python3 - "$manifest" "$expected_manifest" "$archive" <<'PY'
-import hashlib, json, pathlib, re, sys
+authenticated_archive=$(python3 - "$manifest" "$expected_manifest" "$archive" <<'PY'
+import hashlib, json, pathlib, re, shutil, sys, tempfile
 manifest_path, expected_path, archive_path = map(pathlib.Path, sys.argv[1:])
 manifest=json.load(open(manifest_path,encoding='utf-8'))
 expected=json.load(open(expected_path,encoding='utf-8'))
@@ -71,20 +71,38 @@ if hashlib.file_digest(open(archive_path,'rb'),'sha256').hexdigest() != manifest
 files=manifest.get('files')
 if not isinstance(files,list) or not files:
     raise SystemExit('host-security manifest files are invalid')
+snapshot_path=pathlib.Path(tempfile.mkstemp(prefix='.host-security-authenticated-',suffix='.tar.gz')[1])
+try:
+    with open(archive_path,'rb') as source, open(snapshot_path,'wb') as destination:
+        shutil.copyfileobj(source,destination)
+        destination.flush()
+        import os
+        os.fsync(destination.fileno())
+    if hashlib.file_digest(open(snapshot_path,'rb'),'sha256').hexdigest() != manifest['archive_sha256']:
+        raise SystemExit('host-security archive changed while snapshotting')
+    print(snapshot_path)
+except BaseException:
+    snapshot_path.unlink(missing_ok=True)
+    raise
 PY
+)
+[[ -f $authenticated_archive && ! -L $authenticated_archive ]] || { echo "authenticated host-security archive snapshot is missing" >&2; exit 1; }
 
 work=$(mktemp -d)
-cleanup() { rm -rf -- "$work"; }
+cleanup() {
+    rm -rf -- "$work"
+    rm -f -- "$authenticated_archive"
+}
 trap cleanup EXIT INT TERM HUP
 
-tar -tzf "$archive" | sed 's#^\./##' > "$work/paths"
+tar -tzf "$authenticated_archive" | sed 's#^\./##' > "$work/paths"
 [[ -s $work/paths ]] || { echo "host-security bundle is empty" >&2; exit 1; }
 if grep -Eq '(^/|(^|/)\.\.?(/|$)|(^|/)(\.git|\.github|\.hermes|docs|tests)(/|$))' "$work/paths"; then
     echo "host-security bundle contains unsafe or non-host path" >&2
     exit 1
 fi
 mkdir -p "$work/payload"
-tar -xzf "$archive" -C "$work/payload"
+tar -xzf "$authenticated_archive" -C "$work/payload"
 if find "$work/payload" -type l -print -quit | grep -q .; then
     echo "host-security bundle contains a symlink" >&2
     exit 1

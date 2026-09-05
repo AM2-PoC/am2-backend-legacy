@@ -478,6 +478,43 @@ test('host-security verifier rejects altered bundle bytes even when the manifest
   }
 });
 
+test('host-security verifier snapshots authenticated inputs before tar reopens them', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-snapshot-'));
+  try {
+    const output = packageBundle(base, sourceSha(), cleanSource(base));
+    const originalArchive = join(output, 'am2-host-security.tar.gz');
+    const malicious = join(base, 'malicious.tar.gz');
+    writeFileSync(join(base, 'malicious'), 'not the authenticated archive\n');
+    let run = spawnSync('tar', ['-czf', malicious, '-C', base, 'malicious'], { encoding: 'utf8' });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const marker = join(base, 'swapped');
+    const realTar = spawnSync('bash', ['-lc', 'command -v tar'], { encoding: 'utf8' }).stdout.trim();
+    writeFileSync(join(bin, 'tar'), `#!/usr/bin/env bash\nset -euo pipefail\nif [[ ! -e "$AM2_SWAP_MARKER" ]]; then\n  cp "$AM2_MALICIOUS_ARCHIVE" "$AM2_ORIGINAL_ARCHIVE"\n  : > "$AM2_SWAP_MARKER"\nfi\nexec "$AM2_REAL_TAR" "$@"\n`);
+    spawnSync('chmod', ['0755', join(bin, 'tar')]);
+    const verify = spawnSync('bash', [verifierPath,
+      '--archive', originalArchive,
+      '--manifest', join(output, 'host-security-manifest.json'),
+      '--checksums', join(output, 'SHA256SUMS'),
+      '--expected-manifest', trustedManifest(base, output)], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        AM2_REAL_TAR: realTar,
+        AM2_ORIGINAL_ARCHIVE: originalArchive,
+        AM2_MALICIOUS_ARCHIVE: malicious,
+        AM2_SWAP_MARKER: marker,
+      },
+    });
+    assert.equal(verify.status, 0, `${verify.stdout}\n${verify.stderr}`);
+    assert.ok(existsSync(marker), 'test wrapper did not replace the ingress archive before tar');
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('host-security verifier rejects altered manifest provenance', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-tamper-'));
   try {
