@@ -48,9 +48,7 @@ function contractFor(receipt) {
 }
 
 function withContract(receipt, extra) {
-  if (extra.includes('--contract')) return extra;
-  const contract = contractFor(receipt);
-  return contract ? [...extra, '--contract', contract] : extra;
+  return extra;   // the verifier reads the contract from the receipt's own store
 }
 
 function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {

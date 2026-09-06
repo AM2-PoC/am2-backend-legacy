@@ -107,9 +107,7 @@ function contractFor(receipt) {
 }
 
 function withContract(receipt, extra) {
-  if (extra.includes('--contract')) return extra;
-  const contract = contractFor(receipt);
-  return contract ? [...extra, '--contract', contract] : extra;
+  return extra;   // the verifier reads the contract from the receipt's own store
 }
 
 function verifyInstalled(receipt, fakeRoot, extra = []) {
@@ -686,7 +684,6 @@ test('installed-state verifier will not follow a receipt that redirects a target
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
-    const contract = join(receiptData.store_path, 'payload/infra/contracts/host-security-contract.json');
     const governedId = 'nginx-cloudflare-realip';
     const entry = receiptData.files.find((file) => file.id === governedId);
 
@@ -711,8 +708,7 @@ test('installed-state verifier will not follow a receipt that redirects a target
 
     const run = spawnSync('bash', [installedVerifierPath,
       '--receipt', redirected, '--root', root, '--unprivileged-root',
-      '--expected-manifest', bundle.expected,
-      '--contract', contract], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'verifier followed a receipt that repointed a target at a decoy');
     // It looked at the live file the contract names, not the decoy the receipt
     // pointed at -- which is the whole point.
@@ -729,8 +725,6 @@ test('installed-state verifier will not accept a receipt that relaxes a mode', (
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
-    const contract = join(receiptData.store_path, 'payload/infra/contracts/host-security-contract.json');
-
     const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
       chmodSync(join(where, '/etc/am2/php/webadmin-prepend.php'), 0o666);
     });
@@ -745,8 +739,7 @@ test('installed-state verifier will not accept a receipt that relaxes a mode', (
 
     const run = spawnSync('bash', [installedVerifierPath,
       '--receipt', relaxed, '--root', root, '--unprivileged-root',
-      '--expected-manifest', bundle.expected,
-      '--contract', contract], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'verifier accepted a receipt that relaxed an expected mode');
     assert.match(run.stderr, /mode|contract/i);
   } finally {
@@ -754,34 +747,34 @@ test('installed-state verifier will not accept a receipt that relaxes a mode', (
   }
 });
 
-test('installed-state verifier refuses a contract and receipt that disagree', () => {
-  // Targets come from the contract, so a file the contract declares but the
-  // receipt does not cover would simply never be examined -- unexamined is
-  // indistinguishable from clean in the report. An omission in the receipt is
-  // already caught by the manifest binding; this is the other direction, which
-  // nothing else sees.
-  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-disagree-'));
+test('installed-state verifier refuses a contract from a store that fails its digest', () => {
+  // Requiring the contract to come from the store is only worth something if
+  // the store is checked: otherwise an attacker builds their own store, points
+  // a receipt at it, and supplies the contract from inside it.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-fakestore-'));
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
     const root = installFromReceipt(receiptData, join(base, 'root'));
 
-    // Honest receipt and manifest; a contract that declares one file more.
-    const widened = join(base, 'widened-contract.json');
-    const contract = JSON.parse(readFileSync(contractFor(receipt), 'utf8'));
-    contract.files = [...contract.files, {
-      id: 'nginx-unwatched',
-      source: 'infra/nginx/am2-unwatched.conf',
-      target: '/etc/nginx/snippets/am2-unwatched.conf',
-      mode: '0644',
-      consumer: 'nginx',
-    }];
-    writeFileSync(widened, JSON.stringify(contract));
+    // A copy of the store with the contract rewritten, and a receipt pointed at it.
+    const fakeStore = join(base, 'fake-store');
+    assert.equal(spawnSync('cp', ['-a', receiptData.store_path, fakeStore]).status, 0);
+    spawnSync('chmod', ['-R', 'u+w', fakeStore]);
+    const fakeContract = join(fakeStore, 'payload/infra/contracts/host-security-contract.json');
+    const contract = JSON.parse(readFileSync(fakeContract, 'utf8'));
+    contract.files = contract.files.map((file) => file.id === 'php-webadmin-prepend'
+      ? { ...file, mode: '0666' }
+      : file);
+    writeFileSync(fakeContract, JSON.stringify(contract));
 
-    const run = verifyInstalled(receipt, root,
-      ['--expected-manifest', bundle.expected, '--contract', widened]);
-    assert.notEqual(run.status, 0, 'verifier accepted a contract the receipt does not cover');
-    assert.match(run.stderr, /same set of host-security files/i);
+    const pointed = join(base, 'pointed-receipt.json');
+    writeFileSync(pointed, JSON.stringify({ ...JSON.parse(readFileSync(receipt, 'utf8')), store_path: fakeStore }));
+    chmodSync(pointed, 0o644);
+
+    const run = verifyInstalled(pointed, root, ['--expected-manifest', bundle.expected]);
+    assert.notEqual(run.status, 0, 'verifier accepted a contract from a store that fails its digest');
+    assert.match(run.stderr, /digest|payload|sealed/i);
   } finally {
     discard(base);
   }

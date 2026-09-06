@@ -41,16 +41,17 @@ After an approved activation has put the files in place:
 ```sh
 sudo infra/scripts/verify-host-security-installed.sh \
   --receipt /etc/am2/host-security/receipt.json \
-  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json \
-  --contract /etc/am2/host-security/contracts/host-security-contract.json
+  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json
 ```
 
-The contract is required and must not come from the receipt. It is what says
-where each file belongs and how tight its mode must be, and those two fields
-decide which file gets examined at all — a receipt that repointed one entry at a
-decoy would send this check to read pristine bytes and report health while the
-live file stayed edited. Digests cannot catch that: the digest of a file nobody
-looked at is never wrong.
+Where each file belongs, and how tight its mode must be, are read from the
+contract inside the materialization store — never from the receipt, and never
+from an argument. Those two fields decide which file gets examined at all, so a
+receipt that repointed one entry at a decoy would send this check to read
+pristine bytes and report health while the live file stayed edited. Digests
+cannot catch that on their own: the digest of a file nobody looked at is never
+wrong. The store is bound by hashing to the payload digest the trusted manifest
+names, which spans the contract too.
 
 The trusted manifest is required on a real host, and must be the copy obtained
 through a channel independent of the bundle. Without it the check reduces to
@@ -80,9 +81,8 @@ as a unit that says nothing:
 │   ├── audit-host-security-drift.sh
 │   └── verify-host-security-installed.sh     # the audit runs this
 ├── contracts/
-│   ├── host-security-contract.json
-│   └── cloudflare-realip-lifecycle.json
-├── receipt.json
+│   └── cloudflare-realip-lifecycle.json      # real-IP refresh policy
+├── receipt.json                              # names the store the contract comes from
 └── trusted-host-security-manifest.json       # from the independent channel
 ```
 

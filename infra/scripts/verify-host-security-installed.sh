@@ -38,7 +38,6 @@ Usage: verify-host-security-installed.sh
          [--unprivileged-root]          (the root is a fixture, not the host)
          [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
          [--expected-manifest /absolute/trusted-host-security-manifest.json]
-         [--contract /absolute/host-security-contract.json]
 USAGE
 }
 
@@ -47,7 +46,6 @@ root=/
 unprivileged_root=0
 lifecycle=
 expected_manifest=
-contract=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
@@ -55,7 +53,6 @@ while [[ $# -gt 0 ]]; do
         --unprivileged-root) unprivileged_root=1; shift ;;
         --lifecycle) [[ $# -ge 2 ]] || { usage; exit 64; }; lifecycle=$2; shift 2 ;;
         --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
-        --contract) [[ $# -ge 2 ]] || { usage; exit 64; }; contract=$2; shift 2 ;;
         *) usage; exit 64 ;;
     esac
 done
@@ -81,19 +78,11 @@ if [[ -n $expected_manifest ]]; then
         || { echo "trusted expected manifest is missing: $expected_manifest" >&2; exit 1; }
 fi
 
-# Where each file belongs, and how tight it must be, come from the contract --
-# never from the receipt. Those two fields decide which file is examined at all,
-# so a receipt that repoints one entry at a decoy would send the audit to read
-# pristine bytes and report health while the live file stayed edited. Digests
-# alone cannot catch that: the digest of a file nobody looked at is never wrong.
-[[ -n $contract ]] || { echo "checking installed state requires --contract; a receipt cannot say where its own files belong" >&2; exit 64; }
-[[ $contract == /* && -f $contract && ! -L $contract ]] \
-    || { echo "host-security contract is missing: $contract" >&2; exit 1; }
 
-python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" "${expected_manifest:-}" "$contract" <<'PY'
-import datetime, hashlib, json, os, pathlib, re, stat, sys
+python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" "${expected_manifest:-}" <<'PY'
+import datetime, hashlib, json, os, pathlib, re, shutil, stat, subprocess, sys, tempfile
 
-receipt_path, root_argument, unprivileged_root, lifecycle_path, expected_manifest_path, contract_path = sys.argv[1:]
+receipt_path, root_argument, unprivileged_root, lifecycle_path, expected_manifest_path = sys.argv[1:]
 unprivileged_root = unprivileged_root == '1'
 receipt = json.load(open(receipt_path, encoding='utf-8'))
 lifecycle = json.load(open(lifecycle_path, encoding='utf-8'))
@@ -155,15 +144,54 @@ if not unprivileged_root and info.st_uid != 0:
     raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
 
 
-contract = json.load(open(contract_path, encoding='utf-8'))
+# Where each file belongs, and how tight it must be, come from the contract --
+# never from the receipt. Those two fields decide which file is examined at all,
+# so a receipt that repointed one entry at a decoy would send this check to read
+# pristine bytes and report health while the live file stayed edited. Digests
+# alone cannot catch that: the digest of a file nobody looked at is never wrong.
+#
+# The contract is read from the materialization store rather than accepted as an
+# argument. An argument would just move the same problem one file over -- it
+# would live in the same trust domain as the files this audit polices, and a
+# supplied contract could retarget an entry or relax a mode just as a receipt
+# could.
+#
+# The store is bound by hashing to the payload digest the trusted manifest names.
+# That manifest does not list the contract among its files, but payload_sha256
+# spans every byte of the payload, so it covers the contract too. store_path
+# needs no separate trust: whatever it points at must reproduce that digest.
+store_payload = pathlib.Path(receipt['store_path'], 'payload')
+sealed_contract = store_payload / 'infra/contracts/host-security-contract.json'
+if not sealed_contract.is_file() or sealed_contract.is_symlink():
+    raise SystemExit(f'the materialization store carries no host-security contract: {sealed_contract}')
+
+trusted_payload = (expected if expected_manifest_path else receipt)['payload_sha256']
+with tempfile.TemporaryDirectory() as scratch:
+    # A materialized store is sealed read-only, so its modes no longer match the
+    # ones the packager hashed. Normalise a copy rather than weakening either end.
+    normalised = pathlib.Path(scratch, 'payload')
+    shutil.copytree(store_payload, normalised)
+    for path in normalised.rglob('*'):
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    normalised.chmod(0o755)
+    derived = subprocess.run(
+        ['tar', '--sort=name', '--mtime=UTC 1970-01-01', '--owner=0', '--group=0',
+         '--numeric-owner', '-C', str(normalised), '-cf', '-', '.'],
+        capture_output=True, check=True).stdout
+    if hashlib.sha256(derived).hexdigest() != trusted_payload:
+        raise SystemExit(
+            'the materialization store does not reproduce the trusted payload digest, '
+            'so the contract it carries is not the sealed one')
+
+contract = json.load(open(sealed_contract, encoding='utf-8'))
 declared = {item['id']: item for item in contract['files']}
-if set(declared) != {item['id'] for item in receipt['files']}:
-    raise SystemExit('receipt and contract do not describe the same set of host-security files')
 
 
 def resolve_targets(entry):
     """Absolute install targets for one file, as they exist on this host."""
-    entry = declared[entry['id']]
+    entry = declared.get(entry['id'])
+    if entry is None:
+        raise SystemExit('receipt and contract do not describe the same host-security files')
     if 'target' in entry:
         return [entry['target']]
     if entry.get('target_kind') == 'php-sapi-conf.d':
@@ -232,13 +260,13 @@ for lane, entry_id in (('production', 'apache-production-webadmin'), ('staging',
     text = installed_text.get(entry_id)
     if text is None:
         continue
-    declared = re.findall(r'^\s*php_value\s+session\.save_path\s+(\S+)\s*$', text, re.MULTILINE)
-    if not declared:
+    save_paths = re.findall(r'^\s*php_value\s+session\.save_path\s+(\S+)\s*$', text, re.MULTILINE)
+    if not save_paths:
         report(f'{lane} lane declares no session.save_path of its own')
-    elif len(set(declared)) > 1:
-        report(f'{lane} lane declares conflicting session.save_path values: {sorted(set(declared))}')
+    elif len(set(save_paths)) > 1:
+        report(f'{lane} lane declares conflicting session.save_path values: {sorted(set(save_paths))}')
     else:
-        store = declared[0]
+        store = save_paths[0]
         if store.rstrip('/') == '/var/lib/php/sessions':
             report(f'{lane} lane uses the shared default session store {store}')
         lane_paths[lane] = store
@@ -276,9 +304,9 @@ if text is not None:
     # Additions are a refresh and stay quiet. Wholesale substitution is not:
     # replacing Cloudflare's networks with somebody else's hands them the right
     # to speak for any visitor, in exactly the right shape and quantity.
-    declared = set(re.findall(r'^\s*set_real_ip_from\s+(\S+);', text, re.MULTILINE))
+    networks = set(re.findall(r'^\s*set_real_ip_from\s+(\S+);', text, re.MULTILINE))
     for network in validation['required_networks']:
-        if network not in declared:
+        if network not in networks:
             report(f'cloudflare real-IP: long-standing Cloudflare network {network} is absent; '
                    'this is a substituted list rather than a refresh')
             break

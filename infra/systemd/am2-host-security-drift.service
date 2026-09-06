@@ -19,7 +19,6 @@ Type=oneshot
 ExecStart=/etc/am2/host-security/bin/audit-host-security-drift.sh \
   --receipt /etc/am2/host-security/receipt.json \
   --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json \
-  --contract /etc/am2/host-security/contracts/host-security-contract.json \
   --lifecycle /etc/am2/host-security/contracts/cloudflare-realip-lifecycle.json
 # Silent when healthy, so any mail from this unit is news.
 StandardOutput=null

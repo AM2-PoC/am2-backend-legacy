@@ -24,7 +24,6 @@ Usage: audit-host-security-drift.sh
          [--unprivileged-root]          (the root is a fixture, not the host)
          [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
          [--expected-manifest /absolute/trusted-host-security-manifest.json]
-         [--contract /absolute/host-security-contract.json]
 USAGE
 }
 
@@ -33,7 +32,7 @@ forwarded=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
-        --root|--lifecycle|--expected-manifest|--contract)
+        --root|--lifecycle|--expected-manifest)
             [[ $# -ge 2 ]] || { usage; exit 64; }; forwarded+=("$1" "$2"); shift 2 ;;
         --unprivileged-root) forwarded+=("$1"); shift ;;
         *) usage; exit 64 ;;
