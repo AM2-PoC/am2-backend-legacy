@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic AM2 host-security drift audit
+
+[Timer]
+OnCalendar=daily
+# Spread across the hour so the audit never lands on the same second as a
+# deployment window.
+RandomizedDelaySec=30m
+Persistent=true
+Unit=am2-host-security-drift.service
+
+[Install]
+WantedBy=timers.target

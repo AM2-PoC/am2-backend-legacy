@@ -65,8 +65,12 @@ test('release boundary documents host security as a separate release lifecycle',
     'host configuration may be mistaken for runtime artifact content');
   assert.match(source, /source contract and deterministic bundle\/verifier[\s\S]*implemented/i,
     'current host-security completion boundary is not recorded');
-  assert.match(source, /installation, activation, receipt, and drift-audit work[\s\S]*not implemented/i,
+  assert.match(source, /root-owned materializer, protected receipt, installed-state verifier, and drift audit[\s\S]*implemented/i,
+    'the implemented host-security lifecycle is not recorded');
+  assert.match(source, /activation, reload, and rollback[\s\S]*not implemented/i,
     'unfinished host-security lifecycle is not recorded');
+  assert.match(source, /cloudflare-realip-lifecycle\.json/i,
+    'the separate externally-refreshed real-IP lifecycle is not recorded');
 });
 
 test('staging documentation uses artifact materialization rather than Git deployment', () => {
