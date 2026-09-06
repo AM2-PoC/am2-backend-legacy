@@ -190,39 +190,73 @@ if stat.S_IMODE(info.st_mode) & 0o022:
 # That manifest does not list the contract among its files, but payload_sha256
 # spans every byte of the payload, so it covers the contract too. store_path
 # needs no separate trust: whatever it points at must reproduce that digest.
-store_payload = pathlib.Path(receipt['store_path'], 'payload')
+store_base = pathlib.Path(receipt['store_path'])
+store_payload = store_base / 'payload'
 trusted_payload = (expected if expected_manifest_path else receipt)['payload_sha256']
-# Snapshot the store, then judge the snapshot -- and read the contract out of it.
-#
-# Checking the live store and then using it is two reads of something that can
-# change in between. Worse, normalising modes in place across a tree that still
-# contains symlinks would chmod their targets, so a link planted in the store
-# would let this check alter files elsewhere on the host. A checker that can
-# modify what it is checking is not a checker.
-#
-# So: copy once preserving symlinks, refuse any symlink found in the copy,
-# normalise modes only within the copy (a sealed store is read-only, so its
-# modes no longer match the ones the packager hashed), then hash the copy and
-# read the contract out of it. Whatever raced is captured and then rejected.
+# The materialized store is another trust boundary. On a real host it must be
+# root-owned and not writable outside root; otherwise an untrusted account can
+# race the audit before the digest comparison even starts.
+if real_host:
+    require_protected(store_base, 'the materialization store')
+
+# Copy one descriptor-opened object tree into private scratch, never traversing
+# a source pathname after it has been classified. shutil.copytree() is not a
+# safety primitive here: between its is_symlink() and copy2() calls a writer can
+# substitute a link and make a root verifier read or chmod its target.
+def snapshot_tree(source, destination):
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW
+
+    def copy_dir(source_fd, out):
+        for name in os.listdir(source_fd):
+            entry = os.stat(name, dir_fd=source_fd, follow_symlinks=False)
+            mode = entry.st_mode
+            if stat.S_ISLNK(mode):
+                raise SystemExit(f'the materialization store contains a symlink: {name}')
+            if stat.S_ISDIR(mode):
+                child_fd = os.open(name, directory_flags, dir_fd=source_fd)
+                try:
+                    opened = os.fstat(child_fd)
+                    if (opened.st_dev, opened.st_ino) != (entry.st_dev, entry.st_ino) or not stat.S_ISDIR(opened.st_mode):
+                        raise SystemExit(f'the materialization store changed while opening directory: {name}')
+                    child_out = out / name
+                    child_out.mkdir(mode=0o755)
+                    copy_dir(child_fd, child_out)
+                finally:
+                    os.close(child_fd)
+            elif stat.S_ISREG(mode):
+                file_fd = os.open(name, file_flags, dir_fd=source_fd)
+                try:
+                    opened = os.fstat(file_fd)
+                    if (opened.st_dev, opened.st_ino) != (entry.st_dev, entry.st_ino) or not stat.S_ISREG(opened.st_mode):
+                        raise SystemExit(f'the materialization store changed while opening file: {name}')
+                    output = out / name
+                    with open(output, 'xb') as stream:
+                        while chunk := os.read(file_fd, 1024 * 1024):
+                            stream.write(chunk)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    output.chmod(0o644)
+                finally:
+                    os.close(file_fd)
+            else:
+                raise SystemExit(f'the materialization store contains a non-regular entry: {name}')
+
+    root_fd = os.open(source, directory_flags)
+    try:
+        opened = os.fstat(root_fd)
+        named = os.lstat(source)
+        if (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino) or not stat.S_ISDIR(opened.st_mode):
+            raise SystemExit('the materialization store changed while opening payload')
+        destination.mkdir(mode=0o755)
+        copy_dir(root_fd, destination)
+    finally:
+        os.close(root_fd)
+
 scratch = tempfile.mkdtemp(prefix='.host-security-snapshot-')
 try:
     snapshot = pathlib.Path(scratch, 'payload')
-    shutil.copytree(store_payload, snapshot, symlinks=True)
-
-    for path in snapshot.rglob('*'):
-        if path.is_symlink():
-            raise SystemExit(
-                f'the materialization store contains a symlink: {path.relative_to(snapshot)}')
-
-    for path in snapshot.rglob('*'):
-        # Symlinks are already refused above; skipped here as well so that
-        # ordering is not the only thing preventing a chmod from following one
-        # out of the snapshot and altering a file elsewhere on the host.
-        if path.is_symlink():
-            continue
-        path.chmod(0o755 if path.is_dir() else 0o644)
-    snapshot.chmod(0o755)
-
+    snapshot_tree(store_payload, snapshot)
     derived = subprocess.run(
         ['tar', '--sort=name', '--mtime=UTC 1970-01-01', '--owner=0', '--group=0',
          '--numeric-owner', '-C', str(snapshot), '-cf', '-', '.'],
@@ -233,7 +267,7 @@ try:
             'so the contract it carries is not the sealed one')
 
     snapshot_contract = snapshot / 'infra/contracts/host-security-contract.json'
-    if not snapshot_contract.is_file():
+    if not snapshot_contract.is_file() or snapshot_contract.is_symlink():
         raise SystemExit('the materialization store carries no host-security contract')
     contract = json.load(open(snapshot_contract, encoding='utf-8'))
 finally:
@@ -298,6 +332,13 @@ for entry in receipt['files']:
                 report(f'{target}: owned by {info.st_uid}:{info.st_gid}, expected 0:0')
             with os.fdopen(os.dup(handle), 'rb') as stream:
                 body = stream.read()
+            # Detect a replace that occurred while the descriptor was being
+            # hashed. The report describes the exact object opened above; a
+            # different object at the pathname cannot inherit that clean bill.
+            current = os.stat(path, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino) or not stat.S_ISREG(current.st_mode):
+                report(f'{target}: changed while being verified')
+                continue
         finally:
             os.close(handle)
         installed_text[entry['id']] = body.decode('utf-8', 'replace')
@@ -340,24 +381,43 @@ if len(lane_paths) == 2:
     # staging session came to authenticate in production. Comparing the declared
     # strings only catches a lane that was edited carelessly, not one that was
     # redirected.
-    def identity(store):
+    def identity(lane, store):
         path = root / store.lstrip('/')
-        resolved = os.path.realpath(path)
         try:
-            info = os.stat(path)
-            return resolved, (info.st_dev, info.st_ino)
+            # lstat first: a symlinked session root is an alias that can change
+            # after configuration review, so it is not an acceptable lane store.
+            listed = path.lstat()
         except OSError:
-            return resolved, None
+            report(f'{lane} session store is missing: {store}')
+            return None, None
+        if stat.S_ISLNK(listed.st_mode):
+            report(f'{lane} session store is a symlink: {store}')
+            return None, None
+        if not stat.S_ISDIR(listed.st_mode):
+            report(f'{lane} session store is not a directory: {store}')
+            return None, None
+        mode = stat.S_IMODE(listed.st_mode)
+        # PHP's documented lane stores are root:www-data 1730. The sticky bit
+        # protects one session file from another PHP worker; group-only write
+        # lets the SAPI create files without making the directory public.
+        if mode != 0o1730:
+            report(f'{lane} session store mode {mode:04o}, expected 1730: {store}')
+        if not unprivileged_root and (listed.st_uid != 0 or listed.st_gid != 33):
+            report(f'{lane} session store owned by {listed.st_uid}:{listed.st_gid}, expected 0:33: {store}')
+        resolved = os.path.realpath(path)
+        return resolved, (listed.st_dev, listed.st_ino)
 
-    production_path, production_node = identity(lane_paths['production'])
-    staging_path, staging_node = identity(lane_paths['staging'])
-    if lane_paths['production'] == lane_paths['staging']:
+    production_path, production_node = identity('production', lane_paths['production'])
+    staging_path, staging_node = identity('staging', lane_paths['staging'])
+    if production_path is None or staging_path is None:
+        pass
+    elif lane_paths['production'] == lane_paths['staging']:
         report(f"both lanes declare one session store ({lane_paths['production']}); "
                'a staging session would authenticate in production')
     elif production_path == staging_path:
         report(f"both lanes resolve to one session store ({production_path}); "
                'a staging session would authenticate in production')
-    elif production_node is not None and production_node == staging_node:
+    elif production_node == staging_node:
         report(f"both lanes reach the same directory ({production_node[0]}:{production_node[1]}); "
                'a staging session would authenticate in production')
 

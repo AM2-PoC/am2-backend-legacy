@@ -85,6 +85,22 @@ elif [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# The expected manifest is the independent authority that names the only
+# archive/payload/file digests this materializer may accept. Do not snapshot a
+# writable attacker input and call the private copy trusted.
+[[ -f $expected_manifest && ! -L $expected_manifest ]] \
+    || { echo "trusted expected manifest is missing or not a regular file" >&2; exit 1; }
+manifest_mode=$(stat -c '%a' -- "$expected_manifest")
+manifest_uid=$(stat -c '%u' -- "$expected_manifest")
+if (( (8#$manifest_mode) & 2 )); then
+    echo "trusted expected manifest is world-writable" >&2
+    exit 1
+fi
+if (( ! unprivileged )) && { (( (8#$manifest_mode) & 18 )) || [[ $manifest_uid != 0 ]]; }; then
+    echo "trusted expected manifest is not root-protected" >&2
+    exit 1
+fi
+
 "$verifier" \
     --archive "$archive" \
     --manifest "$manifest" \

@@ -92,6 +92,11 @@ function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {
       chmodSync(destination, 0o644);
     }
   }
+  for (const sessionPath of ['/var/lib/php/sessions/am2', '/var/lib/php/sessions/am2-staging']) {
+    const destination = join(fakeRoot, sessionPath);
+    mkdirSync(destination, { recursive: true });
+    chmodSync(destination, 0o1730);
+  }
   mutate(fakeRoot);
   return fakeRoot;
 }
@@ -217,6 +222,23 @@ test('host-security materialization refuses an unprivileged run into system path
       assert.match(run.stderr, /system|privileg/i);
       assert.ok(!existsSync(forbidden), `materializer created a system path: ${forbidden}`);
     }
+  } finally {
+    discard(base);
+  }
+});
+
+test('host-security materialization refuses a writable trust anchor', () => {
+  // The expected manifest supplies every digest the materializer accepts. A
+  // writable copy is not independent evidence; it is attacker input wearing a
+  // reassuring filename. This rule applies to fixtures as well, so a test run
+  // cannot accidentally normalize unsafe trust-anchor permissions.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-materializer-anchorperm-'));
+  try {
+    const bundle = sealedBundle(base);
+    chmodSync(bundle.expected, 0o666);
+    const { run } = materialize(bundle, base, ['--unprivileged-store']);
+    assert.notEqual(run.status, 0, 'materializer accepted a world-writable expected manifest');
+    assert.match(run.stderr, /expected manifest.*writable|trust anchor.*writable/i);
   } finally {
     discard(base);
   }
@@ -896,7 +918,7 @@ test('lane session stores are compared by identity, not by spelling', () => {
       // Both lanes keep their own spelling; staging's is a symlink to production's.
       const production = join(where, '/var/lib/php/sessions/am2');
       const staging = join(where, '/var/lib/php/sessions/am2-staging');
-      mkdirSync(production, { recursive: true });
+      rmSync(staging, { recursive: true });
       symlinkSync(production, staging);
     });
 
@@ -904,6 +926,32 @@ test('lane session stores are compared by identity, not by spelling', () => {
     assert.notEqual(run.status, 0,
       'verifier accepted two lanes whose session stores resolve to one directory');
     assert.match(run.stderr, /session/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('lane session stores must be real private directories', () => {
+  // Two distinct strings are not enough: each configured store must exist and
+  // retain the sticky, lane-private permissions expected by the Apache vhosts.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-session-metadata-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+
+    const missing = installFromReceipt(receiptData, join(base, 'root-missing'), (root) => {
+      rmSync(join(root, '/var/lib/php/sessions/am2-staging'), { recursive: true });
+    });
+    const missingRun = verifyInstalled(receipt, missing, ['--expected-manifest', bundle.expected]);
+    assert.notEqual(missingRun.status, 0, 'verifier accepted a missing staging session directory');
+    assert.match(missingRun.stderr, /session.*missing|missing.*session/i);
+
+    const loose = installFromReceipt(receiptData, join(base, 'root-loose'), (root) => {
+      chmodSync(join(root, '/var/lib/php/sessions/am2'), 0o777);
+    });
+    const looseRun = verifyInstalled(receipt, loose, ['--expected-manifest', bundle.expected]);
+    assert.notEqual(looseRun.status, 0, 'verifier accepted a world-writable production session directory');
+    assert.match(looseRun.stderr, /session.*mode|mode.*session/i);
   } finally {
     discard(base);
   }

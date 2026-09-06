@@ -56,6 +56,11 @@ function installFromReceipt(receiptData, fakeRoot) {
       chmodSync(destination, 0o644);
     }
   }
+  for (const sessionPath of ['/var/lib/php/sessions/am2', '/var/lib/php/sessions/am2-staging']) {
+    const destination = join(fakeRoot, sessionPath);
+    mkdirSync(destination, { recursive: true });
+    chmodSync(destination, 0o1730);
+  }
   return fakeRoot;
 }
 
