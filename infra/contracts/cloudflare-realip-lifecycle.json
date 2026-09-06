@@ -2,7 +2,7 @@
   "schema_version": 1,
   "application": "am2-cloudflare-realip",
   "source_binding": "externally-refreshed",
-  "description": "Cloudflare publishes these ranges on its own cadence, so the bytes cannot be pinned to one reviewed application source SHA the way the rest of the host-security contract is. Binding them to a byte-identical app release would turn every legitimate Cloudflare change into a false alarm, and would make refreshing the list wait on an unrelated code review. This lifecycle governs the same file by shape and provenance instead.",
+  "description": "Cloudflare publishes these ranges on its own cadence, so they cannot be pinned to a reviewed backend application release: refreshing the list must not wait on an unrelated code review. What is separate is the cadence and the approval path, not the integrity. A refresh regenerates the file and produces a new host-security bundle and receipt; installed bytes are still verified against that receipt, because exempting them made this the one file an attacker could edit with the audit reporting health, and a single added range grants an address the right to speak for any visitor. The checks below validate a refresh and bound its age.",
   "host_security_file_id": "nginx-cloudflare-realip",
   "generator": "infra/scripts/refresh-cloudflare-ranges.sh",
   "generated_file": "infra/nginx/am2-cloudflare-realip.conf",
@@ -42,5 +42,5 @@
     "warn_after_days": 30,
     "fail_after_days": 90
   },
-  "drift_policy": "shape-and-provenance"
+  "drift_policy": "byte-equality-plus-shape-and-freshness"
 }

@@ -40,19 +40,29 @@ After an approved activation has put the files in place:
 
 ```sh
 sudo infra/scripts/verify-host-security-installed.sh \
-  --receipt /etc/am2/host-security/receipt.json
+  --receipt /etc/am2/host-security/receipt.json \
+  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json
 ```
 
-It checks each target's bytes, owner, mode, and file type; that each Apache lane
-declares its own `session.save_path` and that the two differ; and that the
-Cloudflare real-IP data still has a plausible shape and a generation date inside
-the stale-data policy. It prints findings and exits non-zero; it never repairs.
+The trusted manifest is required on a real host, and must be the copy obtained
+through a channel independent of the bundle. Without it the check reduces to
+asking an unsigned file on the host whether that host is fine — the receipt's
+`privileged` flag and its digests are all self-declared, so the manifest is what
+makes any of it evidence.
+
+It checks each target's bytes, owner, mode, and file type; that the receipt
+itself is root-owned and no wider than root; that each Apache lane declares its
+own `session.save_path` and that the two differ; and that the Cloudflare real-IP
+data has a plausible shape and a generation date inside the stale-data policy.
+It prints findings and exits non-zero; it never repairs.
 
 ## Audit on a timer
 
 `infra/systemd/am2-host-security-drift.{service,timer}` run the same checks
-daily. They print nothing when the host is healthy, so any mail from the unit is
-news. Install and enable them as a separately approved host change.
+daily, passing the same trusted manifest. They print nothing when the host is
+healthy, so any mail from the unit is news. Install and enable them as a
+separately approved host change — the manifest has to be in place first, or
+every run fails and the silence-means-healthy contract inverts into daily noise.
 
 ## When it refuses
 
@@ -69,3 +79,10 @@ production. Fix before activating anything else.
 **`cloudflare real-IP: generated N days ago`** — run
 `infra/scripts/refresh-cloudflare-ranges.sh` and activate the result through the
 same approved path. This is a stale-data finding, not tampering.
+
+**`installed bytes differ from the receipt` on the real-IP file** — a refresh
+was applied to the host directly. That data is not exempt from byte equality: a
+single added `set_real_ip_from` line lets that address set `CF-Connecting-IP`
+and present as any client, so a refresh must go through a new bundle and receipt
+like everything else. Its separate lifecycle is a separate cadence and approval
+path, not an exemption from integrity.

@@ -21,8 +21,11 @@ set -euo pipefail
 #     session stores. When they shared one, a staging session authenticated in
 #     production, which is privilege escalation rather than untidiness.
 #   * externally refreshed data -- Cloudflare's real-IP ranges are refreshed on
-#     Cloudflare's cadence, so they are judged by shape and provenance instead
-#     of byte equality. See infra/contracts/cloudflare-realip-lifecycle.json.
+#     Cloudflare's cadence, so they carry extra checks on shape and age. Those
+#     are in addition to byte equality, never instead of it: exempting them made
+#     that file the one an attacker could edit with the audit still reporting
+#     health, and a single added range grants an address the right to speak for
+#     any visitor. See infra/contracts/cloudflare-realip-lifecycle.json.
 
 usage() {
     cat >&2 <<'USAGE'
@@ -95,9 +98,13 @@ if not receipt.get('privileged') and not unprivileged_root:
     raise SystemExit(
         'receipt records an unprivileged materialization; it is not evidence about this host. '
         'Pass --unprivileged-root to check it as a fixture.')
-if str(root) != '/' and not unprivileged_root:
+# Resolved before it is judged. `//`, `/tmp/../` and `/.` all reach the real
+# host through the kernel while a string compare reads them as a fixture, which
+# would skip every check that exists because the host is real.
+resolved_root = os.path.realpath(str(root))
+if resolved_root != '/' and not unprivileged_root:
     raise SystemExit('a root other than / is a fixture; pass --unprivileged-root to check it')
-if str(root) == '/' and unprivileged_root:
+if resolved_root == '/' and unprivileged_root:
     raise SystemExit('--unprivileged-root cannot be used against the real host root')
 
 if receipt.get('application') != 'am2-host-security-materialization':
@@ -121,14 +128,16 @@ if expected_manifest_path:
             if trusted_digests.get(identifier) != receipt_digests.get(identifier))
         raise SystemExit(f'receipt file digests do not match the trusted manifest: {differing[:3]}')
 
-# On a real host the receipt must also be protected, or anyone who can edit it
-# decides what "verified" means.
-if not unprivileged_root:
-    info = pathlib.Path(receipt_path).lstat()
-    if info.st_uid != 0:
-        raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
-    if stat.S_IMODE(info.st_mode) & 0o022:
-        raise SystemExit(f'receipt is writable beyond root (mode {stat.S_IMODE(info.st_mode):04o})')
+# The receipt must be protected, or anyone who can edit it decides what
+# "verified" means. The permission check applies everywhere -- a receipt the
+# world can write is wrong in any context, and only checking it on the real host
+# leaves the rule itself untested. Ownership is root-specific and so is checked
+# only where root is meaningful.
+info = pathlib.Path(receipt_path).lstat()
+if stat.S_IMODE(info.st_mode) & 0o022:
+    raise SystemExit(f'receipt is writable beyond its owner (mode {stat.S_IMODE(info.st_mode):04o})')
+if not unprivileged_root and info.st_uid != 0:
+    raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
 
 
 def resolve_targets(entry):
@@ -178,9 +187,19 @@ for entry in receipt['files']:
 
         body = path.read_bytes()
         installed_text[entry['id']] = body.decode('utf-8', 'replace')
-        if entry['id'] == governed_id:
-            # Externally refreshed: judged below by shape and provenance.
-            continue
+        # Every file, including the externally refreshed one.
+        #
+        # Exempting the real-IP data from byte equality made it the single file
+        # an attacker could edit with the audit still reporting health -- and one
+        # appended `set_real_ip_from` line grants an address the right to set
+        # CF-Connecting-IP, so it can present as any client. Bounding wholesale
+        # substitution did not help, because addition is the easier attack.
+        #
+        # A genuine Cloudflare refresh regenerates this file, which produces a
+        # new bundle and a new receipt. That is what keeps its lifecycle separate
+        # from the backend release: a separate cadence and approval path, not an
+        # exemption from integrity. The shape and freshness checks below stay, to
+        # catch a bad refresh rather than to substitute for verifying bytes.
         if hashlib.sha256(body).hexdigest() != entry['sha256']:
             report(f'{target}: installed bytes differ from the receipt')
 

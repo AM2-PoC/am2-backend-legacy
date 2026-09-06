@@ -118,19 +118,6 @@ function discard(base) {
   rmSync(base, { recursive: true, force: true });
 }
 
-/**
- * Stamp today's date on the externally refreshed Cloudflare file.
- *
- * Its staleness is judged against a policy, so a fixture that wants a healthy
- * host must say when the data was generated instead of inheriting whatever date
- * the committed copy happens to carry -- otherwise the suite starts failing on
- * a calendar date for reasons that have nothing to do with the code.
- */
-function freshenRealIp(root) {
-  const target = join(root, '/etc/nginx/snippets/am2-cloudflare-realip.conf');
-  writeFileSync(target, readFileSync(target, 'utf8')
-    .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${new Date().toISOString().slice(0, 10)}`));
-}
 
 test('host-security materialization is digest-addressed, immutable, and needs no source checkout', () => {
   assert.ok(existsSync(materializerPath), 'missing host-security materializer');
@@ -302,7 +289,7 @@ test('installed-state verifier checks target bytes, ownership, mode and file typ
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
 
-    const good = installFromReceipt(receiptData, join(base, 'root-good'), freshenRealIp);
+    const good = installFromReceipt(receiptData, join(base, 'root-good'));
     const clean = verifyInstalled(receipt, good);
     assert.equal(clean.status, 0, `${clean.stdout}\n${clean.stderr}`);
 
@@ -381,7 +368,7 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
-    const root = installFromReceipt(receiptData, join(base, 'root'), freshenRealIp);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
 
     // Each guard is exercised on its own. A fixture that trips both at once
     // only proves at least one exists, and either could then be deleted with
@@ -401,6 +388,7 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     const claimsPrivileged = join(base, 'claims-privileged.json');
     writeFileSync(claimsPrivileged,
       JSON.stringify({ ...JSON.parse(readFileSync(receipt, 'utf8')), privileged: true }));
+    chmodSync(claimsPrivileged, 0o644);
     const fixtureRoot = spawnSync('bash', [installedVerifierPath,
       '--receipt', claimsPrivileged, '--root', root,
       '--expected-manifest', bundle.expected], { encoding: 'utf8' });
@@ -425,7 +413,7 @@ test('drift audit is quiet on success and speaks only on actionable drift', () =
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
 
-    const good = installFromReceipt(receiptData, join(base, 'root-good'), freshenRealIp);
+    const good = installFromReceipt(receiptData, join(base, 'root-good'));
     const quiet = auditDrift(receipt, good);
     assert.equal(quiet.status, 0, `${quiet.stdout}\n${quiet.stderr}`);
     assert.equal(quiet.stdout, '', 'a healthy drift audit must print nothing');
@@ -564,7 +552,7 @@ test('installed-state verifier binds a receipt to the trusted manifest rather th
   try {
     const bundle = sealedBundle(base);
     const { receipt, receiptData } = materializedReceipt(bundle, base);
-    const root = installFromReceipt(receiptData, join(base, 'root'), freshenRealIp);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
 
     const honest = verifyInstalled(receipt, root, ['--expected-manifest', bundle.expected]);
     assert.equal(honest.status, 0, `${honest.stdout}\n${honest.stderr}`);
@@ -581,12 +569,87 @@ test('installed-state verifier binds a receipt to the trusted manifest rather th
       : file);
     forged.privileged = true;
     writeFileSync(forgedPath, JSON.stringify(forged));
+    chmodSync(forgedPath, 0o644);
 
     const run = spawnSync('bash', [installedVerifierPath,
       '--receipt', forgedPath, '--root', tampered, '--unprivileged-root',
       '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'verifier believed a receipt whose digests were rewritten');
     assert.match(run.stderr, /trusted|manifest/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('the committed Cloudflare real-IP data has not gone stale', () => {
+  // Named on purpose. Freshness is a real finding, and when this list ages out
+  // the failure should say so directly rather than surfacing as four unrelated
+  // host-security tests going red on a date nobody chose.
+  const lifecycle = JSON.parse(readFileSync(resolve(ROOT, 'infra/contracts/cloudflare-realip-lifecycle.json'), 'utf8'));
+  const conf = readFileSync(resolve(ROOT, 'infra/nginx/am2-cloudflare-realip.conf'), 'utf8');
+  const marker = conf.match(/# Regenerated (\d{4}-\d{2}-\d{2})/);
+  assert.ok(marker, 'the real-IP data carries no generation marker');
+  const age = Math.floor((Date.now() - Date.parse(`${marker[1]}T00:00:00Z`)) / 86400000);
+  assert.ok(age <= lifecycle.staleness.warn_after_days,
+    `Cloudflare real-IP data was generated ${age} days ago, past the ` +
+    `${lifecycle.staleness.warn_after_days}-day warning threshold. ` +
+    'Run infra/scripts/refresh-cloudflare-ranges.sh and commit the result.');
+});
+
+
+test('a published materialization is verified whichever path produced it', () => {
+  // The loser of a publish race used to accept whatever won it on the strength
+  // of the directory existing. The comparison is now unconditional, so there is
+  // no branch that reaches a receipt without it -- including the branch a race
+  // is needed to reach, which is why this asserts the structure rather than
+  // trying to win a race reliably.
+  const script = readFileSync(materializerPath, 'utf8');
+  const call = 'compare_against_staged "$destination/payload"';
+  assert.equal(script.split(call).length - 1, 1,
+    'the store comparison is branch-specific; some path can reach a receipt without it');
+  assert.ok(script.indexOf(call) > script.lastIndexOf('mv -T -n'),
+    'the store comparison does not run after publishing');
+  assert.ok(script.indexOf(call) < script.indexOf('"$receipt" "$unprivileged"'),
+    'the receipt is written before the store is compared');
+});
+
+test('a root that resolves to the real host is never treated as a fixture', () => {
+  // `//`, `/tmp/../` and `/.` all reach the real host through the kernel while a
+  // string compare reads them as a fixture -- which would skip the trusted
+  // manifest requirement, the receipt protection checks and the root-ownership
+  // check, then print a clean bill of health for the live host.
+  //
+  // Asserted on the refusal message rather than the exit status, because a
+  // build that got this wrong would also exit non-zero, for the wrong reason.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-rootresolve-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt } = materializedReceipt(bundle, base);
+    for (const disguised of ['//', '/tmp/../', '/.']) {
+      const run = spawnSync('bash', [installedVerifierPath,
+        '--receipt', receipt, '--root', disguised, '--unprivileged-root'], { encoding: 'utf8' });
+      assert.match(run.stderr, /cannot be used against the real host root/,
+        `${disguised} was not recognised as the real host root`);
+    }
+  } finally {
+    discard(base);
+  }
+});
+
+test('a receipt the world can write is refused', () => {
+  // A receipt is the thing everything downstream trusts. If anyone can edit it,
+  // they decide what "verified" means.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-receiptperm-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
+    assert.equal(verifyInstalled(receipt, root).status, 0, 'baseline receipt should verify');
+
+    chmodSync(receipt, 0o666);
+    const run = verifyInstalled(receipt, root);
+    assert.notEqual(run.status, 0, 'verifier accepted a world-writable receipt');
+    assert.match(run.stderr, /writable beyond its owner/i);
   } finally {
     discard(base);
   }

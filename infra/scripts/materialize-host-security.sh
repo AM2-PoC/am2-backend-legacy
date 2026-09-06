@@ -161,18 +161,13 @@ PY
 
 contract=$staged/infra/contracts/host-security-contract.json
 
-if [[ -e $destination ]]; then
-    # Same digest, already materialized. Prove the bytes on disk are still the
-    # bytes just authenticated before treating this as a no-op: a store somebody
-    # edited in place would otherwise be silently reused forever.
-    #
-    # Compared against the freshly extracted tree rather than against the
-    # manifest alone, because the manifest does not name the contract, and the
-    # contract is what decides where every file installs. Compared by content
-    # rather than by re-deriving the payload digest, because a materialized
-    # store is sealed read-only and a tar digest would then disagree with the
-    # packager's over permissions alone.
-    python3 - "$staged" "$destination/payload" <<'PY' || exit 1
+# Prove a materialization already on disk is still the tree just authenticated.
+#
+# Called both when the digest was already present and when another process wins
+# the publish race: "the digest matches, so the bytes must" is an assumption, and
+# assuming it is how unverified bytes end up sealed under an authenticated name.
+compare_against_staged() {
+    python3 - "$staged" "$1" <<'PY' || exit 1
 import hashlib, pathlib, sys
 staged_root, store_root = (pathlib.Path(argument) for argument in sys.argv[1:])
 
@@ -201,6 +196,10 @@ if changed:
     raise SystemExit(f'existing materialization differs from the authenticated payload at {changed[:3]}; '
                      'refusing to reuse or overwrite it')
 PY
+}
+
+if [[ -e $destination ]]; then
+    : # already materialized; verified unconditionally below
 else
     mkdir -p "$store_root"
     staging_dir=$store_root/.incoming-$payload_sha256.$$
@@ -211,19 +210,30 @@ else
     find "$staging_dir" -type f -exec chmod 0444 {} +
     if ! mv -T -n -- "$staging_dir" "$destination" 2>/dev/null || [[ -e $staging_dir ]]; then
         # Another materialization of the same digest won the race; drop ours and
-        # let the existing one stand, since both carry identical bytes.
+        # let the existing one stand.
         chmod -R u+w "$staging_dir" 2>/dev/null || true
         rm -rf -- "$staging_dir"
         [[ -d $destination ]] || { echo "could not publish materialization at $destination" >&2; exit 1; }
     fi
 fi
 
-python3 - "$manifest" "$destination" "$receipt" "$unprivileged" <<'PY'
+# Unconditionally, whichever path produced it.
+#
+# There is no route to a receipt that skips this. Branching the check -- "the
+# digest was already there" versus "somebody else published first" -- is how a
+# window opens: the loser of a publish race used to accept whatever won it on
+# the strength of the directory existing, and "same digest, so same bytes" is an
+# assumption, not a check.
+compare_against_staged "$destination/payload" || exit 1
+
+python3 - "$manifest" "$destination" "$receipt" "$unprivileged" "$staged" <<'PY'
 import json, os, pathlib, re, sys, tempfile, time
 
-manifest_path, destination, receipt_path, unprivileged = sys.argv[1:]
+manifest_path, destination, receipt_path, unprivileged, staged = sys.argv[1:]
 manifest = json.load(open(manifest_path, encoding='utf-8'))
-contract = json.load(open(pathlib.Path(destination, 'payload/infra/contracts/host-security-contract.json'), encoding='utf-8'))
+# Read from the tree this run authenticated, not from the store: the store is
+# only known-good because it was just compared against exactly this tree.
+contract = json.load(open(pathlib.Path(staged, 'infra/contracts/host-security-contract.json'), encoding='utf-8'))
 
 by_origin = {item['source']: item for item in contract['files']}
 files = []

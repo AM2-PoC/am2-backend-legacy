@@ -15,9 +15,17 @@ test('the host-security drift audit runs periodically and only ever reads', () =
   // Directives only: the unit is allowed to explain in comments what it
   // deliberately does not do.
   const directives = service.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+  // systemd continues a directive across lines with a trailing backslash.
+  const joined = directives.replace(/\\\n\s*/g, ' ');
 
-  assert.match(service, /^ExecStart=.*audit-host-security-drift\.sh .*--receipt /m,
+  assert.match(joined, /^ExecStart=.*audit-host-security-drift\.sh .*--receipt /m,
     'the service unit does not run the drift audit against a receipt');
+
+  // Without the independently obtained manifest the audit refuses on a real
+  // host, so a timer that omits it fails every day and inverts the whole
+  // "silence means healthy" contract into permanent noise.
+  assert.match(joined, /^ExecStart=.*--expected-manifest \/\S+/m,
+    'the timer would run the audit with nothing independent to check against');
   assert.match(service, /^Type=oneshot$/m);
 
   // Quiet on success: a timer that mails something every day trains everybody

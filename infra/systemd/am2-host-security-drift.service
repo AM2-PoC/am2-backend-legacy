@@ -9,7 +9,12 @@ Type=oneshot
 # reloads anything -- fixing drift is a decision a human makes, and an auditor
 # that can also change things is one whose findings nobody has to take
 # seriously.
-ExecStart=/etc/am2/host-security/bin/audit-host-security-drift.sh --receipt /etc/am2/host-security/receipt.json
+# The trusted manifest is obtained through a channel independent of the host and
+# placed here by the same approved change that installs the receipt. Without it
+# the audit would be asking the host to vouch for itself.
+ExecStart=/etc/am2/host-security/bin/audit-host-security-drift.sh \
+  --receipt /etc/am2/host-security/receipt.json \
+  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json
 # Silent when healthy, so any mail from this unit is news.
 StandardOutput=null
 StandardError=journal

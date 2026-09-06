@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -33,7 +34,7 @@ function sealedReceipt(base) {
     '--receipt', receipt,
     '--unprivileged-store'], { encoding: 'utf8' });
   assert.equal(materialize.status, 0, `${materialize.stdout}\n${materialize.stderr}`);
-  return { receipt, receiptData: JSON.parse(readFileSync(receipt, 'utf8')) };
+  return { receipt, expected, receiptData: JSON.parse(readFileSync(receipt, 'utf8')) };
 }
 
 function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {
@@ -82,7 +83,7 @@ test('Cloudflare real-IP data has a lifecycle of its own, not the app release li
 
   // Refreshing must stay validated: the stale-data and shape policy is part of
   // the contract, not folk knowledge held by whoever runs the refresher.
-  assert.equal(lifecycle.drift_policy, 'shape-and-provenance');
+  assert.equal(lifecycle.drift_policy, 'byte-equality-plus-shape-and-freshness');
   assert.ok(Number.isInteger(lifecycle.staleness.warn_after_days));
   assert.ok(Number.isInteger(lifecycle.staleness.fail_after_days));
   assert.ok(lifecycle.staleness.fail_after_days > lifecycle.staleness.warn_after_days);
@@ -111,119 +112,111 @@ test('Cloudflare real-IP data has a lifecycle of its own, not the app release li
   }
 });
 
-test('an externally refreshed real-IP file is audited by shape, not by app-release bytes', () => {
+test('externally refreshed real-IP bytes are still verified against the receipt', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-cloudflare-lifecycle-'));
   try {
     const lifecycle = JSON.parse(readFileSync(lifecyclePath, 'utf8'));
-    const { receipt, receiptData } = sealedReceipt(base);
+    const { receipt, receiptData, expected } = sealedReceipt(base);
     const governed = receiptData.files.find((file) => file.id === lifecycle.host_security_file_id);
     assert.ok(governed, 'receipt does not carry the governed real-IP file');
 
-    // A legitimate refresh: same shape, newer date, an added Cloudflare range.
-    // Byte equality with the reviewed source SHA is exactly what must NOT be
-    // demanded here, or the next Cloudflare change becomes a false alarm.
-    const refreshed = installFromReceipt(receiptData, join(base, 'root-refreshed'), (root) => {
-      const target = join(root, governed.target);
-      const today = new Date().toISOString().slice(0, 10);
-      const body = readFileSync(target, 'utf8')
-        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`)
-        .replace('real_ip_header CF-Connecting-IP;',
-          'set_real_ip_from 203.0.113.0/24;\n\nreal_ip_header CF-Connecting-IP;');
-      writeFileSync(target, body);
-    });
-    const refreshedRun = spawnSync('bash', [driftAuditPath,
-      '--receipt', receipt, '--root', refreshed, '--unprivileged-root'], { encoding: 'utf8' });
-    assert.equal(refreshedRun.status, 0,
-      `a valid Cloudflare refresh was reported as drift\n${refreshedRun.stdout}\n${refreshedRun.stderr}`);
-    assert.equal(refreshedRun.stderr, '', 'a valid Cloudflare refresh must stay quiet');
+    const audit = (root) => spawnSync('bash', [driftAuditPath,
+      '--receipt', receipt, '--root', root, '--unprivileged-root',
+      '--expected-manifest', expected], { encoding: 'utf8' });
 
-    // A gutted list is not a refresh. This is the dangerous case: nginx would
-    // stop trusting most of Cloudflare and every visitor address would quietly
-    // become the edge again.
-    const gutted = installFromReceipt(receiptData, join(base, 'root-gutted'), (root) => {
+    // Bytes as issued: quiet.
+    const clean = audit(installFromReceipt(receiptData, join(base, 'root-clean')));
+    assert.equal(clean.status, 0, `${clean.stdout}\n${clean.stderr}`);
+    assert.equal(clean.stderr, '', 'a healthy host must stay quiet');
+
+    // One appended range is the whole attack: that address may then set
+    // CF-Connecting-IP and present as any client. Exempting this file from byte
+    // equality made it the single edit an attacker could make with the audit
+    // still reporting health, so it is no longer exempt.
+    const appended = installFromReceipt(receiptData, join(base, 'root-appended'), (root) => {
+      const target = join(root, governed.target);
+      writeFileSync(target, `${readFileSync(target, 'utf8')}set_real_ip_from 203.0.113.7/32;\n`);
+    });
+    const appendedRun = audit(appended);
+    assert.notEqual(appendedRun.status, 0, 'audit accepted an added trusted proxy range');
+    assert.match(appendedRun.stderr, /differ from the receipt/i);
+
+    // Wholesale substitution, in the right shape and quantity, likewise.
+    const substituted = installFromReceipt(receiptData, join(base, 'root-substituted'), (root) => {
+      const v4 = Array.from({ length: 12 }, (_, i) => `set_real_ip_from 10.0.${i}.0/24;`).join('\n');
+      const v6 = Array.from({ length: 6 }, (_, i) => `set_real_ip_from 2001:db8:${i}::/32;`).join('\n');
       writeFileSync(join(root, governed.target),
-        '# Regenerated 2026-09-05\n\nset_real_ip_from 103.21.244.0/22;\n\nreal_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n');
+        `# Regenerated 2026-09-05\n\n${v4}\n${v6}\n\nreal_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n`);
     });
-    const guttedRun = spawnSync('bash', [driftAuditPath,
-      '--receipt', receipt, '--root', gutted, '--unprivileged-root'], { encoding: 'utf8' });
-    assert.notEqual(guttedRun.status, 0, 'drift audit accepted a truncated Cloudflare range list');
-    assert.match(guttedRun.stderr, /range|cloudflare/i);
-
-    // Losing the header directive silently disables real-IP resolution.
-    const headerless = installFromReceipt(receiptData, join(base, 'root-headerless'), (root) => {
-      const target = join(root, governed.target);
-      writeFileSync(target, readFileSync(target, 'utf8')
-        .replace('real_ip_header CF-Connecting-IP;', ''));
-    });
-    const headerlessRun = spawnSync('bash', [driftAuditPath,
-      '--receipt', receipt, '--root', headerless, '--unprivileged-root'], { encoding: 'utf8' });
-    assert.notEqual(headerlessRun.status, 0, 'drift audit accepted real-IP config with no header directive');
-
-    // Stale beyond policy is drift even when the shape is perfect.
-    const stale = installFromReceipt(receiptData, join(base, 'root-stale'), (root) => {
-      const target = join(root, governed.target);
-      const old = new Date(Date.now() - (lifecycle.staleness.fail_after_days + 30) * 86400000)
-        .toISOString().slice(0, 10);
-      writeFileSync(target, readFileSync(target, 'utf8')
-        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${old}`));
-    });
-    const staleRun = spawnSync('bash', [driftAuditPath,
-      '--receipt', receipt, '--root', stale, '--unprivileged-root'], { encoding: 'utf8' });
-    assert.notEqual(staleRun.status, 0, 'drift audit accepted real-IP data past its stale-data policy');
-    assert.match(staleRun.stderr, /stale|old/i);
+    const substitutedRun = audit(substituted);
+    assert.notEqual(substitutedRun.status, 0, 'audit accepted attacker networks as Cloudflare ranges');
   } finally {
     discard(base);
   }
 });
 
-test('the real-IP exemption cannot smuggle arbitrary nginx configuration', () => {
-  // Skipping byte equality must not become "anything goes". This snippet is
-  // included into nginx server context, so an injected directive here is an
-  // nginx directive on a live vhost, and lower-bound counts alone would let it
-  // through while the audit kept reporting health.
-  const base = mkdtempSync(join(tmpdir(), 'am2-cloudflare-injection-'));
+test('a refresh is validated for shape and bounded for age', () => {
+  // Byte equality catches tampering with what was issued. These checks are
+  // about the refresh itself: a truncated or malformed generated file, and data
+  // that has simply gone too old to still describe Cloudflare's network.
+  const base = mkdtempSync(join(tmpdir(), 'am2-cloudflare-refresh-'));
   try {
     const lifecycle = JSON.parse(readFileSync(lifecyclePath, 'utf8'));
-    const { receipt, receiptData } = sealedReceipt(base);
+    const { receipt, receiptData, expected } = sealedReceipt(base);
     const governed = receiptData.files.find((file) => file.id === lifecycle.host_security_file_id);
+
+    // Reissue the receipt so the installed bytes are legitimately what it names,
+    // isolating the shape and freshness checks from the integrity check.
+    const reissue = (mutate) => {
+      const root = installFromReceipt(receiptData, join(base, `root-${Math.random().toString(36).slice(2)}`));
+      const target = join(root, governed.target);
+      mutate(target);
+      const local = join(base, `receipt-${Math.random().toString(36).slice(2)}.json`);
+      const manifest = join(base, `manifest-${Math.random().toString(36).slice(2)}.json`);
+      const digest = createHash('sha256').update(readFileSync(target)).digest('hex');
+      const rewrite = (source, destination) => {
+        const data = JSON.parse(readFileSync(source, 'utf8'));
+        data.files = data.files.map((file) => file.id === governed.id ? { ...file, sha256: digest } : file);
+        writeFileSync(destination, JSON.stringify(data));
+        // The materializer writes 0644; a receipt the group can write is
+        // refused, so a fixture must not hand over one the umask widened.
+        chmodSync(destination, 0o644);
+      };
+      rewrite(receipt, local);
+      rewrite(expected, manifest);
+      return spawnSync('bash', [driftAuditPath, '--receipt', local, '--root', root,
+        '--unprivileged-root', '--expected-manifest', manifest], { encoding: 'utf8' });
+    };
+
     const today = new Date().toISOString().slice(0, 10);
-
-    const audit = (root) => spawnSync('bash', [driftAuditPath,
-      '--receipt', receipt, '--root', root, '--unprivileged-root'], { encoding: 'utf8' });
-
-    // An unrelated directive appended to otherwise genuine content.
-    const injected = installFromReceipt(receiptData, join(base, 'root-injected'), (root) => {
-      const target = join(root, governed.target);
-      writeFileSync(target, readFileSync(target, 'utf8').replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`)
-        + '\nlocation /admin { allow all; auth_basic off; }\n');
-    });
-    const injectedRun = audit(injected);
-    assert.notEqual(injectedRun.status, 0, 'audit accepted an injected nginx directive');
-    assert.match(injectedRun.stderr, /directive|unexpected|line/i);
-
-    // Cloudflare's networks wholesale replaced by the attacker's, in the right
-    // shape and quantity: this is what defeats every real-client-IP control.
-    const substituted = installFromReceipt(receiptData, join(base, 'root-substituted'), (root) => {
-      const v4 = Array.from({ length: 12 }, (_, i) => `set_real_ip_from 10.0.${i}.0/24;`).join('\n');
-      const v6 = Array.from({ length: 6 }, (_, i) => `set_real_ip_from 2001:db8:${i}::/32;`).join('\n');
-      writeFileSync(join(root, governed.target),
-        `# Regenerated ${today}\n\n${v4}\n${v6}\n\nreal_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n`);
-    });
-    const substitutedRun = audit(substituted);
-    assert.notEqual(substitutedRun.status, 0, 'audit accepted attacker networks as Cloudflare ranges');
-    assert.match(substitutedRun.stderr, /cloudflare|network|range/i);
-
-    // A genuine refresh that adds a range must still pass, or the whole point
-    // of the separate lifecycle is lost.
-    const refreshed = installFromReceipt(receiptData, join(base, 'root-refreshed'), (root) => {
-      const target = join(root, governed.target);
+    const healthy = reissue((target) => {
       writeFileSync(target, readFileSync(target, 'utf8')
-        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`)
-        .replace('real_ip_header CF-Connecting-IP;', 'set_real_ip_from 199.27.128.0/21;\n\nreal_ip_header CF-Connecting-IP;'));
+        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${today}`));
     });
-    const refreshedRun = audit(refreshed);
-    assert.equal(refreshedRun.status, 0,
-      `a genuine Cloudflare refresh was rejected\n${refreshedRun.stdout}\n${refreshedRun.stderr}`);
+    assert.equal(healthy.status, 0, `a genuine refresh was rejected\n${healthy.stderr}`);
+
+    // An unrelated nginx directive: this snippet is included in server context.
+    const injected = reissue((target) => {
+      writeFileSync(target, `${readFileSync(target, 'utf8')}\nlocation /admin { allow all; }\n`);
+    });
+    assert.notEqual(injected.status, 0, 'audit accepted an injected nginx directive');
+    assert.match(injected.stderr, /directive|unexpected|line/i);
+
+    // A gutted list would stop nginx trusting most of Cloudflare, silently.
+    const gutted = reissue((target) => {
+      writeFileSync(target, `# Regenerated ${today}\n\nset_real_ip_from 103.21.244.0/22;\n\nreal_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n`);
+    });
+    assert.notEqual(gutted.status, 0, 'audit accepted a truncated Cloudflare range list');
+
+    // Correct in every way except that nobody has refreshed it in months.
+    const stale = reissue((target) => {
+      const old = new Date(Date.now() - (lifecycle.staleness.fail_after_days + 30) * 86400000)
+        .toISOString().slice(0, 10);
+      writeFileSync(target, readFileSync(target, 'utf8')
+        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${old}`));
+    });
+    assert.notEqual(stale.status, 0, 'audit accepted real-IP data past its stale-data policy');
+    assert.match(stale.stderr, /stale|days ago|old/i);
   } finally {
     discard(base);
   }
