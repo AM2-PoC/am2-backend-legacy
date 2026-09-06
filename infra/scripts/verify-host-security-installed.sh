@@ -169,8 +169,16 @@ trusted_payload = (expected if expected_manifest_path else receipt)['payload_sha
 with tempfile.TemporaryDirectory() as scratch:
     # A materialized store is sealed read-only, so its modes no longer match the
     # ones the packager hashed. Normalise a copy rather than weakening either end.
+    # No symlinks, checked before copying rather than after. The materializer
+    # refuses them on the way in for integrity; here it also bounds the work: a
+    # link to /dev/zero would otherwise be copied faithfully until the disk or
+    # the unit's PrivateTmp filled, with no digest ever computed.
+    for path in store_payload.rglob('*'):
+        if path.is_symlink():
+            raise SystemExit(f'the materialization store contains a symlink: {path}')
+
     normalised = pathlib.Path(scratch, 'payload')
-    shutil.copytree(store_payload, normalised)
+    shutil.copytree(store_payload, normalised, symlinks=True)
     for path in normalised.rglob('*'):
         path.chmod(0o755 if path.is_dir() else 0o644)
     normalised.chmod(0o755)

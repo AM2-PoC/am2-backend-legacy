@@ -96,26 +96,12 @@ function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {
   return fakeRoot;
 }
 
-/** The contract that says where files belong, taken from the receipt's own store. */
-function contractFor(receipt) {
-  try {
-    const data = JSON.parse(readFileSync(receipt, 'utf8'));
-    return join(data.store_path, 'payload/infra/contracts/host-security-contract.json');
-  } catch {
-    return null;   // a missing or unreadable receipt is the point of that test
-  }
-}
-
-function withContract(receipt, extra) {
-  return extra;   // the verifier reads the contract from the receipt's own store
-}
-
 function verifyInstalled(receipt, fakeRoot, extra = []) {
   return spawnSync('bash', [installedVerifierPath,
     '--receipt', receipt,
     '--root', fakeRoot,
     '--unprivileged-root',
-    ...withContract(receipt, extra)], { encoding: 'utf8' });
+    ...extra], { encoding: 'utf8' });
 }
 
 function auditDrift(receipt, fakeRoot, extra = []) {
@@ -123,7 +109,7 @@ function auditDrift(receipt, fakeRoot, extra = []) {
     '--receipt', receipt,
     '--root', fakeRoot,
     '--unprivileged-root',
-    ...withContract(receipt, extra)], { encoding: 'utf8' });
+    ...extra], { encoding: 'utf8' });
 }
 
 /** Materialized stores are deliberately read-only, so a fixture must unlock before removing. */
@@ -392,8 +378,7 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     //    fixture, whatever root it is pointed at.
     const unprivilegedReceipt = spawnSync('bash', [installedVerifierPath,
       '--receipt', receipt, '--root', root,
-      '--expected-manifest', bundle.expected,
-      ...withContract(receipt, [])], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(unprivilegedReceipt.status, 0, 'verifier read a fixture receipt as host evidence');
     assert.match(unprivilegedReceipt.stderr, /unprivileged materialization/i);
 
@@ -406,16 +391,14 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     chmodSync(claimsPrivileged, 0o644);
     const fixtureRoot = spawnSync('bash', [installedVerifierPath,
       '--receipt', claimsPrivileged, '--root', root,
-      '--expected-manifest', bundle.expected,
-      ...withContract(claimsPrivileged, [])], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(fixtureRoot.status, 0, 'verifier accepted a fixture root as the real host');
     assert.match(fixtureRoot.stderr, /fixture/i);
 
     // 3. And a real-host check with no independently obtained manifest is the
     //    host vouching for itself.
     const noManifest = spawnSync('bash', [installedVerifierPath,
-      '--receipt', claimsPrivileged, '--root', root,
-      ...withContract(claimsPrivileged, [])], { encoding: 'utf8' });
+      '--receipt', claimsPrivileged, '--root', root], { encoding: 'utf8' });
     assert.notEqual(noManifest.status, 0, 'verifier checked a host with nothing independent to check against');
     assert.match(noManifest.stderr, /expected-manifest/i);
   } finally {
@@ -590,8 +573,7 @@ test('installed-state verifier binds a receipt to the trusted manifest rather th
 
     const run = spawnSync('bash', [installedVerifierPath,
       '--receipt', forgedPath, '--root', tampered, '--unprivileged-root',
-      '--expected-manifest', bundle.expected,
-      ...withContract(forgedPath, [])], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'verifier believed a receipt whose digests were rewritten');
     assert.match(run.stderr, /trusted|manifest/i);
   } finally {
@@ -645,8 +627,7 @@ test('a root that resolves to the real host is never treated as a fixture', () =
     const { receipt } = materializedReceipt(bundle, base);
     for (const disguised of ['//', '/tmp/../', '/.']) {
       const run = spawnSync('bash', [installedVerifierPath,
-        '--receipt', receipt, '--root', disguised, '--unprivileged-root',
-        ...withContract(receipt, [])], { encoding: 'utf8' });
+        '--receipt', receipt, '--root', disguised, '--unprivileged-root'], { encoding: 'utf8' });
       assert.match(run.stderr, /cannot be used against the real host root/,
         `${disguised} was not recognised as the real host root`);
     }
@@ -775,6 +756,34 @@ test('installed-state verifier refuses a contract from a store that fails its di
     const run = verifyInstalled(pointed, root, ['--expected-manifest', bundle.expected]);
     assert.notEqual(run.status, 0, 'verifier accepted a contract from a store that fails its digest');
     assert.match(run.stderr, /digest|payload|sealed/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('installed-state verifier refuses a store containing a symlink', () => {
+  // The materializer refuses symlinks on the way in. The verifier must too:
+  // it copies the store to normalise modes before hashing, and a link to
+  // /dev/zero would be copied faithfully until the disk -- or the unit's
+  // PrivateTmp -- filled, with no digest ever computed.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-storelink-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
+
+    const store = join(base, 'linked-store');
+    assert.equal(spawnSync('cp', ['-a', receiptData.store_path, store]).status, 0);
+    spawnSync('chmod', ['-R', 'u+w', store]);
+    symlinkSync('/dev/zero', join(store, 'payload/infra/nginx/am2-siphon.conf'));
+
+    const pointed = join(base, 'pointed-receipt.json');
+    writeFileSync(pointed, JSON.stringify({ ...JSON.parse(readFileSync(receipt, 'utf8')), store_path: store }));
+    chmodSync(pointed, 0o644);
+
+    const run = verifyInstalled(pointed, root, ['--expected-manifest', bundle.expected]);
+    assert.notEqual(run.status, 0, 'verifier accepted a store containing a symlink');
+    assert.match(run.stderr, /symlink/i);
   } finally {
     discard(base);
   }

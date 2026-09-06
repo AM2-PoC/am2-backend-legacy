@@ -122,8 +122,6 @@ test('the timer command actually runs in the layout it names', () => {
     }
     // The contracts the unit names, placed where it names them. If the layout
     // the how-to describes is wrong, this is where it shows up.
-    writeFileSync(join(prefix, 'contracts/host-security-contract.json'),
-      readFileSync(join(receiptData.store_path, 'payload/infra/contracts/host-security-contract.json')));
     writeFileSync(join(prefix, 'contracts/cloudflare-realip-lifecycle.json'),
       readFileSync(resolve(ROOT, 'infra/contracts/cloudflare-realip-lifecycle.json')));
 
