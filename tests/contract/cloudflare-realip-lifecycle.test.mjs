@@ -37,6 +37,22 @@ function sealedReceipt(base) {
   return { receipt, expected, receiptData: JSON.parse(readFileSync(receipt, 'utf8')) };
 }
 
+/** The contract that says where files belong, taken from the receipt's own store. */
+function contractFor(receipt) {
+  try {
+    const data = JSON.parse(readFileSync(receipt, 'utf8'));
+    return join(data.store_path, 'payload/infra/contracts/host-security-contract.json');
+  } catch {
+    return null;   // a missing or unreadable receipt is the point of that test
+  }
+}
+
+function withContract(receipt, extra) {
+  if (extra.includes('--contract')) return extra;
+  const contract = contractFor(receipt);
+  return contract ? [...extra, '--contract', contract] : extra;
+}
+
 function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {
   const payloadRoot = join(receiptData.store_path, 'payload');
   for (const file of receiptData.files) {
@@ -122,7 +138,8 @@ test('externally refreshed real-IP bytes are still verified against the receipt'
 
     const audit = (root) => spawnSync('bash', [driftAuditPath,
       '--receipt', receipt, '--root', root, '--unprivileged-root',
-      '--expected-manifest', expected], { encoding: 'utf8' });
+      '--expected-manifest', expected,
+      ...withContract(receipt, [])], { encoding: 'utf8' });
 
     // Bytes as issued: quiet.
     const clean = audit(installFromReceipt(receiptData, join(base, 'root-clean')));
@@ -185,7 +202,8 @@ test('a refresh is validated for shape and bounded for age', () => {
       rewrite(receipt, local);
       rewrite(expected, manifest);
       return spawnSync('bash', [driftAuditPath, '--receipt', local, '--root', root,
-        '--unprivileged-root', '--expected-manifest', manifest], { encoding: 'utf8' });
+        '--unprivileged-root', '--expected-manifest', manifest,
+        ...withContract(local, [])], { encoding: 'utf8' });
     };
 
     const today = new Date().toISOString().slice(0, 10);

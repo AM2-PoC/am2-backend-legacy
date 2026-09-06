@@ -96,12 +96,28 @@ function installFromReceipt(receiptData, fakeRoot, mutate = () => {}) {
   return fakeRoot;
 }
 
+/** The contract that says where files belong, taken from the receipt's own store. */
+function contractFor(receipt) {
+  try {
+    const data = JSON.parse(readFileSync(receipt, 'utf8'));
+    return join(data.store_path, 'payload/infra/contracts/host-security-contract.json');
+  } catch {
+    return null;   // a missing or unreadable receipt is the point of that test
+  }
+}
+
+function withContract(receipt, extra) {
+  if (extra.includes('--contract')) return extra;
+  const contract = contractFor(receipt);
+  return contract ? [...extra, '--contract', contract] : extra;
+}
+
 function verifyInstalled(receipt, fakeRoot, extra = []) {
   return spawnSync('bash', [installedVerifierPath,
     '--receipt', receipt,
     '--root', fakeRoot,
     '--unprivileged-root',
-    ...extra], { encoding: 'utf8' });
+    ...withContract(receipt, extra)], { encoding: 'utf8' });
 }
 
 function auditDrift(receipt, fakeRoot, extra = []) {
@@ -109,7 +125,7 @@ function auditDrift(receipt, fakeRoot, extra = []) {
     '--receipt', receipt,
     '--root', fakeRoot,
     '--unprivileged-root',
-    ...extra], { encoding: 'utf8' });
+    ...withContract(receipt, extra)], { encoding: 'utf8' });
 }
 
 /** Materialized stores are deliberately read-only, so a fixture must unlock before removing. */
@@ -378,7 +394,8 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     //    fixture, whatever root it is pointed at.
     const unprivilegedReceipt = spawnSync('bash', [installedVerifierPath,
       '--receipt', receipt, '--root', root,
-      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected,
+      ...withContract(receipt, [])], { encoding: 'utf8' });
     assert.notEqual(unprivilegedReceipt.status, 0, 'verifier read a fixture receipt as host evidence');
     assert.match(unprivilegedReceipt.stderr, /unprivileged materialization/i);
 
@@ -391,14 +408,16 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     chmodSync(claimsPrivileged, 0o644);
     const fixtureRoot = spawnSync('bash', [installedVerifierPath,
       '--receipt', claimsPrivileged, '--root', root,
-      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected,
+      ...withContract(claimsPrivileged, [])], { encoding: 'utf8' });
     assert.notEqual(fixtureRoot.status, 0, 'verifier accepted a fixture root as the real host');
     assert.match(fixtureRoot.stderr, /fixture/i);
 
     // 3. And a real-host check with no independently obtained manifest is the
     //    host vouching for itself.
     const noManifest = spawnSync('bash', [installedVerifierPath,
-      '--receipt', claimsPrivileged, '--root', root], { encoding: 'utf8' });
+      '--receipt', claimsPrivileged, '--root', root,
+      ...withContract(claimsPrivileged, [])], { encoding: 'utf8' });
     assert.notEqual(noManifest.status, 0, 'verifier checked a host with nothing independent to check against');
     assert.match(noManifest.stderr, /expected-manifest/i);
   } finally {
@@ -573,7 +592,8 @@ test('installed-state verifier binds a receipt to the trusted manifest rather th
 
     const run = spawnSync('bash', [installedVerifierPath,
       '--receipt', forgedPath, '--root', tampered, '--unprivileged-root',
-      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected,
+      ...withContract(forgedPath, [])], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'verifier believed a receipt whose digests were rewritten');
     assert.match(run.stderr, /trusted|manifest/i);
   } finally {
@@ -627,7 +647,8 @@ test('a root that resolves to the real host is never treated as a fixture', () =
     const { receipt } = materializedReceipt(bundle, base);
     for (const disguised of ['//', '/tmp/../', '/.']) {
       const run = spawnSync('bash', [installedVerifierPath,
-        '--receipt', receipt, '--root', disguised, '--unprivileged-root'], { encoding: 'utf8' });
+        '--receipt', receipt, '--root', disguised, '--unprivileged-root',
+        ...withContract(receipt, [])], { encoding: 'utf8' });
       assert.match(run.stderr, /cannot be used against the real host root/,
         `${disguised} was not recognised as the real host root`);
     }
@@ -650,6 +671,117 @@ test('a receipt the world can write is refused', () => {
     const run = verifyInstalled(receipt, root);
     assert.notEqual(run.status, 0, 'verifier accepted a world-writable receipt');
     assert.match(run.stderr, /writable beyond its owner/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('installed-state verifier will not follow a receipt that redirects a target', () => {
+  // Binding only the digests leaves `target` and `mode` on trust, and those are
+  // what decide which file is examined at all. Repointing one entry at a decoy
+  // path -- leaving every digest untouched, so the manifest binding still
+  // matches -- makes the audit read the decoy, report health, and never look at
+  // the live file again.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-redirect-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const contract = join(receiptData.store_path, 'payload/infra/contracts/host-security-contract.json');
+    const governedId = 'nginx-cloudflare-realip';
+    const entry = receiptData.files.find((file) => file.id === governedId);
+
+    const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
+      // The live file gains a range the attacker controls.
+      const live = join(where, entry.target);
+      writeFileSync(live, `${readFileSync(live, 'utf8')}set_real_ip_from 203.0.113.7/32;\n`);
+      // ...and pristine bytes are placed where the receipt will be told to look.
+      const decoy = join(where, '/etc/am2/decoy-realip.conf');
+      mkdirSync(dirname(decoy), { recursive: true });
+      writeFileSync(decoy, readFileSync(join(receiptData.store_path, 'payload', entry.origin)));
+      chmodSync(decoy, 0o644);
+    });
+
+    const redirected = join(base, 'redirected-receipt.json');
+    const data = JSON.parse(readFileSync(receipt, 'utf8'));
+    data.files = data.files.map((file) => file.id === governedId
+      ? { ...file, target: '/etc/am2/decoy-realip.conf' }
+      : file);
+    writeFileSync(redirected, JSON.stringify(data));
+    chmodSync(redirected, 0o644);
+
+    const run = spawnSync('bash', [installedVerifierPath,
+      '--receipt', redirected, '--root', root, '--unprivileged-root',
+      '--expected-manifest', bundle.expected,
+      '--contract', contract], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'verifier followed a receipt that repointed a target at a decoy');
+    // It looked at the live file the contract names, not the decoy the receipt
+    // pointed at -- which is the whole point.
+    assert.match(run.stderr, /am2-cloudflare-realip\.conf: installed bytes differ/,
+      'verifier did not examine the path the contract declares');
+    assert.doesNotMatch(run.stderr, /decoy/, 'verifier read the decoy path');
+  } finally {
+    discard(base);
+  }
+});
+
+test('installed-state verifier will not accept a receipt that relaxes a mode', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-relaxmode-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const contract = join(receiptData.store_path, 'payload/infra/contracts/host-security-contract.json');
+
+    const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
+      chmodSync(join(where, '/etc/am2/php/webadmin-prepend.php'), 0o666);
+    });
+
+    const relaxed = join(base, 'relaxed-receipt.json');
+    const data = JSON.parse(readFileSync(receipt, 'utf8'));
+    data.files = data.files.map((file) => file.id === 'php-webadmin-prepend'
+      ? { ...file, mode: '0666' }
+      : file);
+    writeFileSync(relaxed, JSON.stringify(data));
+    chmodSync(relaxed, 0o644);
+
+    const run = spawnSync('bash', [installedVerifierPath,
+      '--receipt', relaxed, '--root', root, '--unprivileged-root',
+      '--expected-manifest', bundle.expected,
+      '--contract', contract], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'verifier accepted a receipt that relaxed an expected mode');
+    assert.match(run.stderr, /mode|contract/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('installed-state verifier refuses a contract and receipt that disagree', () => {
+  // Targets come from the contract, so a file the contract declares but the
+  // receipt does not cover would simply never be examined -- unexamined is
+  // indistinguishable from clean in the report. An omission in the receipt is
+  // already caught by the manifest binding; this is the other direction, which
+  // nothing else sees.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-disagree-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
+
+    // Honest receipt and manifest; a contract that declares one file more.
+    const widened = join(base, 'widened-contract.json');
+    const contract = JSON.parse(readFileSync(contractFor(receipt), 'utf8'));
+    contract.files = [...contract.files, {
+      id: 'nginx-unwatched',
+      source: 'infra/nginx/am2-unwatched.conf',
+      target: '/etc/nginx/snippets/am2-unwatched.conf',
+      mode: '0644',
+      consumer: 'nginx',
+    }];
+    writeFileSync(widened, JSON.stringify(contract));
+
+    const run = verifyInstalled(receipt, root,
+      ['--expected-manifest', bundle.expected, '--contract', widened]);
+    assert.notEqual(run.status, 0, 'verifier accepted a contract the receipt does not cover');
+    assert.match(run.stderr, /same set of host-security files/i);
   } finally {
     discard(base);
   }

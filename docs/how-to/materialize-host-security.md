@@ -41,8 +41,16 @@ After an approved activation has put the files in place:
 ```sh
 sudo infra/scripts/verify-host-security-installed.sh \
   --receipt /etc/am2/host-security/receipt.json \
-  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json
+  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json \
+  --contract /etc/am2/host-security/contracts/host-security-contract.json
 ```
+
+The contract is required and must not come from the receipt. It is what says
+where each file belongs and how tight its mode must be, and those two fields
+decide which file gets examined at all — a receipt that repointed one entry at a
+decoy would send this check to read pristine bytes and report health while the
+live file stayed edited. Digests cannot catch that: the digest of a file nobody
+looked at is never wrong.
 
 The trusted manifest is required on a real host, and must be the copy obtained
 through a channel independent of the bundle. Without it the check reduces to
@@ -59,18 +67,33 @@ It prints findings and exits non-zero; it never repairs.
 ## Audit on a timer
 
 `infra/systemd/am2-host-security-drift.{service,timer}` run the same checks
-daily, passing the same trusted manifest. They print nothing when the host is
-healthy, so any mail from the unit is news. Install and enable them as a
-separately approved host change — the manifest has to be in place first, or
-every run fails and the silence-means-healthy contract inverts into daily noise.
+daily. They print nothing when the host is healthy, so any mail from the unit is
+news. Install and enable them as a separately approved host change.
+
+The unit names absolute paths, so the layout has to exist before it is enabled —
+otherwise it fails every day, and a unit that fails daily is the same lost signal
+as a unit that says nothing:
+
+```text
+/etc/am2/host-security/
+├── bin/
+│   ├── audit-host-security-drift.sh
+│   └── verify-host-security-installed.sh     # the audit runs this
+├── contracts/
+│   ├── host-security-contract.json
+│   └── cloudflare-realip-lifecycle.json
+├── receipt.json
+└── trusted-host-security-manifest.json       # from the independent channel
+```
 
 ## When it refuses
 
 **`receipt records an unprivileged materialization`** — the receipt came from a
 `--unprivileged-store` run. It describes a fixture. Materialize as root.
 
-**`existing materialization differs from its manifest`** — something edited the
-sealed store in place. Do not delete it and retry; find out what wrote to it.
+**`existing materialization differs from the authenticated payload`** —
+something edited the sealed store in place. Do not delete it and retry; find out
+what wrote to it.
 
 **`both lanes share one session store`** — production and staging Apache point
 at the same `session.save_path`. A staging session will authenticate in

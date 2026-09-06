@@ -16,7 +16,10 @@ set -euo pipefail
 # Three classes of finding:
 #
 #   * target state -- present, a regular file, owned by root, mode 0644, and
-#     byte-identical to the receipt.
+#     byte-identical to the receipt. Where each file belongs and how tight it
+#     must be come from the contract, not the receipt: a receipt that repointed
+#     one entry at a decoy would otherwise send this check to read pristine
+#     bytes and report health while the live file stayed edited.
 #   * lane session-store separation -- the two Apache lanes must keep separate
 #     session stores. When they shared one, a staging session authenticated in
 #     production, which is privilege escalation rather than untidiness.
@@ -35,6 +38,7 @@ Usage: verify-host-security-installed.sh
          [--unprivileged-root]          (the root is a fixture, not the host)
          [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
          [--expected-manifest /absolute/trusted-host-security-manifest.json]
+         [--contract /absolute/host-security-contract.json]
 USAGE
 }
 
@@ -43,6 +47,7 @@ root=/
 unprivileged_root=0
 lifecycle=
 expected_manifest=
+contract=
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
@@ -50,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --unprivileged-root) unprivileged_root=1; shift ;;
         --lifecycle) [[ $# -ge 2 ]] || { usage; exit 64; }; lifecycle=$2; shift 2 ;;
         --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
+        --contract) [[ $# -ge 2 ]] || { usage; exit 64; }; contract=$2; shift 2 ;;
         *) usage; exit 64 ;;
     esac
 done
@@ -75,10 +81,19 @@ if [[ -n $expected_manifest ]]; then
         || { echo "trusted expected manifest is missing: $expected_manifest" >&2; exit 1; }
 fi
 
-python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" "${expected_manifest:-}" <<'PY'
+# Where each file belongs, and how tight it must be, come from the contract --
+# never from the receipt. Those two fields decide which file is examined at all,
+# so a receipt that repoints one entry at a decoy would send the audit to read
+# pristine bytes and report health while the live file stayed edited. Digests
+# alone cannot catch that: the digest of a file nobody looked at is never wrong.
+[[ -n $contract ]] || { echo "checking installed state requires --contract; a receipt cannot say where its own files belong" >&2; exit 64; }
+[[ $contract == /* && -f $contract && ! -L $contract ]] \
+    || { echo "host-security contract is missing: $contract" >&2; exit 1; }
+
+python3 - "$receipt" "$root" "$unprivileged_root" "$lifecycle" "${expected_manifest:-}" "$contract" <<'PY'
 import datetime, hashlib, json, os, pathlib, re, stat, sys
 
-receipt_path, root_argument, unprivileged_root, lifecycle_path, expected_manifest_path = sys.argv[1:]
+receipt_path, root_argument, unprivileged_root, lifecycle_path, expected_manifest_path, contract_path = sys.argv[1:]
 unprivileged_root = unprivileged_root == '1'
 receipt = json.load(open(receipt_path, encoding='utf-8'))
 lifecycle = json.load(open(lifecycle_path, encoding='utf-8'))
@@ -140,8 +155,15 @@ if not unprivileged_root and info.st_uid != 0:
     raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
 
 
+contract = json.load(open(contract_path, encoding='utf-8'))
+declared = {item['id']: item for item in contract['files']}
+if set(declared) != {item['id'] for item in receipt['files']}:
+    raise SystemExit('receipt and contract do not describe the same set of host-security files')
+
+
 def resolve_targets(entry):
-    """Absolute install targets for one receipt entry, as they exist on this host."""
+    """Absolute install targets for one file, as they exist on this host."""
+    entry = declared[entry['id']]
     if 'target' in entry:
         return [entry['target']]
     if entry.get('target_kind') == 'php-sapi-conf.d':
@@ -180,8 +202,9 @@ for entry in receipt['files']:
 
         info = path.lstat()
         mode = stat.S_IMODE(info.st_mode)
-        if mode != int(entry['mode'], 8):
-            report(f"{target}: mode {mode:04o}, expected {int(entry['mode'], 8):04o}")
+        expected_mode = int(declared[entry['id']]['mode'], 8)
+        if mode != expected_mode:
+            report(f'{target}: mode {mode:04o}, expected {expected_mode:04o}')
         if not unprivileged_root and (info.st_uid != 0 or info.st_gid != 0):
             report(f'{target}: owned by {info.st_uid}:{info.st_gid}, expected 0:0')
 
