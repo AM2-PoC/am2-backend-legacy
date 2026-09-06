@@ -66,6 +66,7 @@ if [[ -z $lifecycle ]]; then
 fi
 [[ -f $lifecycle && ! -L $lifecycle ]] || { echo "Cloudflare real-IP lifecycle contract is missing: $lifecycle" >&2; exit 1; }
 
+
 # The trusted manifest is the one thing here obtained independently of the host,
 # so on a real host it is required: without it the check reduces to asking an
 # unsigned file on that host whether that host is fine.
@@ -137,11 +138,40 @@ if expected_manifest_path:
 # world can write is wrong in any context, and only checking it on the real host
 # leaves the rule itself untested. Ownership is root-specific and so is checked
 # only where root is meaningful.
+real_host = resolved_root == '/'
+
+
+def require_protected(path, label):
+    """A trust anchor must not be writable by people who are not trusted.
+
+    Whoever can write one of these decides what "verified" means as surely as
+    whoever can write the files being checked: the manifest supplies every
+    expected digest, the lifecycle supplies the real-IP policy, and the receipt
+    names the store. World-writable is wrong anywhere. Group-writable and
+    non-root ownership are wrong on a host -- but a developer checkout is
+    routinely both, and it is not a host, so those apply only against /.
+    """
+    anchor = pathlib.Path(path).lstat()
+    mode = stat.S_IMODE(anchor.st_mode)
+    if mode & 0o002:
+        raise SystemExit(f'{label} is world-writable (mode {mode:04o}): {path}')
+    if real_host:
+        if mode & 0o022:
+            raise SystemExit(f'{label} is writable beyond root (mode {mode:04o}): {path}')
+        if anchor.st_uid != 0:
+            raise SystemExit(f'{label} is owned by uid {anchor.st_uid}, not root: {path}')
+
+
+require_protected(receipt_path, 'the receipt')
+require_protected(lifecycle_path, 'the real-IP lifecycle contract')
+if expected_manifest_path:
+    require_protected(expected_manifest_path, 'the trusted expected manifest')
+
+# The receipt is held to the tighter rule everywhere: it is generated at 0644 by
+# the materializer, so a group-writable one is always wrong.
 info = pathlib.Path(receipt_path).lstat()
 if stat.S_IMODE(info.st_mode) & 0o022:
     raise SystemExit(f'receipt is writable beyond its owner (mode {stat.S_IMODE(info.st_mode):04o})')
-if not unprivileged_root and info.st_uid != 0:
-    raise SystemExit(f'receipt is owned by uid {info.st_uid}, not root')
 
 
 # Where each file belongs, and how tight it must be, come from the contract --
@@ -161,37 +191,53 @@ if not unprivileged_root and info.st_uid != 0:
 # spans every byte of the payload, so it covers the contract too. store_path
 # needs no separate trust: whatever it points at must reproduce that digest.
 store_payload = pathlib.Path(receipt['store_path'], 'payload')
-sealed_contract = store_payload / 'infra/contracts/host-security-contract.json'
-if not sealed_contract.is_file() or sealed_contract.is_symlink():
-    raise SystemExit(f'the materialization store carries no host-security contract: {sealed_contract}')
-
 trusted_payload = (expected if expected_manifest_path else receipt)['payload_sha256']
-with tempfile.TemporaryDirectory() as scratch:
-    # A materialized store is sealed read-only, so its modes no longer match the
-    # ones the packager hashed. Normalise a copy rather than weakening either end.
-    # No symlinks, checked before copying rather than after. The materializer
-    # refuses them on the way in for integrity; here it also bounds the work: a
-    # link to /dev/zero would otherwise be copied faithfully until the disk or
-    # the unit's PrivateTmp filled, with no digest ever computed.
-    for path in store_payload.rglob('*'):
-        if path.is_symlink():
-            raise SystemExit(f'the materialization store contains a symlink: {path}')
+# Snapshot the store, then judge the snapshot -- and read the contract out of it.
+#
+# Checking the live store and then using it is two reads of something that can
+# change in between. Worse, normalising modes in place across a tree that still
+# contains symlinks would chmod their targets, so a link planted in the store
+# would let this check alter files elsewhere on the host. A checker that can
+# modify what it is checking is not a checker.
+#
+# So: copy once preserving symlinks, refuse any symlink found in the copy,
+# normalise modes only within the copy (a sealed store is read-only, so its
+# modes no longer match the ones the packager hashed), then hash the copy and
+# read the contract out of it. Whatever raced is captured and then rejected.
+scratch = tempfile.mkdtemp(prefix='.host-security-snapshot-')
+try:
+    snapshot = pathlib.Path(scratch, 'payload')
+    shutil.copytree(store_payload, snapshot, symlinks=True)
 
-    normalised = pathlib.Path(scratch, 'payload')
-    shutil.copytree(store_payload, normalised, symlinks=True)
-    for path in normalised.rglob('*'):
+    for path in snapshot.rglob('*'):
+        if path.is_symlink():
+            raise SystemExit(
+                f'the materialization store contains a symlink: {path.relative_to(snapshot)}')
+
+    for path in snapshot.rglob('*'):
+        # Symlinks are already refused above; skipped here as well so that
+        # ordering is not the only thing preventing a chmod from following one
+        # out of the snapshot and altering a file elsewhere on the host.
+        if path.is_symlink():
+            continue
         path.chmod(0o755 if path.is_dir() else 0o644)
-    normalised.chmod(0o755)
+    snapshot.chmod(0o755)
+
     derived = subprocess.run(
         ['tar', '--sort=name', '--mtime=UTC 1970-01-01', '--owner=0', '--group=0',
-         '--numeric-owner', '-C', str(normalised), '-cf', '-', '.'],
+         '--numeric-owner', '-C', str(snapshot), '-cf', '-', '.'],
         capture_output=True, check=True).stdout
     if hashlib.sha256(derived).hexdigest() != trusted_payload:
         raise SystemExit(
             'the materialization store does not reproduce the trusted payload digest, '
             'so the contract it carries is not the sealed one')
 
-contract = json.load(open(sealed_contract, encoding='utf-8'))
+    snapshot_contract = snapshot / 'infra/contracts/host-security-contract.json'
+    if not snapshot_contract.is_file():
+        raise SystemExit('the materialization store carries no host-security contract')
+    contract = json.load(open(snapshot_contract, encoding='utf-8'))
+finally:
+    shutil.rmtree(scratch, ignore_errors=True)
 declared = {item['id']: item for item in contract['files']}
 
 
@@ -226,25 +272,34 @@ installed_text = {}
 for entry in receipt['files']:
     for target in resolve_targets(entry):
         path = root / target.lstrip('/')
-        if path.is_symlink():
-            report(f'{target}: is a symlink, not a regular file')
-            continue
-        if not path.exists():
+        if not path.exists() and not path.is_symlink():
             report(f'{target}: missing')
             continue
-        if not path.is_file():
-            report(f'{target}: is not a regular file')
+
+        # One descriptor, opened without following symlinks, then metadata and
+        # bytes both read through it. Separate pathname operations -- lstat,
+        # then is_file, then read -- are three chances for the path to become a
+        # different file between the check and the use.
+        try:
+            handle = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as error:
+            report(f'{target}: cannot be opened as a regular file ({error.strerror})')
             continue
-
-        info = path.lstat()
-        mode = stat.S_IMODE(info.st_mode)
-        expected_mode = int(declared[entry['id']]['mode'], 8)
-        if mode != expected_mode:
-            report(f'{target}: mode {mode:04o}, expected {expected_mode:04o}')
-        if not unprivileged_root and (info.st_uid != 0 or info.st_gid != 0):
-            report(f'{target}: owned by {info.st_uid}:{info.st_gid}, expected 0:0')
-
-        body = path.read_bytes()
+        try:
+            info = os.fstat(handle)
+            if not stat.S_ISREG(info.st_mode):
+                report(f'{target}: is not a regular file')
+                continue
+            mode = stat.S_IMODE(info.st_mode)
+            expected_mode = int(declared[entry['id']]['mode'], 8)
+            if mode != expected_mode:
+                report(f'{target}: mode {mode:04o}, expected {expected_mode:04o}')
+            if not unprivileged_root and (info.st_uid != 0 or info.st_gid != 0):
+                report(f'{target}: owned by {info.st_uid}:{info.st_gid}, expected 0:0')
+            with os.fdopen(os.dup(handle), 'rb') as stream:
+                body = stream.read()
+        finally:
+            os.close(handle)
         installed_text[entry['id']] = body.decode('utf-8', 'replace')
         # Every file, including the externally refreshed one.
         #
@@ -279,9 +334,32 @@ for lane, entry_id in (('production', 'apache-production-webadmin'), ('staging',
             report(f'{lane} lane uses the shared default session store {store}')
         lane_paths[lane] = store
 
-if len(lane_paths) == 2 and lane_paths['production'] == lane_paths['staging']:
-    report(f"both lanes share one session store ({lane_paths['production']}); "
-           'a staging session would authenticate in production')
+if len(lane_paths) == 2:
+    # By identity, not by spelling. A symlink, a bind mount, or two paths that
+    # resolve to the same directory are one store to PHP, and one store is how a
+    # staging session came to authenticate in production. Comparing the declared
+    # strings only catches a lane that was edited carelessly, not one that was
+    # redirected.
+    def identity(store):
+        path = root / store.lstrip('/')
+        resolved = os.path.realpath(path)
+        try:
+            info = os.stat(path)
+            return resolved, (info.st_dev, info.st_ino)
+        except OSError:
+            return resolved, None
+
+    production_path, production_node = identity(lane_paths['production'])
+    staging_path, staging_node = identity(lane_paths['staging'])
+    if lane_paths['production'] == lane_paths['staging']:
+        report(f"both lanes declare one session store ({lane_paths['production']}); "
+               'a staging session would authenticate in production')
+    elif production_path == staging_path:
+        report(f"both lanes resolve to one session store ({production_path}); "
+               'a staging session would authenticate in production')
+    elif production_node is not None and production_node == staging_node:
+        report(f"both lanes reach the same directory ({production_node[0]}:{production_node[1]}); "
+               'a staging session would authenticate in production')
 
 # Externally refreshed Cloudflare real-IP data: shape and provenance.
 text = installed_text.get(governed_id)
@@ -295,8 +373,12 @@ if text is not None:
     if ipv6 < validation['min_ipv6_ranges']:
         report(f"cloudflare real-IP: {ipv6} IPv6 ranges, fewer than the {validation['min_ipv6_ranges']} "
                'a plausible list carries')
+    # A commented-out directive is not a directive. Matching the whole file lets
+    # `# real_ip_header CF-Connecting-IP;` satisfy the requirement, and nginx
+    # would then take the peer address -- a Cloudflare edge -- as the client.
+    active = [line for line in text.splitlines() if not line.lstrip().startswith('#')]
     for directive in validation['required_directives']:
-        if directive not in text:
+        if not any(line.strip() == directive for line in active):
             report(f'cloudflare real-IP: missing required directive {directive!r}')
 
     # Skipping byte equality must not become "anything goes". These bytes are
@@ -326,7 +408,13 @@ if text is not None:
     else:
         generated = datetime.date.fromisoformat(found.group(1))
         age = (datetime.datetime.now(datetime.timezone.utc).date() - generated).days
-        if age > lifecycle['staleness']['fail_after_days']:
+        if age < 0:
+            # Not fresh data: a broken clock or a forged marker. Treating it as
+            # fresh would make the stale-data policy defeatable by writing
+            # tomorrow's date.
+            report(f'cloudflare real-IP: generated {-age} days in the future, '
+                   'so its provenance cannot be trusted')
+        elif age > lifecycle['staleness']['fail_after_days']:
             report(f'cloudflare real-IP: generated {age} days ago, past the '
                    f"{lifecycle['staleness']['fail_after_days']}-day stale-data policy")
 

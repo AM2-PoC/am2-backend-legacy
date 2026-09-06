@@ -112,6 +112,37 @@ function auditDrift(receipt, fakeRoot, extra = []) {
     ...extra], { encoding: 'utf8' });
 }
 
+/** A copy of the real-IP lifecycle contract with the permissions a host would give it. */
+function hostLifecycle(base) {
+  const path = join(base, 'cloudflare-realip-lifecycle.json');
+  writeFileSync(path, readFileSync(resolve(ROOT, 'infra/contracts/cloudflare-realip-lifecycle.json')));
+  chmodSync(path, 0o644);
+  return path;
+}
+
+/**
+ * Reissue a receipt and trusted manifest for one file's new bytes.
+ *
+ * Byte equality is checked first, so a fixture that wants to exercise the shape
+ * or freshness checks has to make the installed bytes legitimately what the
+ * receipt names -- otherwise it only ever proves byte equality again.
+ */
+function reissueFor(base, receipt, manifest, id, bytes) {
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const suffix = Math.random().toString(36).slice(2);
+  const rewrite = (source, destination) => {
+    const data = JSON.parse(readFileSync(source, 'utf8'));
+    data.files = data.files.map((file) => file.id === id ? { ...file, sha256: digest } : file);
+    writeFileSync(destination, JSON.stringify(data));
+    chmodSync(destination, 0o644);
+    return destination;
+  };
+  return {
+    receipt: rewrite(receipt, join(base, `receipt-${suffix}.json`)),
+    manifest: rewrite(manifest, join(base, `manifest-${suffix}.json`)),
+  };
+}
+
 /** Materialized stores are deliberately read-only, so a fixture must unlock before removing. */
 function discard(base) {
   spawnSync('chmod', ['-R', 'u+w', base]);
@@ -378,7 +409,8 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     //    fixture, whatever root it is pointed at.
     const unprivilegedReceipt = spawnSync('bash', [installedVerifierPath,
       '--receipt', receipt, '--root', root,
-      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected,
+      '--lifecycle', hostLifecycle(base)], { encoding: 'utf8' });
     assert.notEqual(unprivilegedReceipt.status, 0, 'verifier read a fixture receipt as host evidence');
     assert.match(unprivilegedReceipt.stderr, /unprivileged materialization/i);
 
@@ -391,14 +423,16 @@ test('installed-state verifier refuses to call an unprivileged check a real one'
     chmodSync(claimsPrivileged, 0o644);
     const fixtureRoot = spawnSync('bash', [installedVerifierPath,
       '--receipt', claimsPrivileged, '--root', root,
-      '--expected-manifest', bundle.expected], { encoding: 'utf8' });
+      '--expected-manifest', bundle.expected,
+      '--lifecycle', hostLifecycle(base)], { encoding: 'utf8' });
     assert.notEqual(fixtureRoot.status, 0, 'verifier accepted a fixture root as the real host');
     assert.match(fixtureRoot.stderr, /fixture/i);
 
     // 3. And a real-host check with no independently obtained manifest is the
     //    host vouching for itself.
     const noManifest = spawnSync('bash', [installedVerifierPath,
-      '--receipt', claimsPrivileged, '--root', root], { encoding: 'utf8' });
+      '--receipt', claimsPrivileged, '--root', root,
+      '--lifecycle', hostLifecycle(base)], { encoding: 'utf8' });
     assert.notEqual(noManifest.status, 0, 'verifier checked a host with nothing independent to check against');
     assert.match(noManifest.stderr, /expected-manifest/i);
   } finally {
@@ -492,7 +526,7 @@ test('materialization re-verifies extracted bytes instead of trusting the bundle
       '--receipt', join(base, 'receipt.json'),
       '--unprivileged-store'], { encoding: 'utf8' });
     assert.notEqual(run.status, 0, 'materializer sealed bytes it never authenticated itself');
-    assert.match(run.stderr, /digest|differ|mismatch/i);
+    assert.match(run.stderr, /digest|differ|mismatch|does not match the trusted manifest/i);
   } finally {
     discard(base);
   }
@@ -649,7 +683,7 @@ test('a receipt the world can write is refused', () => {
     chmodSync(receipt, 0o666);
     const run = verifyInstalled(receipt, root);
     assert.notEqual(run.status, 0, 'verifier accepted a world-writable receipt');
-    assert.match(run.stderr, /writable beyond its owner/i);
+    assert.match(run.stderr, /world-writable|writable beyond/i);
   } finally {
     discard(base);
   }
@@ -784,6 +818,182 @@ test('installed-state verifier refuses a store containing a symlink', () => {
     const run = verifyInstalled(pointed, root, ['--expected-manifest', bundle.expected]);
     assert.notEqual(run.status, 0, 'verifier accepted a store containing a symlink');
     assert.match(run.stderr, /symlink/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('materialization anchors on the trusted manifest, not the bundle manifest', () => {
+  // The bundle verifier authenticates and returns; the archive AND the manifest
+  // beside it are then read again from mutable paths. Swapping both after the
+  // verifier returns makes forged bytes agree with a forged manifest, and the
+  // trusted manifest -- the only thing obtained independently -- is never
+  // consulted again. Re-deriving digests is worthless when the thing being
+  // derived against moved too.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-anchor-'));
+  try {
+    const bundle = sealedBundle(base);
+    const trustedPayload = JSON.parse(readFileSync(bundle.expected, 'utf8')).payload_sha256;
+
+    // A second, forged bundle built from tampered sources.
+    const evil = join(base, 'evil');
+    assert.equal(spawnSync('cp', ['-a', bundle.source, evil]).status, 0);
+    spawnSync('chmod', ['-R', 'u+w', evil]);
+    const victim = join(evil, 'infra/nginx/am2-webadmin-security.conf');
+    writeFileSync(victim, `${readFileSync(victim, 'utf8')}# EVIL: allow all\n`);
+    assert.equal(spawnSync('git', ['-c', 'user.email=x@y', '-c', 'user.name=x',
+      'commit', '-qam', 'tamper'], { cwd: evil }).status, 0);
+    const evilSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: evil, encoding: 'utf8' }).stdout.trim();
+    const evilOut = join(base, 'evil-bundle');
+    assert.equal(spawnSync('bash', [packagerPath, '--source-root', evil,
+      '--sha', evilSha, '--output-dir', evilOut], { encoding: 'utf8' }).status, 0);
+
+    // A verifier that authenticates honestly, then swaps both files on the way out.
+    const bin = join(base, 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'materialize-host-security.sh'), readFileSync(materializerPath));
+    chmodSync(join(bin, 'materialize-host-security.sh'), 0o755);
+    writeFileSync(join(bin, 'verify-host-security-bundle.sh'), [
+      '#!/bin/bash',
+      `bash ${resolve(ROOT, 'infra/scripts/verify-host-security-bundle.sh')} "$@" || exit 1`,
+      `cp ${join(evilOut, 'am2-host-security.tar.gz')} ${bundle.archive}`,
+      `cp ${join(evilOut, 'host-security-manifest.json')} ${bundle.manifest}`,
+      'exit 0',
+    ].join('\n'));
+    chmodSync(join(bin, 'verify-host-security-bundle.sh'), 0o755);
+
+    const receipt = join(base, 'receipt.json');
+    const run = spawnSync('bash', [join(bin, 'materialize-host-security.sh'),
+      '--archive', bundle.archive, '--manifest', bundle.manifest,
+      '--checksums', bundle.checksums, '--expected-manifest', bundle.expected,
+      '--store-root', join(base, 'store'), '--receipt', receipt,
+      '--unprivileged-store'], { encoding: 'utf8' });
+
+    assert.notEqual(run.status, 0,
+      `materializer sealed a payload the trusted manifest does not name\n${run.stdout}\n${run.stderr}`);
+    if (existsSync(receipt)) {
+      assert.equal(JSON.parse(readFileSync(receipt, 'utf8')).payload_sha256, trustedPayload,
+        'a receipt was written for a payload the trusted manifest does not name');
+    }
+    const sealed = spawnSync('grep', ['-rl', 'EVIL', join(base, 'store')], { encoding: 'utf8' });
+    assert.equal(sealed.stdout.trim(), '', 'forged bytes were sealed into the store');
+  } finally {
+    discard(base);
+  }
+});
+
+test('lane session stores are compared by identity, not by spelling', () => {
+  // Two lanes sharing one session store let a staging session authenticate in
+  // production. Comparing the declared strings only catches the spelling: a
+  // symlink, a bind mount, or two paths that resolve to the same directory are
+  // the same store by every meaning that matters to PHP.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-laneidentity-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+
+    const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
+      // Both lanes keep their own spelling; staging's is a symlink to production's.
+      const production = join(where, '/var/lib/php/sessions/am2');
+      const staging = join(where, '/var/lib/php/sessions/am2-staging');
+      mkdirSync(production, { recursive: true });
+      symlinkSync(production, staging);
+    });
+
+    const run = verifyInstalled(receipt, root, ['--expected-manifest', bundle.expected]);
+    assert.notEqual(run.status, 0,
+      'verifier accepted two lanes whose session stores resolve to one directory');
+    assert.match(run.stderr, /session/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('real-IP required directives cannot be satisfied from a comment', () => {
+  // A commented-out directive is not a directive. Substring matching over the
+  // whole file lets a file that has commented out real_ip_header still pass,
+  // and nginx would then take the peer address as the client.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-cfcomment-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const governed = receiptData.files.find((file) => file.id === 'nginx-cloudflare-realip');
+
+    const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
+      const target = join(where, governed.target);
+      writeFileSync(target, readFileSync(target, 'utf8')
+        .replace(/^real_ip_header CF-Connecting-IP;$/m, '# real_ip_header CF-Connecting-IP;'));
+    });
+
+    // Reissue so byte equality is satisfied and the shape check is isolated.
+    const reissued = reissueFor(base, receipt, bundle.expected, governed.id,
+      readFileSync(join(root, governed.target)));
+    const run = spawnSync('bash', [installedVerifierPath,
+      '--receipt', reissued.receipt, '--root', root, '--unprivileged-root',
+      '--expected-manifest', reissued.manifest], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'verifier accepted a commented-out required directive');
+    assert.match(run.stderr, /directive/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('real-IP data dated in the future is refused', () => {
+  // A future generation marker is not fresh data, it is a broken clock or a
+  // forged marker -- and treating it as fresh makes the stale-data policy
+  // trivially defeatable by writing tomorrow's date.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-cffuture-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const governed = receiptData.files.find((file) => file.id === 'nginx-cloudflare-realip');
+
+    const ahead = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const root = installFromReceipt(receiptData, join(base, 'root'), (where) => {
+      const target = join(where, governed.target);
+      writeFileSync(target, readFileSync(target, 'utf8')
+        .replace(/# Regenerated \d{4}-\d{2}-\d{2}/, `# Regenerated ${ahead}`));
+    });
+
+    const reissued = reissueFor(base, receipt, bundle.expected, governed.id,
+      readFileSync(join(root, governed.target)));
+    const run = spawnSync('bash', [installedVerifierPath,
+      '--receipt', reissued.receipt, '--root', root, '--unprivileged-root',
+      '--expected-manifest', reissued.manifest], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'verifier accepted real-IP data dated in the future');
+    assert.match(run.stderr, /future|ahead/i);
+  } finally {
+    discard(base);
+  }
+});
+
+test('a world-writable trust anchor is refused', () => {
+  // The manifest supplies every expected digest and the lifecycle supplies the
+  // real-IP policy. Whoever can write either decides what "verified" means, so
+  // they are held to the same rule as the receipt.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-anchorperm-'));
+  try {
+    const bundle = sealedBundle(base);
+    const { receipt, receiptData } = materializedReceipt(bundle, base);
+    const root = installFromReceipt(receiptData, join(base, 'root'));
+    const lifecycle = hostLifecycle(base);
+
+    assert.equal(verifyInstalled(receipt, root,
+      ['--expected-manifest', bundle.expected, '--lifecycle', lifecycle]).status, 0,
+      'baseline should verify');
+
+    chmodSync(bundle.expected, 0o666);
+    const manifestRun = verifyInstalled(receipt, root,
+      ['--expected-manifest', bundle.expected, '--lifecycle', lifecycle]);
+    assert.notEqual(manifestRun.status, 0, 'verifier trusted a world-writable manifest');
+    assert.match(manifestRun.stderr, /trusted expected manifest is world-writable/i);
+    chmodSync(bundle.expected, 0o644);
+
+    chmodSync(lifecycle, 0o666);
+    const lifecycleRun = verifyInstalled(receipt, root,
+      ['--expected-manifest', bundle.expected, '--lifecycle', lifecycle]);
+    assert.notEqual(lifecycleRun.status, 0, 'verifier trusted a world-writable lifecycle contract');
+    assert.match(lifecycleRun.stderr, /lifecycle contract is world-writable/i);
   } finally {
     discard(base);
   }

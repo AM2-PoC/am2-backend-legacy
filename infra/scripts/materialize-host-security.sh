@@ -91,41 +91,65 @@ fi
     --checksums "$checksums" \
     --expected-manifest "$expected_manifest" >/dev/null
 
-payload_sha256=$(python3 -c '
-import json, re, sys
-manifest=json.load(open(sys.argv[1], encoding="utf-8"))
-digest=str(manifest.get("payload_sha256", ""))
-if not re.fullmatch(r"[0-9a-f]{64}", digest):
-    raise SystemExit("host-security manifest payload digest is invalid")
-print(digest)
-' "$manifest")
-
-destination=$store_root/$payload_sha256
 work=$(mktemp -d)
 staged=$work/payload
 cleanup() { chmod -R u+w "$work" 2>/dev/null || true; rm -rf -- "$work"; }
 trap cleanup EXIT INT TERM HUP
 
+# Snapshot the two inputs, then work only from the snapshots.
+#
+# The bundle verifier authenticates and returns, but every path it was given
+# stays writable -- and the manifest beside the archive is as mutable as the
+# archive itself. Swapping both after the verifier returns used to produce a
+# forged archive that agreed with a forged manifest, so re-deriving digests
+# proved only that the attacker was self-consistent. Digests are worth nothing
+# when the thing being compared against can move too.
+#
+# So the trusted expected manifest -- the one input obtained through a channel
+# independent of the bundle -- is the only authority from here on, and it is
+# copied out of reach before it is read. The archive is copied and hashed
+# against it. The bundle's own manifest has served its purpose inside the
+# verifier and is never consulted again.
+trusted=$work/trusted-manifest.json
+snapshot=$work/archive.tar.gz
+cp -- "$expected_manifest" "$trusted"
+cp -- "$archive" "$snapshot"
+chmod 0600 "$trusted" "$snapshot"
+
+payload_sha256=$(python3 - "$trusted" "$snapshot" <<'PY'
+import hashlib, json, pathlib, re, sys
+trusted_path, archive_path = sys.argv[1:]
+manifest = json.load(open(trusted_path, encoding='utf-8'))
+for field, width in (('source_sha', 40), ('payload_sha256', 64), ('archive_sha256', 64)):
+    if not re.fullmatch(r'[0-9a-f]{%d}' % width, str(manifest.get(field, ''))):
+        raise SystemExit(f'trusted manifest {field} is invalid')
+digest = hashlib.file_digest(open(archive_path, 'rb'), 'sha256').hexdigest()
+if digest != manifest['archive_sha256']:
+    raise SystemExit(
+        'the archive does not match the trusted manifest; it changed after the bundle was verified')
+print(manifest['payload_sha256'])
+PY
+) || exit 1
+
+destination=$store_root/$payload_sha256
+
 mkdir -p "$staged"
-tar -xzf "$archive" -C "$staged"
+tar -xzf "$snapshot" -C "$staged"
 if find "$staged" -type l -print -quit | grep -q .; then
     echo "host-security payload contains a symlink" >&2
     exit 1
 fi
 
-# Authenticate the bytes this script extracted, not merely the bytes some other
-# process approved a moment ago.
+# Authenticate the extracted bytes against the trusted manifest.
 #
-# The bundle verifier judges a private snapshot of the archive and deletes it.
-# Between that and this extraction the archive on disk can change -- and whoever
-# can write the delivery directory is exactly the party the checksum design
-# exists to distrust. Re-deriving the digests here means a swapped archive is
-# caught rather than sealed into the store under an authenticated name.
+# Against the trusted one specifically: comparing them to the manifest that
+# travelled with the archive would only establish that the two agree, which an
+# attacker who can replace both gets for free.
 #
 # This also covers the contract, which the manifest's file list does not name:
 # the payload digest spans every byte in the payload, so an edited contract --
 # the file that decides where everything installs -- changes it.
-python3 - "$manifest" "$staged" <<'PY' || exit 1
+python3 - "$trusted" "$staged" <<'PY' || exit 1
 import hashlib, json, pathlib, subprocess, sys
 manifest_path, payload_root = sys.argv[1:]
 manifest = json.load(open(manifest_path, encoding='utf-8'))
@@ -226,7 +250,7 @@ fi
 # assumption, not a check.
 compare_against_staged "$destination/payload" || exit 1
 
-python3 - "$manifest" "$destination" "$receipt" "$unprivileged" "$staged" <<'PY'
+python3 - "$trusted" "$destination" "$receipt" "$unprivileged" "$staged" <<'PY'
 import json, os, pathlib, re, sys, tempfile, time
 
 manifest_path, destination, receipt_path, unprivileged, staged = sys.argv[1:]
