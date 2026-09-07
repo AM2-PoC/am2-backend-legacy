@@ -27,6 +27,7 @@ const {
     broadcastChannelNameChange,
     stopChannelVideo,
 } = require('./broadcast');
+const { markCloseCause } = require('./disconnect-observability');
 
 /*
  * Where this environment serves its client APK from.
@@ -154,7 +155,10 @@ function registerRoutes(app) {
                                 type: 'force_logout',
                                 data: { message: "The agency/admin account has expired or been deactivated." }
                             }));
-                            setTimeout(() => ws.terminate(), 500);
+                            setTimeout(() => {
+                                markCloseCause(ws, 'admin_force_logout');
+                                ws.terminate();
+                            }, 500);
                             continue;
                         }
 
@@ -261,6 +265,7 @@ function registerRoutes(app) {
                     data: { message: "Your session was ended by an administrator." }
                 }));
                 setTimeout(() => {
+                    markCloseCause(targetWs, 'admin_force_logout');
                     targetWs.terminate();
                     activeConnections.delete(uid);
                 }, 500);

@@ -1,5 +1,7 @@
 'use strict';
 
+const { markCloseCause } = require('./disconnect-observability');
+
 /**
  * Ending a restart, rather than severing one.
  *
@@ -86,6 +88,7 @@ async function drain({
     // acts on immediately against a socket that simply stops answering.
     let closed = 0;
     for (const client of wss.clients) {
+        markCloseCause(client, 'server_shutdown');
         client.close(CLOSE_GOING_AWAY, CLOSE_REASON);
         closed += 1;
     }
