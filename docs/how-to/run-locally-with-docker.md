@@ -28,11 +28,12 @@ rows that are entirely synthetic (see `infra/docker/seed/02-seed.sql`).
 Ports are on the host side only, to stay out of the way of whatever else you
 run locally; change them in `.env` if any of the defaults collide.
 
-The current Compose file publishes these ports on all workstation interfaces,
-while its database/API/demo credentials are intentionally known development
-values. Run it only on a trusted workstation network behind a local firewall,
-never on public Wi-Fi without isolation or on an externally reachable/shared
-host. Loopback-only port binding requires a separate reviewed Compose change.
+Compose binds these development ports to `127.0.0.1`. Require Docker Engine 28
+or newer: older engines have a documented limitation that may still expose
+loopback-published ports to hosts on the same layer-2 network. Keep a local
+firewall enabled and use a trusted network because the database/API/demo
+credentials are intentionally known development values. Loopback binding is not
+permission to run the stack on a shared, staging, or production host.
 
 ## What's seeded
 
