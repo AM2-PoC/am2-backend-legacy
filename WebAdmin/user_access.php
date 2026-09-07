@@ -21,38 +21,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         exit;
     }
     try {
+        $relay = notifyForceLogout((string) $uid_to_kick);
+        if (!$relay) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'warning' => t('msg.relay_unconfirmed')]);
+            exit;
+        }
+
         $pdo->beginTransaction();
 
         $stmtU = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
         $stmtU->execute([$uid_to_kick]);
         $target_name = $stmtU->fetchColumn() ?: "ID: $uid_to_kick";
 
-        // Written here rather than behind a helper, so the obligation is
-        // declared here too: kicking a unit off is a change to that unit, and
-        // the log is how anyone later finds out who did it.
         am2_audit_expect('force_logout');
-        am2_force_logout_user($pdo, (string) $uid_to_kick);
-
         am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
                 ['name' => $target_name], 'users', (string) $uid_to_kick);
 
         am2_audit_complete();
         $pdo->commit();
 
-        /*
-         * The database change is committed either way -- the token is revoked
-         * and the row says offline, so the unit cannot sign back in. What the
-         * relay does is close the socket that is open right now. If it did not
-         * confirm, the unit may still be transmitting, and the person who
-         * pressed the button is the one who needs to know that while they are
-         * still looking at the screen.
-         */
-        $relay = notifyForceLogout($uid_to_kick);
-
         header('Content-Type: application/json');
-        echo json_encode($relay
-            ? ['success' => true]
-            : ['success' => true, 'warning' => t('msg.relay_unconfirmed')]);
+        echo json_encode(['success' => true]);
         exit;
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();

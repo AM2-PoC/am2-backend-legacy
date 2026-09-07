@@ -13,48 +13,121 @@
 const WebSocket = require('ws');
 
 const { pool, redisClient } = require('./db');
-const { activeConnections, channelRooms, activeVideoRooms, rosterFor } = require('./state');
+const {
+    activeConnections, channelRooms, activeSpeakers, activeVideoRooms, rosterFor,
+    serializeChannelState, clearPtpSession,
+} = require('./state');
 
 const broadcastChannelUpdate = async (userId) => {
     const uid = String(userId);
     const ws = activeConnections.get(uid);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-            const channels = await pool.query(`
-                SELECT c.name as slug, c.display_name, uc.permission
-                FROM public.channels c
-                JOIN public.user_channels uc ON c.id = uc.channel_id
-                WHERE uc.user_id = $1`, [uid]);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return true;
 
-            ws.send(JSON.stringify({
-                type: 'channels_updated',
-                data: { channels: channels.rows }
-            }));
+    return serializeChannelState(ws, async () => {
+        // Invalidate in-flight decisions only after earlier room work has
+        // drained. That makes join and sync one ordered state machine.
+        const previousRxOnly = ws.is_rx_only;
+        ws.channelJoinGeneration += 1;
+        ws.transmitAuthGeneration += 1;
+        ws.channelVideoAuthorized = false;
+        ws.is_rx_only = true;
 
-            if (ws.currentRoom) {
-                const currentChannel = channels.rows.find(c => c.slug === ws.currentRoom);
-                if (currentChannel) {
-                    const newRxOnly = (currentChannel.permission === 'RX');
-                    if (ws.is_rx_only !== newRxOnly) {
-                        ws.is_rx_only = newRxOnly;
-                        ws.send(JSON.stringify({
-                            type: 'permission_update',
-                            data: {
-                                enable_maps: ws.enable_maps,
-                                enable_p2p: ws.enable_p2p,
-                                enable_ptt_video: ws.enable_ptt_video,
-                                duplex_mode: ws.duplex_mode,
-                                is_rx_only: ws.is_rx_only,
-                                message: "Your permissions were updated in realtime."
-                            }
-                        }));
-                    }
+        const channels = await pool.query(`
+            SELECT c.name as slug, c.display_name, uc.permission
+            FROM public.channels c
+            JOIN public.user_channels uc ON c.id = uc.channel_id
+            WHERE uc.user_id = $1`, [uid]);
+
+        if (ws.currentRoom && !channels.rows.some((channel) => channel.slug === ws.currentRoom)) {
+            const room = ws.currentRoom;
+            const speaker = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
+
+            // Authorization and in-memory routing are removed synchronously.
+            // Redis/database cleanup may fail, but cannot restore live access.
+            activeSpeakers.get(room)?.delete(speaker);
+            channelRooms.get(room)?.delete(ws);
+            ws.currentRoom = null;
+            ws.currentChannelId = null;
+            broadcastToChannel(room, {
+                type: 'ptt_active_status',
+                data: { speakers: Array.from(activeSpeakers.get(room) || []).map(s => s.split(':')[1]), channel: room },
+            });
+
+            const cleanup = await Promise.allSettled([
+                redisClient.sRem(`speakers:${room}`, speaker),
+                stopChannelVideo(ws, room),
+                pool.query(
+                    'UPDATE public.users SET current_channel = NULL, is_speaking = false WHERE id = $1',
+                    [uid],
+                ),
+            ]);
+            const failed = cleanup.find((result) => result.status === 'rejected');
+            if (failed) throw failed.reason;
+        }
+
+        ws.send(JSON.stringify({
+            type: 'channels_updated',
+            data: { channels: channels.rows }
+        }));
+
+        if (ws.currentRoom) {
+            const currentChannel = channels.rows.find(c => c.slug === ws.currentRoom);
+            if (currentChannel) {
+                const newRxOnly = (currentChannel.permission === 'RX');
+                ws.is_rx_only = newRxOnly;
+                if (previousRxOnly !== newRxOnly) {
+                    ws.send(JSON.stringify({
+                        type: 'permission_update',
+                        data: {
+                            enable_maps: ws.enable_maps,
+                            enable_p2p: ws.enable_p2p,
+                            enable_ptt_video: ws.enable_ptt_video,
+                            duplex_mode: ws.duplex_mode,
+                            is_rx_only: ws.is_rx_only,
+                            message: "Your permissions were updated in realtime."
+                        }
+                    }));
                 }
             }
-        } catch (err) {
-            console.error("❌ Broadcast Channel Update Error:", err.message);
         }
-    }
+        return true;
+    }).catch(async (error) => {
+        // Unknown membership is no membership: stop routing immediately. The
+        // handset can reconnect and re-read durable access after recovery.
+        const room = ws.currentRoom;
+        const entry = ws.sessionUser ? `${ws.sessionUser.id}:${ws.sessionUser.name}` : null;
+        if (room) {
+            channelRooms.get(room)?.delete(ws);
+            if (entry) activeSpeakers.get(room)?.delete(entry);
+            broadcastToChannel(room, {
+                type: 'ptt_active_status',
+                data: { speakers: Array.from(activeSpeakers.get(room) || []).map(s => s.split(':')[1]), channel: room },
+            });
+        }
+        ws.currentRoom = null;
+        ws.currentChannelId = null;
+        ws.channelVideoAuthorized = false;
+        clearPtpSession(ws);
+        ws.terminate();
+
+        if (room) {
+            const cleanup = await Promise.allSettled([
+                entry ? redisClient.sRem(`speakers:${room}`, entry) : Promise.resolve(),
+                stopChannelVideo(ws, room),
+            ]);
+            for (const result of cleanup) {
+                if (result.status === 'rejected') {
+                    console.error("❌ Failed channel-state cleanup:", result.reason?.message || result.reason);
+                }
+            }
+        }
+        ws.currentRoom = null;
+        ws.currentChannelId = null;
+        ws.channelVideoAuthorized = false;
+        clearPtpSession(ws);
+        ws.terminate();
+        throw error;
+    });
 };
 
 const broadcastToChannel = (channelSlug, payload, excludeWs = null) => {
@@ -93,23 +166,23 @@ const stopChannelVideo = async (ws, channelSlug) => {
     const entry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
     const streamers = activeVideoRooms.get(channelSlug);
     const wasStreaming = streamers ? streamers.delete(entry) : false;
-
-    // Unconditionally, because the mirror can outlive the memory: a relay
-    // restart repopulates activeVideoRooms from Redis, so a stale key there
-    // resurrects a streamer that no longer exists.
-    await redisClient.sRem(`video:${channelSlug}`, entry);
     ws.channelVideoAuthorized = false;
 
-    if (!wasStreaming) return false;
-    broadcastToChannel(channelSlug, {
-        type: 'video_stream_status',
-        data: {
-            streamers: Array.from(streamers).map(s => s.split(':')[1]),
-            channel: channelSlug,
-            is_private: false,
-        },
-    });
-    return true;
+    if (wasStreaming) {
+        broadcastToChannel(channelSlug, {
+            type: 'video_stream_status',
+            data: {
+                streamers: Array.from(streamers).map(s => s.split(':')[1]),
+                channel: channelSlug,
+                is_private: false,
+            },
+        });
+    }
+
+    // Unconditionally, because the mirror can outlive memory. Live authority
+    // is already revoked and viewers already know before Redis can fail.
+    await redisClient.sRem(`video:${channelSlug}`, entry);
+    return wasStreaming;
 };
 
 const broadcastUsersInChannel = async (channelSlug) => {
@@ -171,9 +244,11 @@ const updateUserLocation = async (userId, lat, lng, acc, address = "") => {
 const broadcastChannelNameChange = async (channelId) => {
     try {
         const members = await pool.query("SELECT user_id FROM public.user_channels WHERE channel_id = $1", [channelId]);
-        for (const row of members.rows) {
-            broadcastChannelUpdate(row.user_id);
-        }
+        const updates = await Promise.allSettled(
+            members.rows.map((row) => broadcastChannelUpdate(row.user_id)),
+        );
+        const failed = updates.find((result) => result.status === 'rejected');
+        if (failed) throw failed.reason;
     } catch (err) {
         console.error("❌ Global Channel Sync Error:", err.message);
     }

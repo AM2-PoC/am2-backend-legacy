@@ -20,19 +20,28 @@ test('every async join phase is followed by a generation guard before room mutat
     ]) {
         const at = join.indexOf(awaitExpression);
         assert.ok(at >= 0, `${awaitExpression} was not found`);
-        const guard = join.indexOf('if (ws.channelJoinGeneration !== joinGeneration) break;', at);
+        const guard = join.indexOf('if (ws.channelJoinGeneration !== joinGeneration) return;', at);
         assert.ok(guard > at && guard < firstMutation,
             `${awaitExpression} can reach room mutation without a generation guard`);
     }
 });
 
-test('a stale join cannot announce success after its database transaction', () => {
-    const commit = join.indexOf("await client.query('COMMIT')");
-    const staleGuard = join.indexOf('if (ws.channelJoinGeneration !== joinGeneration)', commit);
-    const success = join.indexOf("type: 'join_channel_success'", commit);
+test('queued join cannot revive a socket terminated by an earlier sync', () => {
+    assert.match(join, /!ws\.sessionUser \|\| ws\.readyState !== WebSocket\.OPEN/);
+});
 
-    assert.ok(commit >= 0, 'join transaction commit was not found');
-    assert.ok(staleGuard > commit && staleGuard < success,
+test('leaving a room clears local media state even when Redis fails', () => {
+    assert.ok(join.indexOf('activeSpeakers.get(oldRoom).delete') < join.indexOf('redisClient.sRem(speakerKey'));
+    assert.match(join, /Promise\.allSettled\([\s\S]*stopChannelVideo\(ws, oldRoom\)/);
+});
+
+test('a stale join cannot announce success after its current-state write', () => {
+    const write = join.indexOf('await pool.query(');
+    const staleGuard = join.indexOf('if (ws.channelJoinGeneration !== joinGeneration)', write);
+    const success = join.indexOf("type: 'join_channel_success'", write);
+
+    assert.ok(write >= 0, 'join current-state write was not found');
+    assert.ok(staleGuard > write && staleGuard < success,
         'stale join can announce success after a later join supersedes it');
     assert.match(join.slice(staleGuard, success),
         /channelRooms\.get\(data\.new_channel_slug\)\?\.delete\(ws\)/,

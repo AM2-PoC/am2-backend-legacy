@@ -229,7 +229,9 @@ if (isset($_POST['delete_channel'])) {
         $channel_info = $stmt_get->fetch(PDO::FETCH_ASSOC);
         if ($channel_info) {
             $channel_name = $channel_info['name'];
-            $pdo->prepare("UPDATE public.users SET current_channel = NULL WHERE current_channel = ?")->execute([$channel_name]);
+            $stmtAffected = $pdo->prepare("SELECT id FROM public.users WHERE current_channel = ?");
+            $stmtAffected->execute([$channel_name]);
+            $affectedUsers = $stmtAffected->fetchAll(PDO::FETCH_COLUMN);
             $pdo->prepare("DELETE FROM public.ptt_logs WHERE channel_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM public.admin_managed_channels WHERE channel_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ?")->execute([$id]);
@@ -244,6 +246,7 @@ if (isset($_POST['delete_channel'])) {
 
             if ($stmt_del->rowCount() > 0) {
                 $pdo->commit();
+                foreach ($affectedUsers as $uid) syncUserChannels($uid);
                 // The bulk path asks over fetch and cannot follow a redirect
                 // into a page it then throws away. Same guard, same query,
                 // different reply.

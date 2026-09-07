@@ -1,0 +1,8 @@
+{
+  "public.users.current_channel": "relay",
+  "public.users.last_channel_id": "webadmin",
+  "public.users.force_logout": "relay",
+  "public.users.status": "relay",
+  "public.users.current_device_id": "relay",
+  "public.users.is_speaking": "relay"
+}
