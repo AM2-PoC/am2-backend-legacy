@@ -101,13 +101,13 @@ WEBADMIN_PORT=8080
 
 Do not copy an environment file from staging or production.
 
-The current Compose file publishes its four host ports on every workstation
-interface. Its demo database password, API key and panel credentials are known
-development values. Run it only on a trusted workstation network with a local
-firewall; never on public Wi-Fi without isolation, a publicly reachable host,
-or a shared server. Binding the Compose ports to loopback is tracked as a
-separate hardening change because this tutorial must describe current `main`,
-not pretend the binding is already safe.
+The Compose file binds all four development ports to `127.0.0.1`. Use Docker
+Engine 28 or newer: older engines have a documented limitation where another
+host on the same layer-2 network may still reach loopback-published ports. Its
+demo database password, API key and panel credentials are intentionally known
+development values. Keep a local firewall enabled and use a trusted network;
+loopback binding is defense in depth, not permission to run this stack on a
+shared, staging, or production host.
 
 Validate the fully resolved Compose model before starting anything:
 
