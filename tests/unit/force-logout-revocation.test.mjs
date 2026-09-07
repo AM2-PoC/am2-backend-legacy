@@ -7,10 +7,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { forceLogoutUser } = require('../../server/lib/force-logout');
@@ -53,48 +50,6 @@ function routeBlock(name) {
     return routes.slice(start, end);
 }
 
-function runPanelHelperPhp(body, { inTransaction = true } = {}) {
-    const dir = mkdtempSync(join(tmpdir(), 'am2-token-revoke-'));
-    const file = join(dir, 'case.php');
-    const rules = new URL('../../WebAdmin/user_rules.php', import.meta.url).pathname;
-    writeFileSync(file, `<?php
-function am2_require_transaction(PDO $pdo, string $fn): void {
-    if (!$pdo->inTransaction()) throw new LogicException($fn . '() must run inside a transaction');
-}
-function am2_audit_expect($fn): void {}
-class FakeStatement {
-    private array $rows = [];
-    public function __construct(private FakePDO $pdo, private string $sql) {}
-    public function execute($params = null): bool {
-        $this->pdo->calls[] = [$this->sql, $params];
-        if (stripos($this->sql, 'SELECT current_device_id') !== false) {
-            $this->rows = $this->pdo->selectRows;
-        }
-        return true;
-    }
-    public function fetch($mode = null): mixed {
-        return array_shift($this->rows) ?: false;
-    }
-}
-class FakePDO extends PDO {
-    public array $calls = [];
-    public array $selectRows = [];
-    public function __construct(private bool $tx) {}
-    public function inTransaction(): bool { return $this->tx; }
-    public function prepare($sql, $options = []): FakeStatement|false {
-        return new FakeStatement($this, (string)$sql);
-    }
-}
-require ${JSON.stringify(rules)};
-$pdo = new FakePDO(${inTransaction ? 'true' : 'false'});
-${body}
-`);
-    try {
-        return execFileSync('php', [file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    } finally {
-        rmSync(dir, { recursive: true, force: true });
-    }
-}
 
 describe('force logout revokes the active device credential', () => {
     test('user state and the matching user+device token commit together', async () => {
@@ -149,25 +104,9 @@ describe('force logout revokes the active device credential', () => {
         }
     });
 
-    test('the panel helper locks the user and revokes only the active device', () => {
-        const output = runPanelHelperPhp(`
-            $pdo->selectRows = [['current_device_id' => 'device-a']];
-            am2_force_logout_user($pdo, 'CT_A1');
-            echo json_encode($pdo->calls);
-        `);
-        const calls = JSON.parse(output);
-        const selected = calls.findIndex(([sql]) => /SELECT current_device_id.*FOR UPDATE/i.test(sql));
-        const revoked = calls.findIndex(([sql]) => /DELETE FROM public\.device_tokens/i.test(sql));
-        const offline = calls.findIndex(([sql]) => /UPDATE public\.users/i.test(sql));
-        assert.ok(selected >= 0 && revoked > selected && offline > revoked,
-            `wrong panel transaction order: ${JSON.stringify(calls)}`);
-        assert.match(calls[revoked][0], /user_id = \?/i);
-        assert.match(calls[revoked][0], /device_id IS NOT DISTINCT FROM \?/i);
-        assert.deepEqual(calls[revoked][1], ['CT_A1', 'device-a']);
-
-        assert.throws(() => runPanelHelperPhp(
-            `am2_force_logout_user($pdo, 'CT_A1');`,
-            { inTransaction: false },
-        ), /must run inside a transaction/);
+    test('the panel delegates force logout instead of duplicating the transaction', () => {
+        const rules = readFileSync(new URL('../../WebAdmin/user_rules.php', import.meta.url), 'utf8');
+        assert.doesNotMatch(rules, /function am2_force_logout_user\(/);
+        assert.doesNotMatch(rules, /UPDATE\s+(?:public\.)?users\s+SET[\s\S]{0,240}?force_logout\s*=|current_device_id\s+FROM\s+public\.users/i);
     });
 });

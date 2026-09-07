@@ -94,13 +94,16 @@ elseif ($method == 'POST') {
 
             if ($channel_info) {
                 $channel_name = $channel_info['name'];
-                $pdo->prepare("UPDATE public.users SET current_channel = NULL WHERE current_channel = ?")->execute([$channel_name]);
+                $stmtAffected = $pdo->prepare("SELECT id FROM public.users WHERE current_channel = ?");
+                $stmtAffected->execute([$channel_name]);
+                $affectedUsers = $stmtAffected->fetchAll(PDO::FETCH_COLUMN);
                 $pdo->prepare("DELETE FROM public.ptt_logs WHERE channel_id = ?")->execute([$id]);
                 $pdo->prepare("DELETE FROM public.admin_managed_channels WHERE channel_id = ?")->execute([$id]);
                 $pdo->prepare("DELETE FROM public.user_channels WHERE channel_id = ?")->execute([$id]);
                 $pdo->prepare("DELETE FROM public.channels WHERE id = ?")->execute([$id]);
 
                 $pdo->commit();
+                foreach ($affectedUsers as $uid) syncUserChannels($uid);
                 echo json_encode(['success' => true]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Channel tidak ditemukan']);

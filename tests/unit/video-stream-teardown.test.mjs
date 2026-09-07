@@ -52,9 +52,23 @@ test('the Redis mirror is cleared even when memory had no entry', () => {
     const fn = body.slice(0, body.indexOf('\n};') + 3);
     const sRem = fn.indexOf('sRem(`video:');
     const guard = fn.indexOf('if (!wasStreaming) return false');
-    assert.ok(sRem !== -1 && guard !== -1, 'the function no longer has both parts');
-    assert.ok(sRem < guard,
-        'the Redis mirror is only cleared for a socket memory already knew about');
+    assert.ok(sRem !== -1, 'the Redis mirror is never cleared');
+    assert.equal(guard, -1, 'missing memory still skips Redis cleanup');
+});
+
+test('live video authorization and viewers update before Redis can fail', () => {
+    const body = broadcast.slice(broadcast.indexOf('const stopChannelVideo'));
+    const fn = body.slice(0, body.indexOf('\n};') + 3);
+    assert.ok(fn.indexOf('channelVideoAuthorized = false') < fn.indexOf('await redisClient.sRem(`video:'),
+        'Redis failure leaves video authorization live');
+    assert.ok(fn.indexOf('video_stream_status') < fn.indexOf('await redisClient.sRem(`video:'),
+        'Redis failure leaves viewers showing a stale stream');
+});
+
+test('return value still says whether a stream existed', () => {
+    const body = broadcast.slice(broadcast.indexOf('const stopChannelVideo'));
+    const fn = body.slice(0, body.indexOf('\n};') + 3);
+    assert.match(fn, /return wasStreaming/);
 });
 
 test('nothing else removes a streamer from the room', () => {

@@ -114,9 +114,9 @@ function am2_node_get(string $path): ?array
 }
 
 /** Push a user's channel list to their live session. */
-function syncUserChannels($userId): void
+function syncUserChannels($userId): bool
 {
-    am2_node_call('/api/admin/sync-channels?userId=' . urlencode((string) $userId));
+    return am2_node_call('/api/admin/sync-channels?userId=' . urlencode((string) $userId));
 }
 
 /**
