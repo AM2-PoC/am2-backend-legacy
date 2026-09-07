@@ -23,6 +23,7 @@ const {
 } = require('./db');
 const MSG = require('./messages');
 const { authorizeChannelTransmit, transmitErrorMessage } = require('./transmit-authz');
+const { disconnectRecord, markCloseCause } = require('./disconnect-observability');
 const {
     activeConnections,
     peerFor,
@@ -242,7 +243,14 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
     const interval = setInterval(() => {
         wss.clients.forEach((ws) => {
-            if (ws.isAlive === false) return ws.terminate();
+            if (ws.isAlive === false) {
+                // Recorded before the socket is destroyed, because afterwards
+                // nothing can tell this apart from a handset that hung up. Both
+                // arrive at 'close' with code 1006, and they have different
+                // causes and different fixes.
+                markCloseCause(ws, 'ping_timeout');
+                return ws.terminate();
+            }
             ws.isAlive = false;
             ws.pingSentAt = process.hrtime.bigint();
             ws.ping();
@@ -254,6 +262,9 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
     wss.on('connection', (ws) => {
         ws.isAlive = true;
+        ws.connectedAtNs = process.hrtime.bigint();
+        ws.closeCause = null;
+        ws.disconnectUserId = null;
         ws.sessionUser = null;
         ws.currentRoom = null;
         ws.currentChannelId = null;
@@ -505,6 +516,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                     // its identity, otherwise its peer remains paired forever.
                                     clearPtpSession(existingWs);
                                     // Mencegah cleanup event 'close' menghapus session baru
+                                    markCloseCause(existingWs, 'session_replaced');
                                     existingWs.sessionUser = null;
                                     existingWs.terminate();
                                 }
@@ -533,6 +545,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 sourceDeviceId: authenticatedToken?.deviceId ?? null,
                             });
                             ws.sessionUser = user;
+                            ws.disconnectUserId = user.id;
                             activeConnections.set(uid, ws);
                             await createLog(uid, user.last_channel_id, 'LOGIN');
                             console.log(
@@ -1167,9 +1180,26 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
             }
         });
 
-        ws.on('close', async () => {
+        ws.on('close', async (code) => {
             const user = ws.sessionUser;
             const room = ws.currentRoom;
+
+            /*
+             * Why a socket ended, and how long it lasted.
+             *
+             * The relay recorded every login and nothing about the endings, so
+             * a handset reconnecting all day looked like a handset signing in
+             * all day, and the record could not say whether the relay killed it
+             * for a missing pong, the handset went away, or something between
+             * cut it. Those live in three different places.
+             *
+             * The close code is a number or it is not reported; `reason` is free
+             * text from the peer and is deliberately absent, because a crafted
+             * value would write its own journal line -- the same reason the
+             * login record does not interpolate the device name raw.
+             */
+            const record = disconnectRecord(ws, code);
+            if (record) console.log(record);
             if (user) {
                 const uid = String(user.id);
 
