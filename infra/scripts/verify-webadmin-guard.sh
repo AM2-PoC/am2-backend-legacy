@@ -111,6 +111,11 @@ for file in "$docroot"/*.php; do
         # it through.
         login.php)     [[ $api == 200 && $nav == 200 ]] || { echo "FAIL: login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
         api_login.php) [[ $api == 405 && $nav == 405 ]] || { echo "FAIL: api_login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
+        # Libraries refuse direct execution themselves. A 404 leaks less than
+        # an auth-shaped response and is equivalent across callers.
+        auth_guard.php|session_boot.php)
+            [[ $api == 404 && $nav == 404 ]] || { echo "FAIL: $name answered api=$api nav=$nav, not 404" >&2; sweep_bad=1; }
+            continue ;;
     esac
 
     if [[ $api != 401 ]]; then
