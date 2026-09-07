@@ -34,6 +34,29 @@ Without root it refuses. Pass `--unprivileged-store` to materialize into a
 scratch directory for testing; the receipt then records `"privileged": false`
 and no verifier will accept it as evidence about a real host.
 
+## Activate and roll back
+
+Activation and rollback are implemented as approval-bound source tools but are not run by materialization or the timer. Both operations take an exclusive host-security lock, refuse unverified or mutable trust inputs, write targets atomically, run both web-server configuration checks before reload, and keep a complete digest-bound backup—including prior session-store metadata—for exact rollback. Activation refuses to replace an existing active receipt: roll back or archive it through an approved lifecycle before activating another candidate, so a retry cannot discard the original rollback anchor.
+
+```sh
+sudo infra/scripts/activate-host-security.sh \
+  --receipt /etc/am2/host-security/receipt.json \
+  --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json \
+  --activation-receipt /etc/am2/host-security/activation.json \
+  --backup-root /var/lib/am2/host-security-backups \
+  --apply --allow-reload
+```
+
+If post-activation acceptance fails, use the exact activation receipt. Rollback restores files that existed and removes targets introduced by that activation, runs `apache2ctl configtest` and `nginx -t`, reloads only after both pass, and removes the active activation receipt after success.
+
+```sh
+sudo infra/scripts/rollback-host-security.sh \
+  --activation-receipt /etc/am2/host-security/activation.json \
+  --apply --allow-reload
+```
+
+Running either command on the real host is a separate approval. Source tests exercise a fixture root only; they do not establish that the current host layout has been activated or rehearsed.
+
 ## Verify what is installed
 
 After an approved activation has put the files in place:
