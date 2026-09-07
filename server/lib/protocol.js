@@ -36,6 +36,7 @@ const {
     DISCONNECT_GRACE_PERIOD,
     activeSpeakers,
     activeVideoRooms,
+    serializeChannelState,
     clearPtpSession,
 } = require('./state');
 const {
@@ -709,7 +710,8 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     break;
 
                 case 'join_channel':
-                    if (!ws.sessionUser) return;
+                    await serializeChannelState(ws, async () => {
+                    if (!ws.sessionUser || ws.readyState !== WebSocket.OPEN) return;
                     const joinGeneration = ws.channelJoinGeneration + 1;
                     ws.channelJoinGeneration = joinGeneration;
                     ws.channelTransitioning = true;
@@ -726,21 +728,23 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         // --- SYNC REDIS ---
                         const speakerKey = `speakers:${oldRoom}`;
                         const speakerVal = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
-                        await redisClient.sRem(speakerKey, speakerVal);
-
                         if (activeSpeakers.has(oldRoom)) activeSpeakers.get(oldRoom).delete(speakerVal);
                         broadcastToChannel(oldRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(oldRoom) || []).map(s => s.split(':')[1]), channel: oldRoom } });
 
-                        // The room being left has to be told about the camera as
-                        // well as the microphone. A rejoin is how every reconnect
-                        // arrives, so a stream interrupted by a network flap used
-                        // to end with the room still watching a dead one.
-                        await stopChannelVideo(ws, oldRoom);
+                        const cleanup = await Promise.allSettled([
+                            redisClient.sRem(speakerKey, speakerVal),
+                            stopChannelVideo(ws, oldRoom),
+                        ]);
+                        for (const result of cleanup) {
+                            if (result.status === 'rejected') {
+                                console.error("❌ Failed old-room cleanup:", result.reason?.message || result.reason);
+                            }
+                        }
                     }
 
                     try {
                         const channelData = await channelPermission(ws.sessionUser.id, data.new_channel_slug);
-                        if (ws.channelJoinGeneration !== joinGeneration) break;
+                        if (ws.channelJoinGeneration !== joinGeneration) return;
 
                         if (channelData) {
                             if (!channelRooms.has(data.new_channel_slug)) channelRooms.set(data.new_channel_slug, new Set());
@@ -748,17 +752,17 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 activeSpeakers.set(data.new_channel_slug, new Set());
                                 // Ambil dari Redis jika ada (mencegah data hilang saat restart)
                                 const savedSpeakers = await redisClient.sMembers(`speakers:${data.new_channel_slug}`);
-                                if (ws.channelJoinGeneration !== joinGeneration) break;
+                                if (ws.channelJoinGeneration !== joinGeneration) return;
                                 savedSpeakers.forEach(s => activeSpeakers.get(data.new_channel_slug).add(s));
                             }
                             if (!activeVideoRooms.has(data.new_channel_slug)) {
                                 activeVideoRooms.set(data.new_channel_slug, new Set());
                                 const savedVideos = await redisClient.sMembers(`video:${data.new_channel_slug}`);
-                                if (ws.channelJoinGeneration !== joinGeneration) break;
+                                if (ws.channelJoinGeneration !== joinGeneration) return;
                                 savedVideos.forEach(v => activeVideoRooms.get(data.new_channel_slug).add(v));
                             }
 
-                            if (ws.channelJoinGeneration !== joinGeneration) break;
+                            if (ws.channelJoinGeneration !== joinGeneration) return;
 
                             channelRooms.get(data.new_channel_slug).add(ws);
                             ws.currentRoom = data.new_channel_slug;
@@ -769,29 +773,21 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             ws.transmitAuthGeneration += 1;
                             ws.channelVideoAuthorized = false;
 
-                            // Memulai transaksi DB untuk sinkronisasi is_default dan last_channel_id
-                            const client = await pool.connect();
-                            try {
-                                await client.query('BEGIN');
-                                await client.query("UPDATE public.users SET current_channel = $1, last_channel_id = $2, is_speaking = false WHERE id = $3",
-                                    [data.new_channel_slug, channelData.id, String(ws.sessionUser.id)]);
-                                await client.query("UPDATE public.user_channels SET is_default = false WHERE user_id = $1", [String(ws.sessionUser.id)]);
-                                await client.query("UPDATE public.user_channels SET is_default = true WHERE user_id = $1 AND channel_id = $2",
-                                    [String(ws.sessionUser.id), channelData.id]);
-                                await client.query('COMMIT');
-                            } catch (e) {
-                                await client.query('ROLLBACK');
-                                throw e;
-                            } finally {
-                                client.release();
-                            }
+                            // Joining an operational room does not rewrite the
+                            // operator-selected durable default. The relay owns
+                            // current socket state; WebAdmin owns membership and
+                            // last_channel_id.
+                            await pool.query(
+                                "UPDATE public.users SET current_channel = $1, is_speaking = false WHERE id = $2",
+                                [data.new_channel_slug, String(ws.sessionUser.id)],
+                            );
 
                             // A later join can supersede this one while the DB
                             // transaction is in flight. Roll the stale in-memory
                             // membership back instead of announcing the wrong room.
                             if (ws.channelJoinGeneration !== joinGeneration) {
                                 channelRooms.get(data.new_channel_slug)?.delete(ws);
-                                break;
+                                return;
                             }
 
                             // The socket is now authoritative for the new room.
@@ -850,6 +846,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             ws.channelTransitioning = false;
                         }
                     }
+                    });
                     break;
 
                 case 'ptt_audio_start':

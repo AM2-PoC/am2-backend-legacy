@@ -47,6 +47,16 @@ test('force logout says so when the relay did not confirm', () => {
         'notifyForceLogout() cannot report a relay that never answered');
 });
 
+test('force logout has one writer and an unconfirmed command is not success', () => {
+    const rules = read('WebAdmin/user_rules.php');
+    assert.doesNotMatch(rules, /force_logout\s*=|current_device_id\s*=|is_speaking\s*=/i);
+    for (const f of ['WebAdmin/api_user_access.php', 'WebAdmin/user_access.php']) {
+        const src = read(f);
+        assert.match(src, /if\s*\(!\$relay\)[\s\S]{0,180}?['"]success['"]\s*=>\s*false/,
+            `${f} still reports an unconfirmed command as success`);
+    }
+});
+
 test('the operator is told, not just the log', () => {
     /*
      * An error_log line is read after somebody already suspects something.
@@ -56,7 +66,7 @@ test('the operator is told, not just the log', () => {
     for (const f of ['WebAdmin/api_user_access.php', 'WebAdmin/user_access.php']) {
         const src = read(f);
         assert.match(src, /=\s*notifyForceLogout\(/,
-            `${f} calls notifyForceLogout() and throws the answer away`);
+            `${f} does not keep the command result`);
         assert.match(src, /msg\.relay_unconfirmed/,
             `${f} keeps the answer and still tells the operator nothing`);
     }
@@ -73,4 +83,15 @@ test('the two second timeout is kept', () => {
     // require waiting longer for it.
     assert.match(client, /CURLOPT_TIMEOUT[^\n]*2\b|timeout['"]?\s*(=>|:)\s*2\b/,
         'the relay call lost its timeout while gaining a return value');
+});
+
+test('channel sync returns the relay operation outcome', () => {
+    assert.match(phpFunction(client, 'syncUserChannels'), /return am2_node_call\(/);
+    const routes = read('server/lib/routes.js');
+    assert.match(routes, /await broadcastChannelUpdate\(userId\)/);
+});
+
+test('bulk channel rename observes every sync promise', () => {
+    const broadcast = read('server/lib/broadcast.js');
+    assert.match(broadcast, /Promise\.allSettled\([\s\S]*broadcastChannelUpdate\(row\.user_id\)/);
 });

@@ -74,45 +74,25 @@ elseif ($method == 'POST') {
         }
 
         try {
+            $relay = notifyForceLogout($user_id);
+            if (!$relay) {
+                echo json_encode(['success' => false, 'message' => t('msg.relay_unconfirmed')]);
+                return;
+            }
+
             $pdo->beginTransaction();
 
             $stmtU = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
             $stmtU->execute([$user_id]);
             $target_name = $stmtU->fetchColumn() ?: "ID: $user_id";
 
-            // Declared where the change is made, as on the panel's own path.
             am2_audit_expect('force_logout');
-            am2_force_logout_user($pdo, $user_id);
-
-            /*
-             * Same event as the panel's, with where it came from as a
-             * parameter. It used to be the string " (via Mobile)" glued onto
-             * the end of the sentence, which meant the two could not be grouped
-             * and neither could be translated.
-             *
-             * Unconditional now. It used to be skipped when the caller had no
-             * admin id, which is the one case where the trail matters most: a
-             * unit kicked off by nobody identifiable left no record that it had
-             * been kicked at all. am2_log() already stores an absent id as
-             * null, so the row says what is true.
-             */
             am2_log($pdo, $current_admin_id, 'FORCE_LOGOUT', 'user.force_logout',
                     ['name' => $target_name, 'via' => 'mobile'], 'users', (string) $user_id);
 
             am2_audit_complete();
             $pdo->commit();
-            /*
-             * The database change is committed either way -- the token is revoked
-             * and the row says offline, so the unit cannot sign back in. What the
-             * relay does is close the socket that is open right now. If it did not
-             * confirm, the unit may still be transmitting, and the person who
-             * pressed the button is the one who needs to know that while they are
-             * still looking at the screen.
-             */
-            $relay = notifyForceLogout($user_id);
-            echo json_encode($relay
-                ? ['success' => true, 'message' => 'User berhasil dikeluarkan.']
-                : ['success' => true, 'message' => t('msg.relay_unconfirmed')]);
+            echo json_encode(['success' => true, 'message' => 'User berhasil dikeluarkan.']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_user_access')]);

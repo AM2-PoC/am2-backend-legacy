@@ -25,6 +25,18 @@ const activeSpeakers = new Map();
 /** channelSlug -> Set of "userId:userName" */
 const activeVideoRooms = new Map();
 
+const channelStateQueues = new WeakMap();
+
+const serializeChannelState = (ws, task) => {
+    const previous = channelStateQueues.get(ws) || Promise.resolve();
+    const current = previous.catch(() => {}).then(task);
+    const settled = current.finally(() => {
+        if (channelStateQueues.get(ws) === settled) channelStateQueues.delete(ws);
+    });
+    channelStateQueues.set(ws, settled);
+    return settled;
+};
+
 /**
  * How long an unanswered private-call invitation stays acceptable.
  *
@@ -279,6 +291,7 @@ module.exports = {
     DISCONNECT_GRACE_PERIOD,
     activeSpeakers,
     activeVideoRooms,
+    serializeChannelState,
     clearPtpState,
     clearPtpSession,
 };
