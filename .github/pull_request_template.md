@@ -2,8 +2,9 @@
 
 <!-- Describe the change. -->
 
-## Risk and scope
+## Confidentiality and scope
 
+- [ ] No company-confidential source, customer/personal data, credentials, signing material, or unapproved artifact is exposed
 - Affected surfaces:
 - Explicit non-goals:
 - Security/data/release impact: none / describe
