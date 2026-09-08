@@ -501,8 +501,8 @@ test('CI packages an explicit exact-main candidate only after source checks succ
     'CI artifact publisher accepts a source SHA without successful checks');
   assert.match(workflow, /head_branch.*main|main.*head_branch/s,
     'CI artifact publisher accepts a source SHA outside main');
-  assert.match(workflow, /actions\/checkout@v4/,
-    'CI artifact publisher does not checkout source');
+  assert.match(workflow, /actions\/checkout@[0-9a-f]{40}/,
+    'CI artifact publisher does not checkout source at an immutable action revision');
   assert.match(workflow, /ref:\s*\$\{\{\s*inputs\.source_sha\s*\}\}/,
     'CI artifact publisher does not checkout the explicit exact source SHA');
   assert.match(workflow, /npm --prefix server ci --omit=dev --ignore-scripts/,
@@ -511,8 +511,8 @@ test('CI packages an explicit exact-main candidate only after source checks succ
     'CI artifact publisher does not use the sealed runtime packager');
   assert.match(workflow, /verify-runtime-artifact\.sh/,
     'CI artifact publisher does not verify its archive before publication');
-  assert.match(workflow, /upload-artifact@v4/,
-    'CI does not preserve the bounded handoff artifact');
+  assert.match(workflow, /actions\/upload-artifact@[0-9a-f]{40}/,
+    'CI does not preserve the bounded handoff artifact at an immutable action revision');
   assert.match(workflow, /retention-days:\s*90/,
     'CI handoff artifact retention is not bounded at 90 days');
   assert.match(workflow, /am2-backend-runtime\.tar\.gz[\s\S]{0,300}artifact-manifest\.json[\s\S]{0,300}SHA256SUMS/,
