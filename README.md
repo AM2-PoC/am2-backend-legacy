@@ -1,5 +1,7 @@
 # AM2 Backend
 
+**Internal repository:** Not intended for public use or external contributions. Repository access and use require authorization by the repository owner.
+
 Backend runtime for the AM2 push-to-talk platform: Node.js HTTP/WebSocket relay, PHP WebAdmin, PostgreSQL, and Redis.
 
 ## Repository map
@@ -10,9 +12,9 @@ Backend runtime for the AM2 push-to-talk platform: Node.js HTTP/WebSocket relay,
 - `tests/` — unit, contract, and protocol verification.
 - `docs/` — current tutorials, how-to guides, reference, and explanation.
 
-## Local development
+## Development and delivery
 
-Use only an isolated development machine or ephemeral CI runner. Do not run the development stack on a production host.
+Use only an isolated development machine or ephemeral CI runner. Never use the production host for dependency installation, builds, tests, Docker DEV, or artifact assembly.
 
 ```bash
 cp .env.example .env
@@ -28,10 +30,8 @@ node --test tests/unit/*.test.mjs
 docker compose config
 ```
 
-The offline contract selector emits both Node and PHP tests; run it through the source-check workflow rather than forcing every file through one local runner.
-
-GitHub Actions remains the authoritative clean-room gate for dependency installation, generated assets, protocol integration, and runtime artifact verification.
+GitHub Actions is the clean-room gate for dependencies, generated assets, protocol integration, and release-artifact verification.
 
 ## Security
 
-Report vulnerabilities privately according to [`SECURITY.md`](SECURITY.md). Do not open a public issue containing credentials, personal data, or exploit details.
+This repository does not provide a public vulnerability-reporting channel. Authorized personnel must use the security process assigned to their role. Do not include credentials, personal data, production data, or exploit details in tickets, logs, or pull requests.
