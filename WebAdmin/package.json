@@ -15,14 +15,14 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@tailwindcss/cli": "^4.2.4",
+    "@tailwindcss/cli": "^4.3.3",
     "leaflet": "^1.9.4",
-    "motion": "^12.43.0",
-    "preline": "^4.2.0",
+    "motion": "^13.2.0",
+    "preline": "^5.0.0",
     "qrcode-generator": "^2.0.4",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.2"
   }
 }
