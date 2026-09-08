@@ -23,6 +23,9 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
   mkdirSync(join(release, 'server'), { recursive: true });
   writeFileSync(join(release, 'server', 'server.js'), 'console.log("relay");\n');
   writeFileSync(join(release, 'server', 'package-lock.json'), '{"lockfileVersion":3}\n');
+  const updateStore = join(dir, 'server-update');
+  mkdirSync(updateStore);
+  spawnSync('ln', ['-s', updateStore, join(release, 'server', 'update')]);
   spawnSync('ln', ['-s', release, current]);
 
   // A relay left running from an earlier release directory. Whether that is a
@@ -34,6 +37,9 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
     writeFileSync(join(cwd, 'server.js'),
       cwdContent === 'same' ? 'console.log("relay");\n' : 'console.log("older relay");\n');
     writeFileSync(join(cwd, 'package-lock.json'), '{"lockfileVersion":3}\n');
+    // A same-environment old release points at the same update channel. The
+    // incident regression below covers identical code wired to another lane.
+    spawnSync('ln', ['-s', updateStore, join(cwd, 'update')]);
     // node_modules is reinstalled per release and is excluded from the
     // comparison, so a difference here must not register as stale code.
     mkdirSync(join(cwd, 'node_modules', 'ws'), { recursive: true });
@@ -269,6 +275,30 @@ test('a relay still running from an earlier release is healthy when the code is 
         assert.equal(result.status, 0, result.stderr);
         assert.equal(result.stderr, '');
     } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('relay identity includes the environment-owned update link', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'am2-relay-update-identity-'));
+    const production = join(dir, 'production');
+    const staging = join(dir, 'staging');
+    try {
+        for (const release of [production, staging]) {
+            mkdirSync(release, { recursive: true });
+            writeFileSync(join(release, 'server.js'), 'console.log("same relay");\n');
+            writeFileSync(join(release, 'package-lock.json'), '{"lockfileVersion":3}\n');
+        }
+        mkdirSync(join(dir, 'production-update'));
+        mkdirSync(join(dir, 'staging-update'));
+        spawnSync('ln', ['-s', join(dir, 'production-update'), join(production, 'update')]);
+        spawnSync('ln', ['-s', join(dir, 'staging-update'), join(staging, 'update')]);
+
+        const productionDigest = run(resolve(root, 'infra/scripts/relay-source-digest.sh'), process.env, [production]);
+        const stagingDigest = run(resolve(root, 'infra/scripts/relay-source-digest.sh'), process.env, [staging]);
+        assert.equal(productionDigest.status, 0, productionDigest.stderr);
+        assert.equal(stagingDigest.status, 0, stagingDigest.stderr);
+        assert.notEqual(productionDigest.stdout, stagingDigest.stdout,
+            'different update channels are treated as the same running relay identity');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('a relay running different code from an earlier release is not healthy', () => {
