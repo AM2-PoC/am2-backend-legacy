@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -23,7 +23,10 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
   mkdirSync(join(release, 'server'), { recursive: true });
   writeFileSync(join(release, 'server', 'server.js'), 'console.log("relay");\n');
   writeFileSync(join(release, 'server', 'package-lock.json'), '{"lockfileVersion":3}\n');
-  spawnSync('ln', ['-s', release, current]);
+  const updateStore = join(dir, 'server-update');
+  mkdirSync(updateStore);
+  symlinkSync(updateStore, join(release, 'server', 'update'));
+  symlinkSync(release, current);
 
   // A relay left running from an earlier release directory. Whether that is a
   // fault depends entirely on what is in it, which is the distinction the check
@@ -34,6 +37,9 @@ function fixture({ active = 'active', status = '200', body = 'PTT Server VERSION
     writeFileSync(join(cwd, 'server.js'),
       cwdContent === 'same' ? 'console.log("relay");\n' : 'console.log("older relay");\n');
     writeFileSync(join(cwd, 'package-lock.json'), '{"lockfileVersion":3}\n');
+    // A same-environment old release points at the same update channel. The
+    // incident regression below covers identical code wired to another lane.
+    symlinkSync(updateStore, join(cwd, 'update'));
     // node_modules is reinstalled per release and is excluded from the
     // comparison, so a difference here must not register as stale code.
     mkdirSync(join(cwd, 'node_modules', 'ws'), { recursive: true });
@@ -268,6 +274,73 @@ test('a relay still running from an earlier release is healthy when the code is 
         const result = run(watchdog, f.env);
         assert.equal(result.status, 0, result.stderr);
         assert.equal(result.stderr, '');
+    } finally { rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('relay identity includes the environment-owned update link', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'am2-relay-update-identity-'));
+    const production = join(dir, 'production');
+    const staging = join(dir, 'staging');
+    try {
+        for (const release of [production, staging]) {
+            mkdirSync(release, { recursive: true });
+            writeFileSync(join(release, 'server.js'), 'console.log("same relay");\n');
+            writeFileSync(join(release, 'package-lock.json'), '{"lockfileVersion":3}\n');
+        }
+        mkdirSync(join(dir, 'production-update'));
+        mkdirSync(join(dir, 'staging-update'));
+        symlinkSync(join(dir, 'production-update'), join(production, 'update'));
+        symlinkSync(join(dir, 'staging-update'), join(staging, 'update'));
+
+        const productionDigest = run(resolve(root, 'infra/scripts/relay-source-digest.sh'), process.env, [production]);
+        const stagingDigest = run(resolve(root, 'infra/scripts/relay-source-digest.sh'), process.env, [staging]);
+        assert.equal(productionDigest.status, 0, productionDigest.stderr);
+        assert.equal(stagingDigest.status, 0, stagingDigest.stderr);
+        assert.notEqual(productionDigest.stdout, stagingDigest.stdout,
+            'different update channels are treated as the same running relay identity');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('relay identity fails closed for unsafe update paths and relative source paths', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'am2-relay-update-invalid-'));
+    const relay = join(dir, 'server');
+    const helper = resolve(root, 'infra/scripts/relay-source-digest.sh');
+    try {
+        mkdirSync(relay);
+        writeFileSync(join(relay, 'server.js'), 'console.log("relay");\n');
+        writeFileSync(join(relay, 'package-lock.json'), '{"lockfileVersion":3}\n');
+
+        const missing = run(helper, process.env, [relay]);
+        assert.notEqual(missing.status, 0);
+        assert.match(missing.stderr, /symlink|update/i);
+
+        mkdirSync(join(relay, 'update'));
+        const directory = run(helper, process.env, [relay]);
+        assert.notEqual(directory.status, 0);
+        assert.match(directory.stderr, /symlink/i);
+        rmSync(join(relay, 'update'), { recursive: true });
+
+        symlinkSync(join(dir, 'missing-target'), join(relay, 'update'));
+        const broken = run(helper, process.env, [relay]);
+        assert.notEqual(broken.status, 0);
+        assert.match(broken.stderr, /resolve|directory/i);
+
+        const relative = run(helper, process.env, ['server']);
+        assert.notEqual(relative.status, 0);
+        assert.match(relative.stderr, /absolute/i);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('watchdog rejects identical source wired to another environment update channel', () => {
+    const f = fixture({ cwdMatches: false, cwdContent: 'same' });
+    try {
+        const stagingUpdate = join(f.dir, 'staging-update');
+        mkdirSync(stagingUpdate);
+        rmSync(join(f.dir, 'old-release/server/update'));
+        symlinkSync(stagingUpdate, join(f.dir, 'old-release/server/update'));
+        const result = run(watchdog, f.env);
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /identity|stale|mismatch/i);
     } finally { rmSync(f.dir, { recursive: true, force: true }); }
 });
 
