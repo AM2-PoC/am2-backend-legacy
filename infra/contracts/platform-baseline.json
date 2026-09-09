@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "os": {
+    "id": "ubuntu",
+    "version": "26.04",
+    "codename": "resolute"
+  },
+  "architectures": [
+    "amd64"
+  ],
+  "php": {
+    "major_minor": "8.5",
+    "sapi": "fpm"
+  },
+  "postgresql": {
+    "major": 18
+  },
+  "frameworks": {
+    "laravel_major": 13,
+    "inertia_major": 3,
+    "vue_major": 3,
+    "vite_major": 8,
+    "fastify_major": 5
+  },
+  "node": {
+    "major": 26,
+    "activation_channel": "active-lts",
+    "source": "official-nodejs-binary",
+    "versioned_install_root": "/opt/nodejs",
+    "staging_or_production_activation_not_before": "2026-10-28"
+  },
+  "build_execution": "ephemeral-non-production",
+  "production_upgrade_mode": "replace-and-restore",
+  "production_host_build": false
+}
