@@ -213,8 +213,8 @@ Four defects surfaced while building it, none of them visual:
   (`drwxr-x---`, owner `am2deploy`, group `www-data`). Fixed on staging with
   `chmod g+w`; production has not been checked.
 - **`update/` did not exist on staging at all.** The handler would have created
-  a real directory inside the deployed tree, which the next rsync erases. The
-  card now says so; staging was given the symlink production has.
+  mutable data inside a release payload. Update data instead belongs in the
+  environment-owned shared storage attached during artifact materialization.
 - **`admin_version.json` points at `admin.apk`, which is not on the shelf.**
   Admin Native is told to download a file that has never been uploaded. The
   card shows this as a warning; nothing else in the panel ever mentioned it.
