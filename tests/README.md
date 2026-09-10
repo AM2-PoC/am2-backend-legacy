@@ -4,14 +4,12 @@ These lock the current behaviour of the panel and the relay so that the
 dashboard redesign cannot change it by accident. They are characterization
 tests: they record what the system *does*, not what it *should* do.
 
-Run them on the staging host, as root (the credentials file is mode 600):
+Source-only contract checks run in clean-room CI or on an isolated development
+machine. Staging-facing checks require an explicitly approved non-production
+runner. Never run tests from the runtime VPS or its co-resident operator
+checkout.
 
-```bash
-cd /home/am2deploy/am2-main
-node --test tests/contract/*.test.mjs
-```
-
-No dependencies — Node 22's built-in test runner and `fetch`.
+No dependencies — Node's built-in test runner and `fetch`.
 
 ## First-time setup
 
