@@ -65,6 +65,9 @@ test('host-owned current verifier validates a pre-P0 runnable rollback release',
     delete legacyLock.packages[''].engines;
     writeFileSync(resolve(legacy, 'server/package-lock.json'), `${JSON.stringify(legacyLock)}\n`);
     cpSync(resolve(root, 'server/server.js'), resolve(legacy, 'server/server.js'));
+    for (const file of ['package.json', 'package-lock.json', 'server.js']) {
+      chmodSync(resolve(legacy, 'server', file), 0o644);
+    }
     const install = spawnSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
       cwd: resolve(legacy, 'server'),
       encoding: 'utf8',
