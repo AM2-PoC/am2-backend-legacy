@@ -48,9 +48,10 @@ if [[ ! -d $release_root/server/node_modules ]]; then
 fi
 
 node_executable=/usr/bin/node
-if [[ ! -x $node_executable ]]; then
-    node_executable=$(command -v node)
-fi
+[[ -x $node_executable ]] || {
+    echo "systemd Node executable is missing: $node_executable" >&2
+    exit 1
+}
 readarray -t node_contract < <(python3 - "$release_root/server/package.json" "$release_root/server/package-lock.json" <<'PYTHON'
 import json, sys
 package = json.load(open(sys.argv[1], encoding='utf-8'))
