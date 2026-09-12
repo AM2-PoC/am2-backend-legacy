@@ -50,7 +50,7 @@ class Materialization(unittest.TestCase):
             '.release-sha': 'a' * 40 + '\n',
             'server/server.js': '"use strict";\n',
             'server/package.json': '{"engines":{"node":"22.x"},"dependencies":{"fs":"*"}}',
-            'server/package-lock.json': '{"packages":{}}',
+            'server/package-lock.json': '{"packages":{"":{"engines":{"node":"22.x"}}}}',
             'server/node_modules/placeholder': '',
             'WebAdmin/login.php': '<?php echo "fixture";',
             'WebAdmin/asset/js/am2-ui.min.js': '// fixture\n',
