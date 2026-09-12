@@ -496,6 +496,18 @@ test('server declares the supported Node runtime used by artifacts and deploymen
     'deployment verifier does not bind manifest runtime to the application declaration');
 });
 
+test('runtime verifiers fail closed on the exact systemd Node executable', () => {
+  for (const relative of [
+    'infra/scripts/verify-materialized-artifact.sh',
+    'infra/scripts/verify-release-runtime.sh',
+  ]) {
+    const verifier = readFileSync(resolve(ROOT, relative), 'utf8');
+    assert.match(verifier, /node_executable=\/usr\/bin\/node/);
+    assert.doesNotMatch(verifier, /command -v node/,
+      `${relative} falls back to a different executable than systemd`);
+  }
+});
+
 test('CI artifact runtime declaration matches its Node package executor', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /node-version:\s*'22'/,
