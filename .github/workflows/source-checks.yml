@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+      - name: Pin the service executable path on the disposable runner
+        run: sudo ln -s "$(command -v node)" /usr/bin/node
       - name: Real cross-UID and retained writable descriptor regression
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 tests/runtime-materialization-privileged.py
 
@@ -156,6 +158,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: server/package-lock.json
+      - name: Pin the service executable path on the disposable runner
+        run: sudo ln -s "$(command -v node)" /usr/bin/node
       - name: Run restart-safety contracts
         env:
           NPM_CONFIG_PREFER_OFFLINE: 'true'
