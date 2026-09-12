@@ -49,7 +49,7 @@ class Materialization(unittest.TestCase):
         files = {
             '.release-sha': 'a' * 40 + '\n',
             'server/server.js': '"use strict";\n',
-            'server/package.json': '{"dependencies":{"fs":"*"}}',
+            'server/package.json': '{"engines":{"node":"22.x"},"dependencies":{"fs":"*"}}',
             'server/package-lock.json': '{"packages":{}}',
             'server/node_modules/placeholder': '',
             'WebAdmin/login.php': '<?php echo "fixture";',

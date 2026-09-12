@@ -166,8 +166,8 @@ test('artifact materializer creates immutable runnable release and leaves curren
       encoding: 'utf8', env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
     });
     assert.notEqual(prematureActivation.status, 0,
-      'materialized verifier accepted Node 26 before its activation date');
-    assert.match(prematureActivation.stderr, /not active|activation|2026-10-28/i);
+      'materialized verifier accepted unsupported Node 26');
+    assert.match(prematureActivation.stderr, /unsupported|engines\.node/i);
     writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(manifest)}\n`);
 
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
