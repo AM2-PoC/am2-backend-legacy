@@ -154,6 +154,16 @@ test('artifact materializer creates immutable runnable release and leaves curren
     assert.notEqual(incompatibleRuntime.status, 0,
       'materialized verifier accepted an artifact built for a different Node major');
     assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
+
+    const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
+    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(prematureNode)}\n`);
+    const prematureActivation = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], {
+      encoding: 'utf8', env: { ...process.env, AM2_NODE_VERSION: '26.0.0' },
+    });
+    assert.notEqual(prematureActivation.status, 0,
+      'materialized verifier accepted Node 26 before its activation date');
+    assert.match(prematureActivation.stderr, /not active|activation|2026-10-28/i);
     writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(manifest)}\n`);
 
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,

@@ -486,6 +486,16 @@ test('artifact verifier rejects an external same-basename manifest', { timeout: 
   }
 });
 
+test('server declares the supported Node runtime used by artifacts and deployment', () => {
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, 'server/package.json'), 'utf8'));
+  const lock = JSON.parse(readFileSync(resolve(ROOT, 'server/package-lock.json'), 'utf8'));
+  assert.equal(pkg.engines?.node, '22.x');
+  assert.equal(lock.packages?.['']?.engines?.node, '22.x');
+  const verifier = readFileSync(resolve(ROOT, 'infra/scripts/verify-materialized-artifact.sh'), 'utf8');
+  assert.match(verifier, /engines[^\n]*node|node[^\n]*engines/i,
+    'deployment verifier does not bind manifest runtime to the application declaration');
+});
+
 test('CI artifact runtime declaration matches its Node package executor', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
   assert.match(workflow, /node-version:\s*'22'/,
