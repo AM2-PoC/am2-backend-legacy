@@ -147,10 +147,21 @@ test('artifact materializer creates immutable runnable release and leaves curren
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
 
-    const incompatibleRuntime = spawnSync('bash', [verifyMaterialized, '--release', destination,
+    const fakeNode = join(base, 'fake-node');
+    writeFileSync(fakeNode, '#!/bin/sh\nprintf 999\n');
+    chmodSync(fakeNode, 0o755);
+    const probeScripts = join(base, 'runtime-probe-scripts');
+    mkdirSync(probeScripts);
+    const probeVerifier = join(probeScripts, 'verify-materialized-artifact.sh');
+    writeFileSync(probeVerifier, readFileSync(verifyMaterialized, 'utf8')
+      .replace('node_executable=/usr/bin/node', `node_executable=${fakeNode}`));
+    chmodSync(probeVerifier, 0o755);
+    writeFileSync(join(probeScripts, 'verify-runtime-protection.py'),
+      readFileSync(resolve(root, 'infra/scripts/verify-runtime-protection.py')));
+    const incompatibleRuntime = spawnSync('bash', [probeVerifier, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.notEqual(incompatibleRuntime.status, 0,
-      'materialized verifier accepted an artifact built for a different Node major');
+      'materialized verifier accepted a different service Node major');
     assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
 
     const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
