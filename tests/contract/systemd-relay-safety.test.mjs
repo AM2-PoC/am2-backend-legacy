@@ -55,7 +55,7 @@ test('current-release verifier accepts only one absolute runtime root argument',
 
 test('host-owned current verifier validates a pre-P0 runnable rollback release', () => {
   const script = resolve(root, 'infra/scripts/verify-current-release.sh');
-  const legacy = mkdtempSync('/opt/am2-legacy-release-');
+  const legacy = mkdtempSync('/am2-legacy-release-');
   try {
     mkdirSync(resolve(legacy, 'server'), { recursive: true });
     cpSync(resolve(root, 'server/package.json'), resolve(legacy, 'server/package.json'));

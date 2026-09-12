@@ -30,8 +30,10 @@ def ok(result):
 
 class Materialization(unittest.TestCase):
     def setUp(self):
-        self.base = Path(tempfile.mkdtemp(prefix='am2-privilege-', dir='/opt'))
+        self.base = Path(tempfile.mkdtemp(prefix='am2-privilege-', dir='/'))
         self.base.chmod(0o755)
+        self.scripts = self.base / 'scripts'
+        shutil.copytree(SCRIPTS, self.scripts)
         self.env = self.base / 'environment'
         self.releases = self.env / 'releases'
         self.releases.mkdir(parents=True)
@@ -82,7 +84,7 @@ class Materialization(unittest.TestCase):
         shutil.rmtree(self.base)
 
     def materialize(self, uid=None):
-        return run('bash', SCRIPTS / 'materialize-runtime-release.sh',
+        return run('bash', self.scripts / 'materialize-runtime-release.sh',
                    '--archive', self.ingress / 'am2-backend-runtime.tar.gz',
                    '--manifest', self.manifest, '--checksums', self.ingress / 'SHA256SUMS',
                    '--dest', self.dest,
@@ -90,7 +92,7 @@ class Materialization(unittest.TestCase):
                    '--server-update', self.env / 'shared/server-update', uid=uid)
 
     def verify(self):
-        return run('bash', SCRIPTS / 'verify-materialized-artifact.sh',
+        return run('bash', self.scripts / 'verify-materialized-artifact.sh',
                    '--release', self.dest, '--manifest', self.manifest)
 
     def test_fresh_root_inodes_runtime_reads_and_shared_writes(self):
@@ -133,6 +135,10 @@ class Materialization(unittest.TestCase):
             for name, component in [('webadmin-update', 'WebAdmin'), ('server-update', 'server')]:
                 ok(run('sh', '-c', 'echo update > "$1"', '_', self.dest / component / 'update/probe', uid=UID))
             ok(self.verify())
+            ok(run('bash', self.scripts / 'verify-current-release.sh', self.dest, uid=UID))
+            self.env.joinpath('shared').chmod(0o777)
+            self.assertNotEqual(self.verify().returncode, 0, 'accepted replaceable update store')
+            self.env.joinpath('shared').chmod(0o755)
             self.assertFalse((self.env / 'current').exists())
             self.assertFalse(any(p.name.startswith('.') for p in self.releases.iterdir()))
             print('REAL UID 65534: held-FD write survived chown; fresh payload unchanged; runtime read/shared write passed', flush=True)
@@ -160,7 +166,7 @@ class Materialization(unittest.TestCase):
         target = self.dest / 'server/server.js'
         os.chown(target, UID, GID)
         self.assertNotEqual(self.verify().returncode, 0, 'digest verifier accepted mutable candidate')
-        result = run('bash', SCRIPTS / 'verify-current-release.sh', self.dest)
+        result = run('bash', self.scripts / 'verify-current-release.sh', self.dest)
         self.assertNotEqual(result.returncode, 0, 'rollback preflight accepted mutable payload')
 
 

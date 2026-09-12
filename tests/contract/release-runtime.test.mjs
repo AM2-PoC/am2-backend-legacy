@@ -108,7 +108,7 @@ test('artifact materializer rejects malformed identity without creating release 
 });
 
 test('artifact materializer creates immutable runnable release and leaves current untouched', { timeout: 180_000 }, () => {
-  const base = mkdtempSync('/opt/am2-materialize-green-');
+  const base = mkdtempSync('/am2-materialize-green-');
   const sha = git('rev-parse', 'HEAD');
   try {
     const ingress = packageArtifactFixture(base, sha);
