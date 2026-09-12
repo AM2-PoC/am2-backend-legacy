@@ -157,9 +157,13 @@ test('artifact materializer creates immutable runnable release and leaves curren
 
     const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
     writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(prematureNode)}\n`);
+    const fakeBin = join(base, 'node26-bin');
+    mkdirSync(fakeBin);
+    writeFileSync(join(fakeBin, 'node'), '#!/bin/sh\nprintf 26\n');
+    chmodSync(join(fakeBin, 'node'), 0o755);
     const prematureActivation = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], {
-      encoding: 'utf8', env: { ...process.env, AM2_NODE_VERSION: '26.0.0' },
+      encoding: 'utf8', env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
     });
     assert.notEqual(prematureActivation.status, 0,
       'materialized verifier accepted Node 26 before its activation date');

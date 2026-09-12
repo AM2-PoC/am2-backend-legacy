@@ -38,6 +38,15 @@ import json, sys
 print(json.load(open(sys.argv[1], encoding='utf-8'))['runtime']['node'])
 PYTHON
 )
+package_node_requirement=$(python3 - "$release/server/package.json" <<'PYTHON'
+import json, sys
+print(json.load(open(sys.argv[1], encoding='utf-8')).get('engines', {}).get('node', ''))
+PYTHON
+)
+[[ $required_node_major == 22 && $package_node_requirement == 22.x ]] || {
+    echo "artifact Node runtime is unsupported or disagrees with server engines.node" >&2
+    exit 1
+}
 actual_node_major=$(node -p 'process.versions.node.split(".")[0]')
 [[ $actual_node_major == "$required_node_major" ]] || {
     echo "Node runtime major mismatch: artifact requires $required_node_major, host provides $actual_node_major" >&2
