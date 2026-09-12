@@ -70,9 +70,10 @@ class Materialization(unittest.TestCase):
         for name in ('server', 'webadmin'):
             (self.ingress / 'lockfiles' / f'{name}-package-lock.json').write_bytes(lock)
         digest = lambda b: hashlib.sha256(b).hexdigest()
+        runtime_node = subprocess.check_output(['node', '-p', 'process.versions.node.split(".")[0]'], text=True).strip()
         manifest = {'schema_version': 1, 'application': 'am2-backend', 'source_sha': 'a' * 40,
                     'payload_sha256': digest(raw), 'archive_sha256': digest(archive.read_bytes()),
-                    'runtime': {'node': '20', 'php': '8.3'},
+                    'runtime': {'node': runtime_node, 'php': '8.3'},
                     'lockfiles': {f'{name}_package_lock_sha256': digest(lock) for name in ('server', 'webadmin')}}
         self.manifest = self.ingress / 'artifact-manifest.json'
         self.manifest.write_text(json.dumps(manifest))
