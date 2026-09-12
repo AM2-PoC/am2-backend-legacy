@@ -48,6 +48,9 @@ PYTHON
     exit 1
 }
 node_executable=/usr/bin/node
+if [[ ! -x $node_executable && ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted ]]; then
+    node_executable=$(command -v node)
+fi
 if [[ -n ${AM2_TEST_NODE_EXECUTABLE:-} ]]; then
     [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted && $EUID -eq 0 ]] || {
         echo "test Node executable override requires a privileged disposable GitHub runner" >&2
