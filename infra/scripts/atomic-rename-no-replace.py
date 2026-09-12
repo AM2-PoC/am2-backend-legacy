@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atomically publish a sibling directory only if destination does not exist."""
+"""Publish a sibling or root-private nested stage without replacing anything."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import argparse
 import ctypes
 import errno
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 AT_FDCWD = -100
@@ -25,7 +27,14 @@ def main() -> None:
     if source.is_symlink() or source.resolve(strict=True) != source or not source.is_dir():
         raise SystemExit("source must be a canonical regular staged directory")
     if source.parent != destination.parent:
-        raise SystemExit("source and destination must be siblings on one filesystem")
+        # Materialization extracts below a private wrapper so tar cannot expose
+        # fresh inodes by restoring the payload root's archived permissions.
+        if source.parent.parent != destination.parent:
+            raise SystemExit("source must be a sibling or one private staging level below destination parent")
+        subprocess.run([sys.executable, str(Path(__file__).with_name("verify-runtime-protection.py")),
+                        "--parent", str(source.parent)], check=True)
+        if os.geteuid() != 0 or source.parent.stat().st_mode & 0o077:
+            raise SystemExit("nested staging wrapper must be root-private")
     if not hasattr(LIBC, "renameat2"):
         raise SystemExit("kernel does not support atomic no-replace release publication")
     result = LIBC.renameat2(

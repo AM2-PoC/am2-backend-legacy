@@ -65,9 +65,13 @@ if [[ $(basename "$archive") != am2-backend-runtime.tar.gz || $(basename "$manif
     exit 64
 fi
 
+[[ $EUID -eq 0 ]] || { echo "artifact materialization requires root" >&2; exit 1; }
+python3 "$script_dir/verify-runtime-protection.py" --parent "$releases_root"
+python3 "$script_dir/verify-runtime-protection.py" --parent "$environment_root/shared"
+
 parent=$(dirname "$destination")
 base=$(basename "$destination")
-mkdir -p -- "$parent"
+umask 022
 snapshot=$(mktemp -d "$parent/.${base}.input.XXXXXX")
 temporary=$(mktemp -d "$parent/.${base}.tmp.XXXXXX")
 cleanup() {
@@ -95,8 +99,11 @@ if not re.fullmatch(r'[0-9a-f]{40}', sha):
 print(sha)
 PYTHON
 )
-tar -xzf "$snapshot/am2-backend-runtime.tar.gz" -C "$temporary"
-python3 - "$snapshot/artifact-manifest.json" "$temporary/.artifact-identity.json" <<'PYTHON'
+mkdir "$temporary/payload"
+tar --no-same-owner -xzf "$snapshot/am2-backend-runtime.tar.gz" -C "$temporary/payload"
+# The wrapper stays 0700 even when tar restores the payload root mode.
+payload="$temporary/payload"
+python3 - "$snapshot/artifact-manifest.json" "$payload/.artifact-identity.json" <<'PYTHON'
 import json
 import sys
 
@@ -110,13 +117,13 @@ with open(sys.argv[2], 'w', encoding='utf-8') as handle:
     json.dump(identity, handle, separators=(',', ':'), sort_keys=True)
     handle.write('\n')
 PYTHON
-for link in "$temporary/WebAdmin/update" "$temporary/server/update"; do
+python3 "$script_dir/verify-runtime-protection.py" --release "$payload"
+for link in "$payload/WebAdmin/update" "$payload/server/update"; do
     [[ ! -e $link && ! -L $link ]] || { echo "sealed artifact unexpectedly contains runtime update path: $link" >&2; exit 1; }
 done
-ln -s "$webadmin_update_real" "$temporary/WebAdmin/update"
-ln -s "$server_update_real" "$temporary/server/update"
-"$script_dir/verify-release-runtime.sh" "$temporary" "$source_sha"
-chmod 0750 "$temporary"
-python3 "$script_dir/atomic-rename-no-replace.py" --source "$temporary" --destination "$destination"
-temporary=
+ln -s "$webadmin_update_real" "$payload/WebAdmin/update"
+ln -s "$server_update_real" "$payload/server/update"
+"$script_dir/verify-release-runtime.sh" "$payload" "$source_sha"
+chmod 0750 "$payload"
+python3 "$script_dir/atomic-rename-no-replace.py" --source "$payload" --destination "$destination"
 printf 'artifact release materialized: %s -> %s\n' "$source_sha" "$destination"

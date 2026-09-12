@@ -86,8 +86,18 @@ import hashlib
 import json
 import re
 import sys
+import tarfile
+from pathlib import PurePosixPath
 
 manifest_path, archive_path = sys.argv[1:]
+# Inspect headers before any privileged extraction, including the verifier copy.
+with tarfile.open(archive_path) as archive:
+    for member in archive:
+        path = PurePosixPath(member.name)
+        if path.is_absolute() or '..' in path.parts or not (member.isdir() or member.isfile()):
+            raise SystemExit(f'unsafe artifact member: {member.name}')
+        if member.mode & 0o7022:
+            raise SystemExit(f'unsafe artifact permissions: {member.name}')
 with open(manifest_path, encoding='utf-8') as handle:
     value = json.load(handle)
 required = {'schema_version', 'application', 'source_sha', 'payload_sha256', 'archive_sha256', 'runtime', 'lockfiles'}
@@ -157,7 +167,7 @@ if grep -Eq '(^|/)(\.git|\.github|\.hermes|\.bin|test|tests|docs)(/|$)|(^|/)\.en
 fi
 
 mkdir -p "$work/payload"
-tar -xzf "$archive" -C "$work/payload"
+tar --no-same-owner -xzf "$archive" -C "$work/payload"
 if find "$work/payload" -type l -print -quit | grep -q .; then
     echo "artifact contains a symlink" >&2
     exit 1

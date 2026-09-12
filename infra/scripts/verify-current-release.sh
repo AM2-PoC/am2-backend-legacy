@@ -20,6 +20,12 @@ if [[ ! -d $release_root ]]; then
     exit 1
 fi
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Validate the pointer parent before resolving the one allowed current symlink.
+python3 "$script_dir/verify-runtime-protection.py" --parent "$(dirname "$release_root")"
+release_root=$(realpath -e -- "$release_root")
+python3 "$script_dir/verify-runtime-protection.py" --release "$release_root"
+
 for required in \
     "$release_root/.release-sha" \
     "$release_root/server/package.json" \
