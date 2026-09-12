@@ -33,6 +33,16 @@ PYTHON
 source_sha=${identity[0]}
 archive_sha256=${identity[1]}
 payload_sha256=${identity[2]}
+required_node_major=$(python3 - "$manifest" <<'PYTHON'
+import json, sys
+print(json.load(open(sys.argv[1], encoding='utf-8'))['runtime']['node'])
+PYTHON
+)
+actual_node_major=$(node -p 'process.versions.node.split(".")[0]')
+[[ $actual_node_major == "$required_node_major" ]] || {
+    echo "Node runtime major mismatch: artifact requires $required_node_major, host provides $actual_node_major" >&2
+    exit 1
+}
 [[ $(tr -d '\r\n' < "$release/.release-sha") == "$source_sha" ]] || { echo "release source marker mismatch" >&2; exit 1; }
 
 python3 - "$release/.artifact-identity.json" "$source_sha" "$archive_sha256" "$payload_sha256" <<'PYTHON'
