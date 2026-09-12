@@ -354,6 +354,18 @@ test('release builder creates an exact immutable runnable artifact', { timeout: 
     const preflight = spawnSync('bash', [verify, destination, sha], { encoding: 'utf8' });
     assert.equal(preflight.status, 0, `${preflight.stdout}\n${preflight.stderr}`);
 
+    const fakeNode = join(base, 'fake-node');
+    writeFileSync(fakeNode, '#!/bin/sh\nprintf 999\n');
+    chmodSync(fakeNode, 0o755);
+    const probeVerifier = join(base, 'verify-release-runtime.sh');
+    writeFileSync(probeVerifier, readFileSync(verify, 'utf8')
+      .replace('node_executable=/usr/bin/node', `node_executable=${fakeNode}`));
+    chmodSync(probeVerifier, 0o755);
+    const incompatibleRuntime = spawnSync('bash', [probeVerifier, destination, sha], { encoding: 'utf8' });
+    assert.notEqual(incompatibleRuntime.status, 0,
+      'restart preflight accepted a different systemd Node major');
+    assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
+
     const tracked = git('ls-tree', '-r', '--name-only', sha);
     assert.ok(tracked.length > 0);
     assert.equal(readFileSync(join(destination, '.release-sha'), 'utf8').trim(), sha);
