@@ -148,8 +148,12 @@ test('artifact materializer creates immutable runnable release and leaves curren
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
       'materialized setgid release directory changes the sealed payload digest');
-    assert.equal(statSync(join(destination, 'server')).mode & 0o2000, 0o2000,
-      'setgid releases root did not exercise inherited directory mode normalization');
+    // Root tar extraction may restore archive modes without inherited setgid.
+    // Exercise the verifier's permitted setgid normalization explicitly.
+    chmodSync(join(destination, 'server'), 0o2755);
+    const setgidIntact = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.equal(setgidIntact.status, 0, `${setgidIntact.stdout}\n${setgidIntact.stderr}`);
     chmodSync(join(destination, 'server'), 0o700);
     const permissionTampered = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
