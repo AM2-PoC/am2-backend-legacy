@@ -146,6 +146,33 @@ test('artifact materializer creates immutable runnable release and leaves curren
     const intact = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
+
+    const fakeNode = join(base, 'fake-node');
+    writeFileSync(fakeNode, '#!/bin/sh\nprintf 999\n');
+    chmodSync(fakeNode, 0o755);
+    const probeScripts = join(base, 'runtime-probe-scripts');
+    mkdirSync(probeScripts);
+    const probeVerifier = join(probeScripts, 'verify-materialized-artifact.sh');
+    writeFileSync(probeVerifier, readFileSync(verifyMaterialized, 'utf8')
+      .replace('node_executable=/usr/bin/node', `node_executable=${fakeNode}`));
+    chmodSync(probeVerifier, 0o755);
+    writeFileSync(join(probeScripts, 'verify-runtime-protection.py'),
+      readFileSync(resolve(root, 'infra/scripts/verify-runtime-protection.py')));
+    const incompatibleRuntime = spawnSync('bash', [probeVerifier, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(incompatibleRuntime.status, 0,
+      'materialized verifier accepted a different service Node major');
+    assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
+
+    const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
+    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(prematureNode)}\n`);
+    const prematureActivation = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(prematureActivation.status, 0,
+      'materialized verifier accepted unsupported Node 26');
+    assert.match(prematureActivation.stderr, /unsupported|engines\.node/i);
+    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(manifest)}\n`);
+
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
       'materialized setgid release directory changes the sealed payload digest');
     // Root tar extraction may restore archive modes without inherited setgid.

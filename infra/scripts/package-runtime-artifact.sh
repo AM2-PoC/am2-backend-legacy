@@ -102,6 +102,13 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 mkdir -p "$payload" "$temporary/out"
 
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+node_requirement=$(node -p 'require(process.argv[1]).engines?.node || ""' "$source_root/server/package.json")
+if [[ $node_major != 22 || $node_requirement != 22.x ]]; then
+    echo "artifact packaging requires Node 22 and server engines.node 22.x" >&2
+    exit 1
+fi
+
 # `npm ls` validates the complete production graph recorded by package-lock,
 # not merely direct package entrypoints. It catches a missing transitive module
 # before that broken tree can be sealed into an immutable release.
@@ -204,7 +211,6 @@ tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
 archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
 server_lock_sha256=$(sha256sum "$source_root/server/package-lock.json" | awk '{print $1}')
 webadmin_lock_sha256=$(sha256sum "$source_root/WebAdmin/package-lock.json" | awk '{print $1}')
-node_major=$(node -p 'process.versions.node.split(".")[0]')
 php_version=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')
 
 cat > "$temporary/out/artifact-manifest.json" <<EOF
