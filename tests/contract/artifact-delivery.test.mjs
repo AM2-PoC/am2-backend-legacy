@@ -486,6 +486,14 @@ test('artifact verifier rejects an external same-basename manifest', { timeout: 
   }
 });
 
+test('CI artifact runtime declaration matches its Node package executor', () => {
+  const workflow = readFileSync(workflowPath, 'utf8');
+  assert.match(workflow, /node-version:\s*'22'/,
+    'artifact publisher does not use the deployed Node major');
+  assert.match(workflow, /test "\$\(node -p 'process\.versions\.node\.split\("\."\)\[0\]'\)" = '22'/,
+    'artifact publisher does not verify the Node executable that writes manifest.runtime.node');
+});
+
 test('CI packages an explicit exact-main candidate only after source checks succeed', () => {
   assert.ok(existsSync(workflowPath), 'no CI runtime-artifact publisher exists');
   const workflow = readFileSync(workflowPath, 'utf8');
