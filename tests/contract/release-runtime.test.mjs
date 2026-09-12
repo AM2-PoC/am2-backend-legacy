@@ -146,6 +146,16 @@ test('artifact materializer creates immutable runnable release and leaves curren
     const intact = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
+
+    const incompatibleManifest = { ...manifest, runtime: { ...manifest.runtime, node: '999' } };
+    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(incompatibleManifest)}\n`);
+    const incompatibleRuntime = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.notEqual(incompatibleRuntime.status, 0,
+      'materialized verifier accepted an artifact built for a different Node major');
+    assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
+    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(manifest)}\n`);
+
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
       'materialized setgid release directory changes the sealed payload digest');
     // Root tar extraction may restore archive modes without inherited setgid.
