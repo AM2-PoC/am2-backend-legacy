@@ -46,6 +46,17 @@ PYTHON
 
 CURRENT=${AM2_PRODUCTION_CURRENT:-/var/www/am2/current}
 STAGING=${AM2_STAGING_CURRENT:-/var/www/am2/staging/current}
+if (( EUID == 0 )); then
+    # Privileged promotion trust anchors are host constants, not caller input.
+    PRODUCTION_RELEASES_ROOT=/var/www/am2/releases
+    PRODUCTION_WEBADMIN_UPDATE=/var/www/am2/shared/webadmin-update
+    PRODUCTION_SERVER_UPDATE=/var/www/am2/shared/server-update
+else
+    # Fixture overrides are non-privileged and cannot mutate production.
+    PRODUCTION_RELEASES_ROOT=${AM2_PRODUCTION_RELEASES_ROOT:-/var/www/am2/releases}
+    PRODUCTION_WEBADMIN_UPDATE=${AM2_PRODUCTION_WEBADMIN_UPDATE:-/var/www/am2/shared/webadmin-update}
+    PRODUCTION_SERVER_UPDATE=${AM2_PRODUCTION_SERVER_UPDATE:-/var/www/am2/shared/server-update}
+fi
 RECEIPTS=${AM2_PROMOTION_RECEIPTS:-/var/www/am2/shared/promotions}
 STAGING_RECEIPTS=${AM2_STAGING_RECEIPTS:-/var/www/am2/staging/shared/rehearsals}
 DEPLOY_LOCK=${AM2_DEPLOY_LOCK:-/var/lib/am2-relay-watchdog/deploy.lock}
@@ -96,6 +107,33 @@ flock -x 9
 # the exclusive transition so actionable source/build or identity drift blocks
 # this deployment rather than being noticed after it.
 "$RUNTIME_BOUNDARY_AUDIT" --deploy-gate
+
+verify_production_placement() {
+    local release_real release_parent production_releases_root path expected i
+    local -a update_paths expected_updates
+    release_real=$(realpath -e -- "$release")
+    release_parent=$(realpath -e -- "$(dirname "$release_real")")
+    production_releases_root=$(realpath -e -- "$PRODUCTION_RELEASES_ROOT")
+    [[ $PRODUCTION_RELEASES_ROOT == /* && ! -L $PRODUCTION_RELEASES_ROOT &&
+       $production_releases_root == "$PRODUCTION_RELEASES_ROOT" &&
+       $release_real == "$release" && $release_parent == "$production_releases_root" ]] || {
+        echo "candidate must be a canonical direct child of the production releases root" >&2
+        return 1
+    }
+    update_paths=("$release/WebAdmin/update" "$release/server/update")
+    expected_updates=("$PRODUCTION_WEBADMIN_UPDATE" "$PRODUCTION_SERVER_UPDATE")
+    for i in 0 1; do
+        path=${update_paths[$i]}
+        expected=${expected_updates[$i]}
+        [[ $expected == /* && -d $expected && ! -L $expected &&
+           $(realpath -e -- "$expected") == "$expected" && -L $path &&
+           $(realpath -e -- "$path") == "$expected" ]] || {
+            echo "candidate update link does not target production storage: $path" >&2
+            return 1
+        }
+    done
+}
+verify_production_placement
 
 sha=$(sha_of "$release")
 identity_source_sha=$(python3 - "$release/.artifact-identity.json" <<'PYTHON'
@@ -189,6 +227,12 @@ if (( dry_run )); then
     echo "all gates passed; dry run did not touch production."
     exit 0
 fi
+
+# Revalidate mutable path anchors and exact candidate bytes immediately before
+# pointer mutation. The exclusive deploy lock coordinates AM2 automation and
+# this second check narrows the remaining check/use window.
+verify_production_placement
+"$VERIFY_ARTIFACT" --release "$release" --manifest "$candidate_manifest" >/dev/null
 
 cutover_started=0
 rollback_on_failure() {
