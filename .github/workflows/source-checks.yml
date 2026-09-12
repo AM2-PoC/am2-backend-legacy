@@ -127,6 +127,7 @@ jobs:
           mjs=(); php=()
           for f in "${files[@]}"; do
               case "$f" in
+                  release-runtime.test.mjs|systemd-relay-safety.test.mjs) ;; # privileged restart-safety job below
                   *.test.mjs) mjs+=("tests/contract/$f") ;;
                   *.test.php) php+=("tests/contract/$f") ;;
                   *) echo "::error::no runner for $f"; exit 1 ;;
@@ -158,7 +159,7 @@ jobs:
           NPM_CONFIG_AUDIT: 'false'
           NPM_CONFIG_FUND: 'false'
         run: |
-          node --test --test-concurrency=1 \
+          sudo env "PATH=$PATH" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory "GIT_CONFIG_VALUE_0=$GITHUB_WORKSPACE" node --test --test-concurrency=1 \
             tests/contract/needrestart-policy.test.mjs \
             tests/contract/release-runtime.test.mjs \
             tests/contract/release-smoke.test.mjs \

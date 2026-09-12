@@ -108,14 +108,14 @@ test('artifact materializer rejects malformed identity without creating release 
 });
 
 test('artifact materializer creates immutable runnable release and leaves current untouched', { timeout: 180_000 }, () => {
-  const base = tempDir('am2-materialize-green-');
+  const base = mkdtempSync('/opt/am2-materialize-green-');
   const sha = git('rev-parse', 'HEAD');
   try {
     const ingress = packageArtifactFixture(base, sha);
     const environment = join(base, 'environment');
     const destination = join(environment, 'releases', `candidate-${sha.slice(0, 12)}`);
     mkdirSync(join(environment, 'releases'), { recursive: true });
-    chmodSync(join(environment, 'releases'), 0o2775);
+    chmodSync(join(environment, 'releases'), 0o2750);
     const webadminUpdate = join(environment, 'shared', 'webadmin-update');
     const serverUpdate = join(environment, 'shared', 'server-update');
     const current = join(environment, 'current');

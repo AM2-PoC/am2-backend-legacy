@@ -147,10 +147,12 @@ class Materialization(unittest.TestCase):
         result = self.materialize()
         self.assertNotEqual(result.returncode, 0, 'accepted writable environment ancestor')
         self.assertFalse(self.dest.exists())
+        self.env.chmod(0o755)
         os.chown(self.releases, UID, GID)
         self.releases.chmod(0o755)
         result = self.materialize(uid=UID)
         self.assertNotEqual(result.returncode, 0, 'accepted unprivileged materialization')
+        self.assertIn('requires root', result.stderr)
         self.assertFalse(self.dest.exists())
 
     def test_verifiers_reject_mutable_candidate_and_rollback(self):
