@@ -47,13 +47,35 @@ if [[ ! -d $release_root/server/node_modules ]]; then
     exit 1
 fi
 
+node_executable=/usr/bin/node
+if [[ ! -x $node_executable ]]; then
+    node_executable=$(command -v node)
+fi
+readarray -t node_contract < <(python3 - "$release_root/server/package.json" "$release_root/server/package-lock.json" <<'PYTHON'
+import json, sys
+package = json.load(open(sys.argv[1], encoding='utf-8'))
+lock = json.load(open(sys.argv[2], encoding='utf-8'))
+print(package.get('engines', {}).get('node', ''))
+print(lock.get('packages', {}).get('', {}).get('engines', {}).get('node', ''))
+PYTHON
+)
+[[ ${node_contract[0]} == 22.x && ${node_contract[1]} == 22.x ]] || {
+    echo "release Node runtime declaration is unsupported or inconsistent" >&2
+    exit 1
+}
+actual_node_major=$("$node_executable" -p 'process.versions.node.split(".")[0]')
+[[ $actual_node_major == 22 ]] || {
+    echo "Node runtime major mismatch: release requires 22, service executable provides $actual_node_major" >&2
+    exit 1
+}
+
 while IFS= read -r -d '' source_file; do
-    node --check "$source_file" >/dev/null
+    "$node_executable" --check "$source_file" >/dev/null
 done < <(find "$release_root/server" -path '*/node_modules' -prune -o -type f -name '*.js' -print0)
 
 (
     cd "$release_root/server"
-    node <<'NODE'
+    "$node_executable" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 const packagePath = path.join(process.cwd(), 'package.json');
@@ -71,7 +93,7 @@ NODE
 
 (
     cd "$release_root/server"
-    node <<'NODE'
+    "$node_executable" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
