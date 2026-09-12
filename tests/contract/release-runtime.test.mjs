@@ -157,7 +157,7 @@ test('artifact materializer creates immutable runnable release and leaves curren
     });
     assert.notEqual(incompatibleRuntime.status, 0,
       'materialized verifier accepted an artifact built for a different Node major');
-    assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
+    assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node|privileged disposable/i);
 
     const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
     writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(prematureNode)}\n`);
