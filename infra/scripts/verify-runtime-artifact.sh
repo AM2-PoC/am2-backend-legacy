@@ -110,8 +110,17 @@ if not isinstance(runtime, dict) or set(runtime) != {'node', 'php'}:
     raise SystemExit('artifact manifest runtime key set is not exact')
 if not re.fullmatch(r'[0-9]+', str(runtime.get('node', ''))):
     raise SystemExit('artifact manifest runtime node is invalid')
+if runtime['node'] != '22':
+    raise SystemExit('artifact manifest declares an unsupported Node runtime')
 if not re.fullmatch(r'[0-9]+\.[0-9]+', str(runtime.get('php', ''))):
     raise SystemExit('artifact manifest runtime php is invalid')
+with tarfile.open(archive_path) as archive:
+    member = next((item for item in archive if item.name.lstrip('./') == 'server/package.json'), None)
+    if member is None or not member.isfile():
+        raise SystemExit('artifact server package declaration is missing')
+    package = json.load(archive.extractfile(member))
+if package.get('engines', {}).get('node') != '22.x':
+    raise SystemExit('artifact server engines.node does not match the supported Node runtime')
 lockfiles = value.get('lockfiles')
 if not isinstance(lockfiles, dict) or set(lockfiles) != {'server_package_lock_sha256', 'webadmin_package_lock_sha256'}:
     raise SystemExit('artifact manifest lockfile key set is not exact')

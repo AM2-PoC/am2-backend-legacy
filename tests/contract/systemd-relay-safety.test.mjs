@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, chownSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -58,9 +58,17 @@ test('host-owned current verifier validates a pre-P0 runnable rollback release',
   const legacy = mkdtempSync('/am2-legacy-release-');
   try {
     mkdirSync(resolve(legacy, 'server'), { recursive: true });
-    cpSync(resolve(root, 'server/package.json'), resolve(legacy, 'server/package.json'));
-    cpSync(resolve(root, 'server/package-lock.json'), resolve(legacy, 'server/package-lock.json'));
+    const legacyPackage = JSON.parse(readFileSync(resolve(root, 'server/package.json'), 'utf8'));
+    delete legacyPackage.engines;
+    writeFileSync(resolve(legacy, 'server/package.json'), `${JSON.stringify(legacyPackage)}\n`);
+    const legacyLock = JSON.parse(readFileSync(resolve(root, 'server/package-lock.json'), 'utf8'));
+    delete legacyLock.packages[''].engines;
+    writeFileSync(resolve(legacy, 'server/package-lock.json'), `${JSON.stringify(legacyLock)}\n`);
     cpSync(resolve(root, 'server/server.js'), resolve(legacy, 'server/server.js'));
+    for (const file of ['package.json', 'package-lock.json', 'server.js']) {
+      chownSync(resolve(legacy, 'server', file), 0, 0);
+      chmodSync(resolve(legacy, 'server', file), 0o644);
+    }
     const install = spawnSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
       cwd: resolve(legacy, 'server'),
       encoding: 'utf8',
