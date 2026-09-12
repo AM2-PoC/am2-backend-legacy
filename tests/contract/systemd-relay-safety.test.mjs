@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, chownSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -66,6 +66,7 @@ test('host-owned current verifier validates a pre-P0 runnable rollback release',
     writeFileSync(resolve(legacy, 'server/package-lock.json'), `${JSON.stringify(legacyLock)}\n`);
     cpSync(resolve(root, 'server/server.js'), resolve(legacy, 'server/server.js'));
     for (const file of ['package.json', 'package-lock.json', 'server.js']) {
+      chownSync(resolve(legacy, 'server', file), 0, 0);
       chmodSync(resolve(legacy, 'server', file), 0o644);
     }
     const install = spawnSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund'], {
