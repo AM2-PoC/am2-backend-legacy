@@ -161,6 +161,28 @@ class Materialization(unittest.TestCase):
         self.assertIn('requires root', result.stderr)
         self.assertFalse(self.dest.exists())
 
+    def test_nested_publication_preserves_existing_destination(self):
+        wrapper = self.releases / '.private'
+        wrapper.mkdir(mode=0o700)
+        source = wrapper / 'payload'
+        source.mkdir()
+        self.dest.mkdir()
+        sentinel = self.dest / 'sentinel'
+        sentinel.write_text('keep')
+        result = run('python3', self.scripts / 'atomic-rename-no-replace.py',
+                     '--source', source, '--destination', self.dest)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('destination already exists', result.stderr)
+        self.assertTrue(source.is_dir())
+        self.assertEqual(sentinel.read_text(), 'keep')
+        self.dest.joinpath('sentinel').unlink()
+        self.dest.rmdir()
+        wrapper.chmod(0o750)
+        result = run('python3', self.scripts / 'atomic-rename-no-replace.py',
+                     '--source', source, '--destination', self.dest)
+        self.assertNotEqual(result.returncode, 0, 'accepted non-private staging wrapper')
+        self.assertFalse(self.dest.exists())
+
     def test_verifiers_reject_mutable_candidate_and_rollback(self):
         ok(self.materialize())
         target = self.dest / 'server/server.js'
