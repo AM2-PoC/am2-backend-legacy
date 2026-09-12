@@ -48,7 +48,7 @@ PYTHON
     exit 1
 }
 node_executable=/usr/bin/node
-if [[ ! -x $node_executable && ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted ]]; then
+if [[ ! -x $node_executable ]]; then
     node_executable=$(command -v node)
 fi
 if [[ -n ${AM2_TEST_NODE_EXECUTABLE:-} ]]; then
