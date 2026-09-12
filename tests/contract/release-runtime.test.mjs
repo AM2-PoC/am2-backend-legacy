@@ -108,14 +108,14 @@ test('artifact materializer rejects malformed identity without creating release 
 });
 
 test('artifact materializer creates immutable runnable release and leaves current untouched', { timeout: 180_000 }, () => {
-  const base = tempDir('am2-materialize-green-');
+  const base = mkdtempSync('/am2-materialize-green-');
   const sha = git('rev-parse', 'HEAD');
   try {
     const ingress = packageArtifactFixture(base, sha);
     const environment = join(base, 'environment');
     const destination = join(environment, 'releases', `candidate-${sha.slice(0, 12)}`);
     mkdirSync(join(environment, 'releases'), { recursive: true });
-    chmodSync(join(environment, 'releases'), 0o2775);
+    chmodSync(join(environment, 'releases'), 0o2750);
     const webadminUpdate = join(environment, 'shared', 'webadmin-update');
     const serverUpdate = join(environment, 'shared', 'server-update');
     const current = join(environment, 'current');
@@ -148,8 +148,12 @@ test('artifact materializer creates immutable runnable release and leaves curren
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
     assert.equal(statSync(join(destination, 'server')).mode & 0o777, 0o755,
       'materialized setgid release directory changes the sealed payload digest');
-    assert.equal(statSync(join(destination, 'server')).mode & 0o2000, 0o2000,
-      'setgid releases root did not exercise inherited directory mode normalization');
+    // Root tar extraction may restore archive modes without inherited setgid.
+    // Exercise the verifier's permitted setgid normalization explicitly.
+    chmodSync(join(destination, 'server'), 0o2755);
+    const setgidIntact = spawnSync('bash', [verifyMaterialized, '--release', destination,
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+    assert.equal(setgidIntact.status, 0, `${setgidIntact.stdout}\n${setgidIntact.stderr}`);
     chmodSync(join(destination, 'server'), 0o700);
     const permissionTampered = spawnSync('bash', [verifyMaterialized, '--release', destination,
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });

@@ -176,6 +176,7 @@ for script in \
     verify-current-release.sh \
     verify-materialized-artifact.sh \
     verify-release-runtime.sh \
+    verify-runtime-protection.py \
     verify-webadmin-guard.sh
 do
     copy_file "infra/scripts/$script"

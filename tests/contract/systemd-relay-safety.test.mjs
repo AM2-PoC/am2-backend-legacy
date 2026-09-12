@@ -55,7 +55,7 @@ test('current-release verifier accepts only one absolute runtime root argument',
 
 test('host-owned current verifier validates a pre-P0 runnable rollback release', () => {
   const script = resolve(root, 'infra/scripts/verify-current-release.sh');
-  const legacy = mkdtempSync(resolve(tmpdir(), 'am2-legacy-release-'));
+  const legacy = mkdtempSync('/am2-legacy-release-');
   try {
     mkdirSync(resolve(legacy, 'server'), { recursive: true });
     cpSync(resolve(root, 'server/package.json'), resolve(legacy, 'server/package.json'));
@@ -67,6 +67,7 @@ test('host-owned current verifier validates a pre-P0 runnable rollback release',
       timeout: 300_000,
     });
     assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
+    rmSync(resolve(legacy, 'server/node_modules/.bin'), { recursive: true, force: true });
     writeFileSync(resolve(legacy, '.release-sha'), `${'a'.repeat(40)}\n`);
 
     const run = spawnSync('bash', [script, legacy], { encoding: 'utf8' });

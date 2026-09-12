@@ -23,6 +23,15 @@ permissions:
   contents: read
 
 jobs:
+  materialization-privileges:
+    name: root-owned materialization (disposable runner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Real cross-UID and retained writable descriptor regression
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT python3 tests/runtime-materialization-privileged.py
+
   php:
     name: php -l
     runs-on: ubuntu-latest
@@ -118,6 +127,7 @@ jobs:
           mjs=(); php=()
           for f in "${files[@]}"; do
               case "$f" in
+                  release-runtime.test.mjs|systemd-relay-safety.test.mjs) ;; # privileged restart-safety job below
                   *.test.mjs) mjs+=("tests/contract/$f") ;;
                   *.test.php) php+=("tests/contract/$f") ;;
                   *) echo "::error::no runner for $f"; exit 1 ;;
@@ -149,7 +159,7 @@ jobs:
           NPM_CONFIG_AUDIT: 'false'
           NPM_CONFIG_FUND: 'false'
         run: |
-          node --test --test-concurrency=1 \
+          sudo env "PATH=$PATH" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory "GIT_CONFIG_VALUE_0=$GITHUB_WORKSPACE" node --test --test-concurrency=1 \
             tests/contract/needrestart-policy.test.mjs \
             tests/contract/release-runtime.test.mjs \
             tests/contract/release-smoke.test.mjs \

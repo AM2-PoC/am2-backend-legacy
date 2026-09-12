@@ -26,7 +26,7 @@ Do not refresh staging from a source checkout or environment branch. Export exac
 CACHE=/var/lib/am2-artifacts/$SOURCE_SHA/$ARCHIVE_SHA
 REL=/var/www/am2/staging/releases/artifact-$ARCHIVE_SHA
 
-sudo -u am2release /usr/local/libexec/am2/materialize-runtime-release.sh \
+sudo /usr/local/libexec/am2/materialize-runtime-release.sh \
   --archive "$CACHE/am2-backend-runtime.tar.gz" \
   --manifest "$CACHE/artifact-manifest.json" \
   --checksums "$CACHE/SHA256SUMS" \

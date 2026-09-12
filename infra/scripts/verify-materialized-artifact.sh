@@ -17,6 +17,9 @@ done
 [[ $release == /* && -d $release && ! -L $release ]] || { echo "release must be an absolute non-symlink directory" >&2; exit 64; }
 [[ $manifest == /* && -f $manifest && ! -L $manifest ]] || { echo "manifest must be an absolute regular file" >&2; exit 64; }
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+python3 "$script_dir/verify-runtime-protection.py" --release "$release"
+
 readarray -t identity < <(python3 - "$manifest" <<'PYTHON'
 import json, re, sys
 value = json.load(open(sys.argv[1], encoding='utf-8'))
