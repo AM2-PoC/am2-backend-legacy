@@ -47,7 +47,15 @@ PYTHON
     echo "artifact Node runtime is unsupported or disagrees with server engines.node" >&2
     exit 1
 }
-actual_node_major=$(node -p 'process.versions.node.split(".")[0]')
+node_executable=/usr/bin/node
+if [[ -n ${AM2_TEST_NODE_EXECUTABLE:-} ]]; then
+    [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted && $EUID -eq 0 ]] || {
+        echo "test Node executable override requires a privileged disposable GitHub runner" >&2
+        exit 1
+    }
+    node_executable=$AM2_TEST_NODE_EXECUTABLE
+fi
+actual_node_major=$("$node_executable" -p 'process.versions.node.split(".")[0]')
 [[ $actual_node_major == "$required_node_major" ]] || {
     echo "Node runtime major mismatch: artifact requires $required_node_major, host provides $actual_node_major" >&2
     exit 1

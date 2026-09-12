@@ -147,24 +147,22 @@ test('artifact materializer creates immutable runnable release and leaves curren
       '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.equal(intact.status, 0, `${intact.stdout}\n${intact.stderr}`);
 
-    const incompatibleManifest = { ...manifest, runtime: { ...manifest.runtime, node: '999' } };
-    writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(incompatibleManifest)}\n`);
+    const fakeNode = join(base, 'fake-node');
+    writeFileSync(fakeNode, '#!/bin/sh\nprintf 999\n');
+    chmodSync(fakeNode, 0o755);
     const incompatibleRuntime = spawnSync('bash', [verifyMaterialized, '--release', destination,
-      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
+      '--manifest', join(ingress, 'artifact-manifest.json')], {
+      encoding: 'utf8',
+      env: { ...process.env, AM2_TEST_NODE_EXECUTABLE: fakeNode },
+    });
     assert.notEqual(incompatibleRuntime.status, 0,
       'materialized verifier accepted an artifact built for a different Node major');
     assert.match(incompatibleRuntime.stderr, /Node.*runtime|runtime.*Node/i);
 
     const prematureNode = { ...manifest, runtime: { ...manifest.runtime, node: '26' } };
     writeFileSync(join(ingress, 'artifact-manifest.json'), `${JSON.stringify(prematureNode)}\n`);
-    const fakeBin = join(base, 'node26-bin');
-    mkdirSync(fakeBin);
-    writeFileSync(join(fakeBin, 'node'), '#!/bin/sh\nprintf 26\n');
-    chmodSync(join(fakeBin, 'node'), 0o755);
     const prematureActivation = spawnSync('bash', [verifyMaterialized, '--release', destination,
-      '--manifest', join(ingress, 'artifact-manifest.json')], {
-      encoding: 'utf8', env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
-    });
+      '--manifest', join(ingress, 'artifact-manifest.json')], { encoding: 'utf8' });
     assert.notEqual(prematureActivation.status, 0,
       'materialized verifier accepted unsupported Node 26');
     assert.match(prematureActivation.stderr, /unsupported|engines\.node/i);
