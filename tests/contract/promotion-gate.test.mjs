@@ -90,6 +90,75 @@ describe('production promotion gate', () => {
         assert.match(s, /archive_sha256[\s\S]*artifact-identity/i);
     });
 
+    test('production targets are constrained to the production release root and update stores', () => {
+        const s = read(GATE);
+        assert.match(s, /AM2_PRODUCTION_RELEASES_ROOT[^\n]*\/var\/www\/am2\/releases/,
+            'promotion has no production release-root contract');
+        assert.match(s, /PRODUCTION_WEBADMIN_UPDATE[^\n]*\/var\/www\/am2\/shared\/webadmin-update/,
+            'promotion does not bind WebAdmin update storage to production');
+        assert.match(s, /if \(\( EUID == 0 \)\)[\s\S]*PRODUCTION_RELEASES_ROOT=\/var\/www\/am2\/releases[\s\S]*PRODUCTION_WEBADMIN_UPDATE=\/var\/www\/am2\/shared\/webadmin-update[\s\S]*PRODUCTION_SERVER_UPDATE=\/var\/www\/am2\/shared\/server-update/,
+            'privileged callers can redefine production trust anchors');
+        assert.equal((s.match(/^verify_production_placement$/gm) ?? []).length, 2,
+            'production placement is not revalidated immediately before activation');
+        assert.match(s, /verify_production_placement\n"\$VERIFY_ARTIFACT" --release "\$release"[\s\S]*cutover_started=0/,
+            'candidate bytes are not reverified immediately before activation');
+    });
+
+    test('it rejects non-production roots and update targets before activation', () => {
+        const base = mkdtempSync(join(tmpdir(), 'am2-production-boundary-'));
+        const productionRoot = join(base, 'production', 'releases');
+        const stagingRoot = join(base, 'staging', 'releases');
+        const productionWeb = join(base, 'production', 'shared', 'webadmin-update');
+        const productionServer = join(base, 'production', 'shared', 'server-update');
+        const stagingWeb = join(base, 'staging', 'shared', 'webadmin-update');
+        const stagingServer = join(base, 'staging', 'shared', 'server-update');
+        const archive = 'b'.repeat(64);
+        const sha = 'a'.repeat(40);
+        const makeCandidate = (root, name, webTarget, serverTarget) => {
+            const release = join(root, name);
+            mkdirSync(join(release, 'WebAdmin'), { recursive: true });
+            mkdirSync(join(release, 'server'), { recursive: true });
+            writeFileSync(join(release, '.artifact-identity.json'), `${JSON.stringify({ source_sha: sha, archive_sha256: archive, payload_sha256: 'c'.repeat(64) })}\n`);
+            symlinkSync(webTarget, join(release, 'WebAdmin/update'));
+            symlinkSync(serverTarget, join(release, 'server/update'));
+            return release;
+        };
+        try {
+            for (const dir of [productionRoot, stagingRoot, productionWeb, productionServer, stagingWeb, stagingServer]) {
+                mkdirSync(dir, { recursive: true });
+            }
+            const productionRootLink = join(base, 'production-releases-link');
+            const productionWebLink = join(base, 'production-web-link');
+            symlinkSync(productionRoot, productionRootLink);
+            symlinkSync(productionWeb, productionWebLink);
+            const valid = makeCandidate(productionRoot, 'valid', productionWeb, productionServer);
+            const cases = [
+                { name: 'staging root', release: makeCandidate(stagingRoot, 'outside', productionWeb, productionServer) },
+                { name: 'staging WebAdmin update', release: makeCandidate(productionRoot, 'wrong-web', stagingWeb, productionServer) },
+                { name: 'staging relay update', release: makeCandidate(productionRoot, 'wrong-server', productionWeb, stagingServer) },
+                { name: 'symlinked production root', release: valid, productionRoot: productionRootLink },
+                { name: 'non-canonical production root', release: valid, productionRoot: `${productionRoot}/../releases` },
+                { name: 'symlinked production update target', release: valid, productionWeb: productionWebLink },
+                { name: 'non-canonical release path', release: `${valid}/../valid` },
+            ];
+            for (const item of cases) {
+                const run = spawnSync('bash', [join(ROOT, GATE), '--release', item.release,
+                    '--archive-sha256', archive, '--dry-run'], {
+                    encoding: 'utf8', env: { ...process.env,
+                        AM2_PRODUCTION_RELEASES_ROOT: item.productionRoot ?? productionRoot,
+                        AM2_PRODUCTION_WEBADMIN_UPDATE: item.productionWeb ?? productionWeb,
+                        AM2_PRODUCTION_SERVER_UPDATE: productionServer,
+                        AM2_DEPLOY_LOCK: join(base, `${item.name}.lock`),
+                        AM2_RUNTIME_BOUNDARY_AUDIT: '/bin/true' },
+                });
+                assert.notEqual(run.status, 0, `${item.name} was accepted`);
+                assert.match(run.stderr, /production releases root|production storage/i);
+            }
+        } finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+
     test('artifact packaging carries every post-cutover verifier the gate invokes', () => {
         const packager = read('infra/scripts/package-runtime-artifact.sh');
         assert.match(packager, /verify-webadmin-guard\.sh/,
@@ -164,34 +233,69 @@ describe('production promotion gate', () => {
     test('post-cutover failure automatically restores the previous release', () => {
         const base = mkdtempSync(join(tmpdir(), 'am2-promotion-rollback-'));
         const bin = join(base, 'bin');
-        const old = join(base, 'old');
+        const productionRoot = join(base, 'releases');
         const archive = 'b'.repeat(64);
-        const candidate = join(base, `artifact-${archive}`);
+        const candidate = join(productionRoot, `artifact-${archive}`);
+        const old = join(base, 'old');
         const staging = join(base, 'staging');
         const current = join(base, 'current');
-        const rehearsal = join(base, 'rehearsal.txt');
+        const webadminUpdate = join(base, 'shared', 'webadmin-update');
+        const serverUpdate = join(base, 'shared', 'server-update');
+        const rehearsal = join(base, 'rehearsals', 'rehearsal.txt');
+        const manifest = join(base, 'manifest.json');
         const sha = 'a'.repeat(40);
+        const payload = 'c'.repeat(64);
         const makeRelease = (dir) => {
             mkdirSync(join(dir, 'server'), { recursive: true });
+            mkdirSync(join(dir, 'WebAdmin'), { recursive: true });
             mkdirSync(join(dir, 'infra/scripts'), { recursive: true });
             writeFileSync(join(dir, '.release-sha'), `${sha}\n`);
-            writeFileSync(join(dir, '.artifact-identity.json'), `${JSON.stringify({ source_sha: sha, archive_sha256: archive, payload_sha256: 'c'.repeat(64) })}\n`);
+            writeFileSync(join(dir, '.artifact-identity.json'), `${JSON.stringify({ source_sha: sha, archive_sha256: archive, payload_sha256: payload })}\n`);
             for (const script of ['smoke-release.sh', 'verify-webadmin-guard.sh']) {
-                writeFileSync(join(dir, 'infra/scripts', script), '#!/bin/sh\nexit 0\n');
+                const body = script === 'smoke-release.sh'
+                    ? '#!/bin/sh\nprintf "isolated release smoke OK\\n"\n'
+                    : '#!/bin/sh\nexit 0\n';
+                writeFileSync(join(dir, 'infra/scripts', script), body);
                 chmodSync(join(dir, 'infra/scripts', script), 0o755);
             }
         };
         try {
             mkdirSync(bin);
+            mkdirSync(dirname(rehearsal), { recursive: true });
+            mkdirSync(webadminUpdate, { recursive: true });
+            mkdirSync(serverUpdate, { recursive: true });
             makeRelease(old);
             makeRelease(candidate);
+            symlinkSync(webadminUpdate, join(candidate, 'WebAdmin/update'));
+            symlinkSync(serverUpdate, join(candidate, 'server/update'));
             symlinkSync(candidate, staging);
             symlinkSync(old, current);
-            writeFileSync(rehearsal, `source_sha ${sha}\narchive_sha256 ${archive}\nstatus verified\n`);
+            writeFileSync(rehearsal, `schema_version 1\nsource_sha ${sha}\narchive_sha256 ${archive}\npayload_sha256 ${payload}\nrollback_release ${old}\ncandidate_release ${candidate}\ncandidate_pid 111\nrollback_pid 222\nrepromoted_pid 333\nstatus verified\n`);
+            writeFileSync(manifest, '{}\n');
+            const restartState = join(base, 'restarted');
             const commands = {
-                systemctl: '#!/bin/sh\ncase "$*" in *MainPID*) echo 123;; *NRestarts*) echo 0;; *is-active*) echo active;; esac\nexit 0\n',
+                systemctl: `#!/bin/sh
+state='${restartState}'
+case "$*" in
+  *"restart "*) touch "$state";;
+  *"am2-api-staging"*MainPID*) echo 456;;
+  *MainPID*) if [ -e "$state" ]; then echo 124; else echo 123; fi;;
+  *NRestarts*) echo 0;;
+  *is-active*) echo active;;
+esac
+exit 0
+`,
                 curl: '#!/bin/sh\nprintf "PTT Server\\n"\n',
-                readlink: `#!/bin/sh\nif [ "$1" = "-f" ] && [ "$2" = "/proc/123/cwd" ]; then echo ${old}/server; else exec /usr/bin/readlink "$@"; fi\n`,
+                readlink: `#!/bin/sh
+if [ "$1" = "-f" ]; then
+  case "$2" in
+    /proc/456/cwd) echo ${candidate}/server; exit 0;;
+    /proc/123/cwd|/proc/124/cwd) echo ${old}/server; exit 0;;
+  esac
+fi
+exec /usr/bin/readlink "$@"
+`,
+                stat: '#!/bin/sh\ncase "$*" in *"%u"*) echo 0;; *"%a"*) echo 644;; *) exec /usr/bin/stat "$@";; esac\n',
                 sudo: '#!/bin/sh\nexit 0\n',
             };
             for (const [name, body] of Object.entries(commands)) {
@@ -207,11 +311,19 @@ describe('production promotion gate', () => {
                 '--archive-sha256', archive, '--staging-rehearsal-receipt', rehearsal], {
                 encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
                     AM2_PRODUCTION_CURRENT: current, AM2_STAGING_CURRENT: staging,
+                    AM2_STAGING_RECEIPTS: dirname(rehearsal),
+                    AM2_PRODUCTION_RELEASES_ROOT: productionRoot,
+                    AM2_PRODUCTION_WEBADMIN_UPDATE: webadminUpdate,
+                    AM2_PRODUCTION_SERVER_UPDATE: serverUpdate,
                     AM2_PROMOTION_RECEIPTS: receipts, AM2_DEPLOY_LOCK: join(base, 'deploy.lock'),
-                    AM2_VERIFY_CURRENT: verify, AM2_RELAY_DIGEST: digest,
+                    AM2_VERIFY_CURRENT: verify, AM2_VERIFY_ARTIFACT: '/bin/true',
+                    AM2_CANDIDATE_MANIFEST: manifest, AM2_RELAY_DIGEST: digest,
+                    AM2_RUNTIME_BOUNDARY_AUDIT: '/bin/true',
                     AM2_PRODUCTION_ENV: join(base, 'prod.env'), AM2_PRODUCTION_URL: 'http://test/', AM2_STAGING_URL: 'http://test/' },
             });
             assert.notEqual(run.status, 0, 'forced post-cutover failure unexpectedly succeeded');
+            assert.match(run.stderr, /promotion failed; restoring/,
+                'fixture failed before cutover, so it did not exercise automatic rollback');
             assert.equal(realpathSync(current), old, `candidate remained selected:\n${run.stdout}\n${run.stderr}`);
         } finally {
             rmSync(base, { recursive: true, force: true });
