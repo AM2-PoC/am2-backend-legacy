@@ -15,6 +15,7 @@ Usage: activate-host-security.sh
           [--verify-installed /absolute/command]
           [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
           [--lock /absolute/lock]
+          [--supersede]
          --apply --allow-reload
 USAGE
 }
@@ -27,6 +28,7 @@ root=/
 unprivileged=0
 apply=0
 allow_reload=0
+supersede=0
 apache_configtest=/usr/sbin/apache2ctl
 nginx_configtest=/usr/sbin/nginx
 reload_command=/usr/bin/systemctl
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
         --lock) [[ $# -ge 2 ]] || { usage; exit 64; }; lock=$2; shift 2 ;;
         --apply) apply=1; shift ;;
         --allow-reload) allow_reload=1; shift ;;
+        --supersede) supersede=1; shift ;;
         *) usage; exit 64 ;;
     esac
 done
@@ -79,10 +82,56 @@ done
 mkdir -p -- "$(dirname -- "$lock")"
 exec 9>"$lock"
 flock -x 9
-[[ ! -e $activation_receipt && ! -L $activation_receipt ]] || {
-    echo "an active host-security receipt already exists; roll it back or archive it through an approved lifecycle before another activation" >&2
-    exit 1
-}
+if (( supersede )); then
+    # Replacing a live activation. Rolling it back first would restore the files
+    # from before any activation -- dropping the PHP guard prepend -- and reload
+    # twice. Instead the backup below captures the configuration that is live
+    # now, so rolling this activation back returns to the one it replaces. That
+    # is only sound if the replaced activation is intact: its receipt verified
+    # and protected, and its own rollback anchor unchanged.
+    [[ -f $activation_receipt && ! -L $activation_receipt ]] || {
+        echo "--supersede needs an active host-security activation receipt to replace" >&2
+        exit 1
+    }
+    # Prints the digest of the exact receipt bytes it checked, so the archive
+    # written after installation can be refused if the receipt changed since.
+    superseded_sha256=$(python3 - "$activation_receipt" "$root" "$unprivileged" <<'PY'
+import hashlib, json, os, pathlib, stat, sys
+path, root, unprivileged = sys.argv[1:]
+receipt = pathlib.Path(path)
+fd = os.open(receipt, os.O_RDONLY | os.O_NOFOLLOW)
+with os.fdopen(fd, 'rb') as stream:
+    info = os.fstat(stream.fileno())
+    raw = stream.read()
+if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o022 or (unprivileged != '1' and info.st_uid != 0):
+    raise SystemExit('active activation receipt is not protected; refusing to supersede it')
+value = json.loads(raw.decode('utf-8'))
+if not isinstance(value, dict):
+    raise SystemExit('active activation receipt is not verified; refusing to supersede it')
+if value.get('application') != 'am2-host-security-activation' or value.get('status') != 'verified':
+    raise SystemExit('active activation receipt is not verified; refusing to supersede it')
+if value.get('root_path') != os.path.realpath(root):
+    raise SystemExit('active activation receipt root does not match the requested root')
+backup = pathlib.Path(str(value.get('backup_path', '')))
+anchor = backup / 'previous.json'
+if not backup.is_absolute() or backup.is_symlink() or not backup.is_dir() or anchor.is_symlink() or not anchor.is_file():
+    raise SystemExit('active activation rollback anchor is missing; refusing to supersede it')
+if unprivileged != '1':
+    for item in (backup, anchor):
+        details = item.lstat()
+        if details.st_uid != 0 or stat.S_IMODE(details.st_mode) & 0o022:
+            raise SystemExit('active activation rollback anchor is not root-protected')
+if hashlib.file_digest(open(anchor, 'rb'), 'sha256').hexdigest() != value.get('backup_manifest_sha256'):
+    raise SystemExit('active activation rollback anchor changed; refusing to supersede it')
+print(hashlib.sha256(raw).hexdigest())
+PY
+)
+else
+    [[ ! -e $activation_receipt && ! -L $activation_receipt ]] || {
+        echo "an active host-security receipt already exists; supersede it with --supersede or roll it back before another activation" >&2
+        exit 1
+    }
+fi
 
 # Materialization receipt and expected manifest are trust inputs. A real-host
 # activation refuses anything not root-owned and immutable to group/other.
@@ -354,15 +403,42 @@ if (( unprivileged )); then
 fi
 "$verify_installed" "${verify_args[@]}"
 
-python3 - "$plan" "$activation_receipt" "$backup" "$unprivileged" "$root" "$backup_manifest_sha256" <<'PY'
+# Keep the replaced receipt beside the new rollback anchor. The new receipt
+# overwrites the canonical path, and the chain of activations must stay readable.
+# The archive is written from bytes that match the digest taken when the receipt
+# was checked, not from whatever the path names now.
+if (( supersede )); then
+    python3 - "$activation_receipt" "$superseded_sha256" "$backup/superseded-activation.json" "$unprivileged" <<'PY'
+import hashlib, os, stat, sys
+path, expected, archive, unprivileged = sys.argv[1:]
+fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+with os.fdopen(fd, 'rb') as stream:
+    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+        raise SystemExit('active activation receipt changed before it was archived')
+    raw = stream.read()
+if hashlib.sha256(raw).hexdigest() != expected:
+    raise SystemExit('active activation receipt changed before it was archived')
+out = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(out, 'wb') as stream:
+    stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+os.chmod(archive, 0o600)
+if unprivileged != '1': os.chown(archive, 0, 0)
+PY
+fi
+
+python3 - "$plan" "$activation_receipt" "$backup" "$unprivileged" "$root" "$backup_manifest_sha256" "${superseded_sha256:-}" <<'PY'
 import json, os, pathlib, tempfile, time, sys
-plan_path,out,backup,unprivileged,root,backup_manifest_sha256=sys.argv[1:]
+plan_path,out,backup,unprivileged,root,backup_manifest_sha256,superseded_sha256=sys.argv[1:]
 plan=json.load(open(plan_path)); value={
  'schema_version':1, 'application':'am2-host-security-activation', **plan['identity'],
  'activated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
  'backup_path':backup, 'backup_manifest_sha256':backup_manifest_sha256,
  'root_path':os.path.realpath(root),
  'privileged':unprivileged!='1', 'status':'verified'}
+# Binds the archived superseded-activation.json to the receipt that was replaced,
+# so rollback restores that receipt and nothing substituted for it.
+if superseded_sha256:
+    value['superseded_activation_sha256']=superseded_sha256
 parent=pathlib.Path(out).parent; parent.mkdir(parents=True,exist_ok=True)
 fd,tmp=tempfile.mkstemp(dir=parent,prefix='.host-security-activation-')
 with os.fdopen(fd,'w') as stream:
