@@ -29,10 +29,24 @@ if (am2_asset_url('./' . $asset) !== './' . $expected) {
     $failed[] = 'am2_asset_url() version is not the content digest: ' . am2_asset_url('./' . $asset);
 }
 
-// Two assets with different bytes must not share a version.
+// Two assets with different bytes must not share a version. Compared on the
+// version alone: the URL tails differ by path even when both say ?v=0.
+$versionOf = static fn (string $url): string => substr($url, strpos($url, '?v=') + 3);
 $other = 'asset/css/am2-ui.css';
-if (substr(am2_asset($other), -12) === substr(am2_asset($asset), -12)) {
+if ($versionOf(am2_asset_url($other)) === $versionOf(am2_asset_url($asset))) {
     $failed[] = 'different assets share one version';
+}
+
+// Only this application's asset paths are versioned. A digest of a file
+// outside the asset tree has no business in the page.
+foreach (['../config.php', 'asset/../config.php', '/etc/passwd'] as $outside) {
+    foreach (['am2_asset', 'am2_asset_url'] as $helper) {
+        try {
+            $helper($outside);
+            $failed[] = "$helper() accepted a path outside the asset tree: $outside";
+        } catch (InvalidArgumentException) {
+        }
+    }
 }
 
 // A path that does not exist keeps a stable, harmless URL.
