@@ -93,7 +93,7 @@ test('release boundary documents host security as a separate release lifecycle',
     'the implemented host-security activation tooling is not recorded');
   // Activation first ran on a real host on 2026-09-07, so the boundary records
   // where bundles come from and that each host step still needs approval.
-  assert.match(source, /runtime host never assembles a bundle/i,
+  assert.match(source, /runtime host must not assemble a bundle/i,
     'the release boundary does not keep bundle assembly off the runtime host');
   assert.match(source, /separate host-approved evidence gate/i,
     'the remaining host-approved evidence gate is not recorded');

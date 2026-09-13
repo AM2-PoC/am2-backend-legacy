@@ -25,17 +25,24 @@ const workflow = () => {
     assert.ok(existsSync(WORKFLOW), 'no CI workflow builds the host-security bundle');
     return readFileSync(WORKFLOW, 'utf8');
 };
+// YAML comments explain intent and may name what the file must not contain.
+const code = () => workflow().replace(/^\s*#.*$/gm, '');
 
 test('host-security bundle publication is an explicit exact-SHA operator action', () => {
-    const source = workflow();
+    const source = code();
     assert.match(source, /workflow_dispatch:/, 'publication is not an explicit operator action');
     assert.match(source, /source_sha:/, 'publication does not take an exact source SHA');
-    assert.doesNotMatch(source, /^\s*(push|pull_request|workflow_run|schedule):/m,
+    assert.doesNotMatch(source,
+        /^\s*(push|pull_request|pull_request_target|workflow_run|workflow_call|repository_dispatch|schedule):/m,
         'publication would run without an operator choosing a SHA');
     assert.match(source, /permissions:\s*\n\s*actions:\s*read\s*\n\s*contents:\s*read/,
         'publication is not limited to read permissions');
+    assert.doesNotMatch(source, /:\s*write\b/, 'publication grants a write permission');
     assert.match(source, /concurrency:/, 'two runs can publish competing bundles for one SHA');
-    assert.doesNotMatch(source, /secrets\./, 'the bundle build needs no secret and must not receive one');
+    assert.doesNotMatch(source, /\bsecrets\b/, 'the bundle build needs no secret and must not receive one');
+    // A branch that edits this workflow could be dispatched instead; the run
+    // itself refuses any ref but main, and the how-to checks the run's branch.
+    assert.match(source, /GITHUB_REF[^\n]*refs\/heads\/main/, 'a non-main version of this workflow could publish');
 });
 
 test('host-security bundle is built only from reviewed main with passing source checks', () => {
@@ -47,6 +54,11 @@ test('host-security bundle is built only from reviewed main with passing source 
     assert.match(source, /actions\/workflows\/source-checks\.yml\/runs/,
         'no evidence the source checks passed for this SHA');
     assert.match(source, /conclusion == "success"/, 'a SHA with failing checks could be packaged');
+    // A pull_request run reports the PR branch as head_branch and tests a merge
+    // ref, so only a push run on main is evidence about the SHA on main.
+    assert.match(source, /source-checks\.yml\/runs\?[^"]*event=push/,
+        'a pull-request run could stand in for checks on main');
+    assert.match(source, /head_branch == "main"/, 'checks from another branch could be accepted');
 });
 
 test('host-security bundle is packaged, verified, and handed off with its identity', () => {
