@@ -71,10 +71,12 @@ if value.get('root_path') != os.path.realpath(root):
     raise SystemExit('activation receipt root does not match requested root')
 print(value['backup_path'])
 print(value['backup_manifest_sha256'])
+print(value.get('superseded_activation_sha256', ''))
 PY
 mapfile -t identity <"$identity_file"
 backup=${identity[0]}
 backup_manifest_sha256=${identity[1]}
+superseded_sha256=${identity[2]:-}
 [[ -d $backup && ! -L $backup && -f $backup/previous.json ]] || { echo "activation backup is missing" >&2; exit 1; }
 python3 - "$backup" "$activation_receipt" "$unprivileged" <<'PY'
 import pathlib, stat, sys
@@ -87,6 +89,44 @@ if unprivileged != '1':
         if info.st_uid != 0 or mode & 0o022:
             raise SystemExit(f'{label} is not root-protected')
 PY
+
+# A superseding activation archived the receipt it replaced. Check that archive
+# now, while nothing has changed: finding it wrong after the files are restored
+# and services reloaded would leave the host on the replaced activation's bytes
+# with the superseding receipt still active, and every retry stuck there.
+if [[ -n $superseded_sha256 ]]; then
+    python3 - "$backup/superseded-activation.json" "$superseded_sha256" "$root" "$unprivileged" <<'PY'
+import hashlib, json, os, pathlib, stat, sys
+archive, expected, root, unprivileged = sys.argv[1:]
+try:
+    fd = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW)
+except OSError as error:
+    raise SystemExit(f'superseded activation receipt is unavailable: {error.strerror}')
+with os.fdopen(fd, 'rb') as stream:
+    info = os.fstat(stream.fileno())
+    raw = stream.read()
+if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o022 or (unprivileged != '1' and info.st_uid != 0):
+    raise SystemExit('superseded activation receipt is not protected')
+if hashlib.sha256(raw).hexdigest() != expected:
+    raise SystemExit('superseded activation receipt does not match the receipt that was replaced')
+value = json.loads(raw.decode('utf-8'))
+if not isinstance(value, dict) or value.get('application') != 'am2-host-security-activation' or value.get('status') != 'verified':
+    raise SystemExit('superseded activation receipt is not verified')
+if value.get('root_path') != os.path.realpath(root):
+    raise SystemExit('superseded activation receipt root does not match requested root')
+backup = pathlib.Path(str(value.get('backup_path', '')))
+anchor = backup / 'previous.json'
+if not backup.is_absolute() or backup.is_symlink() or not backup.is_dir() or anchor.is_symlink() or not anchor.is_file():
+    raise SystemExit('superseded activation rollback anchor is missing')
+if unprivileged != '1':
+    for item in (backup, anchor):
+        details = item.lstat()
+        if details.st_uid != 0 or stat.S_IMODE(details.st_mode) & 0o022:
+            raise SystemExit('superseded activation rollback anchor is not root-protected')
+if hashlib.file_digest(open(anchor, 'rb'), 'sha256').hexdigest() != value.get('backup_manifest_sha256'):
+    raise SystemExit('superseded activation rollback anchor changed')
+PY
+fi
 
 python3 - "$backup/previous.json" "$root" "$backup_manifest_sha256" "$unprivileged" <<'PY'
 import hashlib, json, os, pathlib, shutil, stat, tempfile, sys
@@ -147,5 +187,35 @@ PY
 "$nginx_configtest" -t
 "$reload_command" reload apache2
 "$reload_command" reload nginx
-rm -f -- "$activation_receipt"
+# Rolling back a superseding activation put the replaced activation's files back,
+# so its receipt becomes active again -- otherwise the host runs hardened files
+# with no activation on record and that activation's own rollback anchor is
+# unreachable. The archive was checked before anything changed; it is written
+# only from bytes that still match the digest the superseding receipt recorded.
+if [[ -n $superseded_sha256 ]]; then
+    python3 - "$backup/superseded-activation.json" "$superseded_sha256" "$activation_receipt" "$unprivileged" <<'PY'
+import hashlib, os, pathlib, stat, sys, tempfile
+archive, expected, out, unprivileged = sys.argv[1:]
+fd = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW)
+with os.fdopen(fd, 'rb') as stream:
+    if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+        raise SystemExit('superseded activation receipt changed during rollback')
+    raw = stream.read()
+if hashlib.sha256(raw).hexdigest() != expected:
+    raise SystemExit('superseded activation receipt changed during rollback')
+tmp_fd, tmp = tempfile.mkstemp(dir=pathlib.Path(out).parent, prefix='.host-security-activation-')
+try:
+    with os.fdopen(tmp_fd, 'wb') as stream:
+        stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+    os.chmod(tmp, 0o644)
+    if unprivileged != '1': os.chown(tmp, 0, 0)
+    os.replace(tmp, out)
+except BaseException:
+    pathlib.Path(tmp).unlink(missing_ok=True)
+    raise
+PY
+    printf 'host-security rolled back to superseded activation: %s\n' "$activation_receipt"
+else
+    rm -f -- "$activation_receipt"
+fi
 printf 'host-security rolled back: %s\n' "$backup"
