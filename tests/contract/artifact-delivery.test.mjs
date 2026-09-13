@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pageAssets } from './page-assets.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const workflowPath = resolve(ROOT, '.github/workflows/publish-backend-artifact.yml');
@@ -148,6 +149,14 @@ test('runtime packager seals an allowlisted artifact without repository residue'
       assert.match(listing.stdout, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
         `runtime archive misses ${required}`);
     }
+    // Every asset a page loads, checked against the archive itself rather than
+    // against however the packager happens to spell its exclusions.
+    const archived = new Set(listing.stdout.split('\n').map((entry) => entry.replace(/^\.\//, '')));
+    const missingPageAssets = pageAssets()
+      .filter(({ asset }) => !archived.has(`WebAdmin/${asset}`))
+      .map(({ file, asset }) => `${file} -> WebAdmin/${asset}`);
+    assert.deepEqual(missingPageAssets, [],
+      `runtime archive misses assets the pages load:\n  ${missingPageAssets.join('\n  ')}`);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

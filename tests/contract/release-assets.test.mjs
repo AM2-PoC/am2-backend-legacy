@@ -1,20 +1,20 @@
 /**
  * Every asset a page asks for is actually in the release.
  *
- * Production is built with `git archive`, which ships only tracked files.
- * Staging is a git checkout, where untracked files are simply present on disk.
- * So a file that is referenced by markup, exists locally, and is not tracked
- * works perfectly on staging and 404s in production -- and nothing in the
- * pipeline notices, because every test and every lint reads the checkout.
+ * A release ships less than the checkout. The runtime artifact is packaged from
+ * tracked files only, minus the build inputs the packager leaves out. So a file
+ * that a page references and that exists on disk can pass every lint that reads
+ * the checkout and still 404 on staging and production.
  *
- * That is not hypothetical. `WebAdmin/asset/vendor/leaflet/` was swallowed by a
- * `vendor/` line in .gitignore meant for Composer: a bare directory name in
- * gitignore matches at any depth. livetrack.php loads leaflet with a plain
- * <script src>, so on production the map never rendered at all, while staging
- * had been showing it correctly for days.
+ * That has happened twice, both times to the live map. `WebAdmin/asset/vendor/`
+ * was swallowed by a `vendor/` line in .gitignore meant for Composer, and
+ * livetrack.php later imported its model from asset/js/src/, which the packager
+ * excludes. Neither failure says anything on the server: the page loads, the
+ * script never runs, and the map simply never appears.
  *
- * This test compares what the pages ask for against what git would ship, which
- * is the only comparison that would have caught it.
+ * These tests compare what the pages ask for against what git tracks and what
+ * the packager keeps. artifact-delivery.test.mjs checks the same references
+ * against a real packaged archive.
  *
  * Credential-free by construction. It must never import
  * tests/contract/helpers.mjs, which reads a protected environment file at
@@ -22,13 +22,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WEBADMIN = join(ROOT, 'WebAdmin');
+import { join } from 'node:path';
+import { ROOT, pageAssets } from './page-assets.mjs';
 
 /** Every file git would put in a release archive, as a Set of repo paths. */
 function trackedFiles() {
@@ -38,56 +35,55 @@ function trackedFiles() {
     return new Set(out.split('\0').filter(Boolean));
 }
 
-/** Every .php file that renders markup. */
-function markupFiles() {
-    const out = [];
-    for (const f of readdirSync(WEBADMIN)) if (f.endsWith('.php')) out.push(f);
-    for (const f of readdirSync(join(WEBADMIN, 'partials'))) {
-        if (f.endsWith('.php')) out.push(`partials/${f}`);
-    }
-    return out;
-}
-
-/**
- * Local asset paths a file references.
- *
- * Covers both spellings the panel uses: the am2_asset() helper, which appends a
- * cache-busting query, and plain src=/href= attributes. Absolute URLs are
- * somebody else's server and are not this test's subject.
- */
-function referencedAssets(src) {
-    const code = src.replace(/<!--[\s\S]*?-->/g, '');
-    const hits = new Set();
-    for (const re of [/am2_asset\(\s*'([^']+)'/g, /(?:src|href)="([^"]+)"/g]) {
-        for (const m of code.matchAll(re)) {
-            const raw = m[1];
-            if (/^(?:https?:)?\/\//.test(raw) || raw.startsWith('data:')) continue;
-            if (!raw.startsWith('asset/')) continue;
-            hits.add(raw.split('?')[0]);
-        }
-    }
-    return hits;
-}
-
 test('every local asset a page loads is tracked by git', () => {
     /*
-     * Tracked, not merely present. `git archive` is what builds a release, so
-     * an untracked file is a file production will not have -- however healthy
-     * the checkout looks.
+     * Tracked, not merely present. The packager refuses a source tree with
+     * untracked files, so an untracked file is a file production will not
+     * have -- however healthy the checkout looks.
      */
     const tracked = trackedFiles();
-    const missing = [];
-
-    for (const file of markupFiles()) {
-        for (const asset of referencedAssets(readFileSync(join(WEBADMIN, file), 'utf8'))) {
-            const repoPath = `WebAdmin/${asset}`;
-            if (!tracked.has(repoPath)) missing.push(`${file} -> ${asset}`);
-        }
-    }
+    const missing = pageAssets()
+        .filter(({ asset }) => !tracked.has(`WebAdmin/${asset}`))
+        .map(({ file, asset }) => `${file} -> ${asset}`);
 
     assert.deepEqual(missing, [],
         'these assets are referenced but would not be in a release archive, so they '
         + '404 in production while working on any git checkout:\n  ' + missing.join('\n  '));
+});
+
+/**
+ * WebAdmin/asset paths the runtime packager leaves out, as anchored regexes.
+ *
+ * Tracked is not enough: the packager also drops build inputs that git still
+ * tracks, which is how the live-track model went missing while the test above
+ * stayed green.
+ *
+ * Read from the packager itself, so the exclusions cannot drift from this test.
+ */
+function artifactAssetExclusions() {
+    const packager = readFileSync(join(ROOT, 'infra/scripts/package-runtime-artifact.sh'), 'utf8');
+    return [...packager.matchAll(/! -path "\$source_root\/(WebAdmin\/asset\/[^"]+)"/g)]
+        .map(([, glob]) => {
+            // find's -path `*` also crosses `/`, so it becomes `.*`. Its other
+            // wildcards are not translated, so refuse them rather than misread.
+            assert.doesNotMatch(glob, /[?[]/,
+                `packager exclusion ${glob} uses a wildcard this test does not translate`);
+            const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+            return new RegExp('^' + escaped + '$');
+        });
+}
+
+test('every local asset a page loads survives the runtime artifact packager', () => {
+    const excluded = artifactAssetExclusions();
+    assert.ok(excluded.length > 0,
+        'found no asset exclusions in the packager; this test can no longer see what the artifact drops');
+    const dropped = pageAssets()
+        .filter(({ asset }) => excluded.some((re) => re.test(`WebAdmin/${asset}`)))
+        .map(({ file, asset }) => `${file} -> ${asset}`);
+
+    assert.deepEqual(dropped, [],
+        'these assets are referenced but the runtime packager excludes them as build inputs, '
+        + 'so they 404 on every artifact release:\n  ' + dropped.join('\n  '));
 });
 
 test('the vendored map library is shipped, not assumed', () => {

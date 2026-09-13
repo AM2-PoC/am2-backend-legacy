@@ -177,7 +177,7 @@ include 'partials/shell.php';
 <script type="module">
 import {
     accuracyQuality, classifyUnit, formatAccuracy, formatAge, hasValidLocation, summarizeUnits,
-} from <?= json_encode(am2_asset_url('./asset/js/src/livetrack-model.js')) ?>;
+} from <?= json_encode(am2_asset_url('./asset/js/livetrack-model.js')) ?>;
 // Stable class hook produced by classifyUnit(): speaking-marker.
 
 (() => {

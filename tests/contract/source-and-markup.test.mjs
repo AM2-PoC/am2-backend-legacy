@@ -317,7 +317,7 @@ describe('rendered markup that the CSS and JS depend on', () => {
         for (const c of ['custom-marker', 'marker-label', 'pulse-dot']) {
             assert.ok(html.includes(c), `${c} is a divIcon className, not styling — markers break without it`);
         }
-        const model = fs.readFileSync(`${REPO}/asset/js/src/livetrack-model.js`, 'utf8');
+        const model = fs.readFileSync(`${REPO}/asset/js/livetrack-model.js`, 'utf8');
         assert.match(model, /`entity-\$\{entityType\}`/,
             'the presentation model no longer emits an identity class');
         assert.match(model, /`freshness-\$\{freshness\}`/,
