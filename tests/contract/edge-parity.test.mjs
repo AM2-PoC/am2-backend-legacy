@@ -64,6 +64,26 @@ test('every WebAdmin vhost includes them', () => {
     }
 });
 
+test('a missing asset is never cached as immutable', () => {
+    /*
+     * The asset location marks responses public for 30 days and immutable, and
+     * Cloudflare obeys. With `always`, nginx attached that to a 404 as well, so
+     * one request for a file the release did not carry pinned the 404 at the
+     * edge for a month -- after the file shipped, the same URL kept failing.
+     * Without `always`, nginx adds the header only to success and redirect
+     * responses, and a 404 falls back to a short edge default.
+     */
+    const block = read('infra/nginx/am2-webadmin-assets.conf')
+        .match(/location\s+~\*\s+\^\/asset\/[^{]*\{[\s\S]*?\n\}/);
+    assert.ok(block, 'the asset cache location is missing');
+    const cacheControl = block[0].match(/add_header\s+Cache-Control\s+"([^"]*)"([^;]*);/);
+    assert.ok(cacheControl, 'the asset location no longer sets Cache-Control');
+    assert.match(cacheControl[1], /immutable/,
+        'the asset location stopped marking versioned assets immutable');
+    assert.doesNotMatch(cacheControl[2], /\balways\b/,
+        'Cache-Control uses `always`, so a 404 for an asset is cached as immutable');
+});
+
 test('stable admin update URLs cannot cache one half of a release set', () => {
     for (const f of VHOSTS) {
         const source = read(f);
