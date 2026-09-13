@@ -15,17 +15,29 @@ require_once __DIR__ . '/../../WebAdmin/user_rules.php';
 
 final class FixturePdoException extends PDOException
 {
-    public function __construct(string $sqlState)
+    public function __construct(string $sqlState, string $message = 'fixture')
     {
-        parent::__construct('fixture');
+        parent::__construct($message);
         $this->code = $sqlState;
     }
 }
 
 $failed = [];
 
+/*
+ * Only the unit's own primary key means the ID is taken. The users trigger also
+ * inserts into admin_activity_logs; if that sequence ever falls behind, the
+ * same SQLSTATE would otherwise tell the operator every new ID is a duplicate.
+ */
+$unique = static fn (string $constraint): FixturePdoException => new FixturePdoException(
+    '23505',
+    'SQLSTATE[23505]: Unique violation: 7 ERROR:  duplicate key value violates unique constraint "'
+        . $constraint . '"'
+);
+
 $cases = [
-    'unique violation is a taken ID' => [new FixturePdoException('23505'), true],
+    'users primary key violation is a taken ID' => [$unique('users_pkey'), true],
+    'another unique violation is not' => [$unique('admin_activity_logs_pkey'), false],
     'foreign key violation is not' => [new FixturePdoException('23503'), false],
     'non-database failure is not' => [new RuntimeException('fixture'), false],
 ];
@@ -41,8 +53,10 @@ foreach ($cases as $name => [$error, $expected]) {
 
 foreach (['api_users.php', 'users.php'] as $caller) {
     $source = file_get_contents(__DIR__ . '/../../WebAdmin/' . $caller);
-    if (!preg_match('/am2_is_duplicate_unit_id\(\$e\)[\s\S]{0,200}msg\.user_id_taken/', $source)) {
-        $failed[] = "$caller does not report a taken ID as msg.user_id_taken";
+    // The generic path must stay behind am2_safe_error(), so SQL text never
+    // reaches the operator.
+    if (!preg_match('/am2_is_duplicate_unit_id\(\$e\)[\s\S]{0,200}msg\.user_id_taken[\s\S]{0,200}am2_safe_error\(\$e/', $source)) {
+        $failed[] = "$caller does not report a taken ID as msg.user_id_taken with am2_safe_error() as the fallback";
     }
 }
 
