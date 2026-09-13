@@ -77,6 +77,59 @@ Without root it refuses. Pass `--unprivileged-store` to materialize into a
 scratch directory for testing; the receipt then records `"privileged": false`
 and no verifier will accept it as evidence about a real host.
 
+## Replace an active activation
+
+Activation refuses while `/etc/am2/host-security/activation.json` exists. To
+install a new candidate over a live activation, supersede it rather than rolling
+it back first: rollback restores the files from before that activation, which
+would put the host on unhardened configuration until the new one is in.
+
+Before superseding, confirm the live files still match the active activation,
+because the backup captures whatever is live:
+
+```sh
+sudo systemctl start am2-host-security-drift.service   # must succeed
+```
+
+Then materialize the candidate under its candidate path and supersede. Existing
+backups live under `/var/backups/am2/host-security`.
+
+```sh
+CANDIDATE=/etc/am2/host-security/candidates/<payload_sha256>
+sudo infra/scripts/materialize-host-security.sh \
+  --archive /path/incoming/*/am2-host-security.tar.gz \
+  --manifest /path/incoming/*/host-security-manifest.json \
+  --checksums /path/incoming/*/SHA256SUMS \
+  --expected-manifest "$CANDIDATE/trusted-host-security-manifest.json" \
+  --store-root /var/lib/am2/host-security \
+  --receipt "$CANDIDATE/receipt.json"
+sudo infra/scripts/activate-host-security.sh \
+  --receipt "$CANDIDATE/receipt.json" \
+  --expected-manifest "$CANDIDATE/trusted-host-security-manifest.json" \
+  --activation-receipt /etc/am2/host-security/activation.json \
+  --backup-root /var/backups/am2/host-security \
+  --supersede --apply --allow-reload
+```
+
+Supersede checks the active receipt and its rollback anchor under the activation
+lock, backs up the live files, installs, tests both configurations, reloads each
+service once, and archives the replaced receipt as `superseded-activation.json`
+beside the new rollback anchor.
+
+After it succeeds, make the candidate's trust inputs canonical so the drift audit
+checks the new files against the new payload:
+
+```sh
+sudo install -o root -g root -m 0644 "$CANDIDATE/receipt.json" /etc/am2/host-security/receipt.json
+sudo install -o root -g root -m 0644 "$CANDIDATE/trusted-host-security-manifest.json" \
+  /etc/am2/host-security/trusted-host-security-manifest.json
+```
+
+Rolling back a superseding activation restores the files that were live before
+it and makes the replaced activation's receipt active again, so that one can in
+turn be rolled back. Put the previous canonical receipt and manifest back at the
+same time.
+
 ## Activate and roll back
 
 Activation and rollback are implemented as approval-bound source tools but are not run by materialization or the timer. Both operations take an exclusive host-security lock, refuse unverified or mutable trust inputs, write targets atomically, run both web-server configuration checks before reload, and keep a complete digest-bound backup—including prior session-store metadata—for exact rollback. Activation refuses to replace an existing active receipt: roll back or archive it through an approved lifecycle before activating another candidate, so a retry cannot discard the original rollback anchor.
@@ -86,7 +139,7 @@ sudo infra/scripts/activate-host-security.sh \
   --receipt /etc/am2/host-security/receipt.json \
   --expected-manifest /etc/am2/host-security/trusted-host-security-manifest.json \
   --activation-receipt /etc/am2/host-security/activation.json \
-  --backup-root /var/lib/am2/host-security-backups \
+  --backup-root /var/backups/am2/host-security \
   --apply --allow-reload
 ```
 
