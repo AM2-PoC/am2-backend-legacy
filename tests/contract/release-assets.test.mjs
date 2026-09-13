@@ -51,16 +51,17 @@ function markupFiles() {
 /**
  * Local asset paths a file references.
  *
- * Covers both spellings the panel uses: the am2_asset() helper, which appends a
- * cache-busting query, and plain src=/href= attributes. Absolute URLs are
- * somebody else's server and are not this test's subject.
+ * Covers every spelling the panel uses: the am2_asset() helper, which appends a
+ * cache-busting query, am2_asset_url() for module imports (whose leading ./ a
+ * browser needs and the disk does not), and plain src=/href= attributes.
+ * Absolute URLs are somebody else's server and are not this test's subject.
  */
 function referencedAssets(src) {
     const code = src.replace(/<!--[\s\S]*?-->/g, '');
     const hits = new Set();
-    for (const re of [/am2_asset\(\s*'([^']+)'/g, /(?:src|href)="([^"]+)"/g]) {
+    for (const re of [/am2_asset(?:_url)?\(\s*'([^']+)'/g, /(?:src|href)="([^"]+)"/g]) {
         for (const m of code.matchAll(re)) {
-            const raw = m[1];
+            const raw = m[1].replace(/^\.\//, '');
             if (/^(?:https?:)?\/\//.test(raw) || raw.startsWith('data:')) continue;
             if (!raw.startsWith('asset/')) continue;
             hits.add(raw.split('?')[0]);
@@ -88,6 +89,45 @@ test('every local asset a page loads is tracked by git', () => {
     assert.deepEqual(missing, [],
         'these assets are referenced but would not be in a release archive, so they '
         + '404 in production while working on any git checkout:\n  ' + missing.join('\n  '));
+});
+
+/**
+ * WebAdmin/asset paths the runtime packager leaves out, as anchored regexes.
+ *
+ * Releases are now a CI-built artifact rather than a git archive, and the
+ * packager drops build inputs that git still tracks. livetrack.php imported its
+ * model from asset/js/src/ -- tracked, so the test above stayed green -- and
+ * every artifact release answered that import with a 404. A failed module
+ * import stops the whole <script type="module">, so the map never rendered.
+ *
+ * Read from the packager itself, so the exclusions cannot drift from this test.
+ */
+function artifactAssetExclusions() {
+    const packager = readFileSync(join(ROOT, 'infra/scripts/package-runtime-artifact.sh'), 'utf8');
+    return [...packager.matchAll(/! -path "\$source_root\/(WebAdmin\/asset\/[^"]+)"/g)]
+        .map(([, glob]) => {
+            // find's -path `*` also crosses `/`, so it becomes `.*`.
+            const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+            return new RegExp('^' + escaped + '$');
+        });
+}
+
+test('every local asset a page loads survives the runtime artifact packager', () => {
+    const excluded = artifactAssetExclusions();
+    assert.ok(excluded.length > 0,
+        'found no asset exclusions in the packager; this test can no longer see what the artifact drops');
+    const dropped = [];
+
+    for (const file of markupFiles()) {
+        for (const asset of referencedAssets(readFileSync(join(WEBADMIN, file), 'utf8'))) {
+            const repoPath = `WebAdmin/${asset}`;
+            if (excluded.some((re) => re.test(repoPath))) dropped.push(`${file} -> ${asset}`);
+        }
+    }
+
+    assert.deepEqual(dropped, [],
+        'these assets are referenced but the runtime packager excludes them as build inputs, '
+        + 'so they 404 on every artifact release:\n  ' + dropped.join('\n  '));
 });
 
 test('the vendored map library is shipped, not assumed', () => {

@@ -91,8 +91,8 @@ test('live-track polling cannot overlap and has a bounded timeout', () => {
 
 test('browser module import is relative and every operator label is translated', () => {
     const src = read('WebAdmin/livetrack.php');
-    assert.match(src, /am2_asset_url\(['"]\.\/asset\/js\/src\/livetrack-model\.js['"]\)/,
-        'a bare module specifier fails in browsers');
+    assert.match(src, /am2_asset_url\(['"]\.\/asset\/js\/livetrack-model\.js['"]\)/,
+        'a bare module specifier fails in browsers, and asset/js/src/ is not in the artifact');
     for (const file of ['WebAdmin/lang/id.php', 'WebAdmin/lang/en.php']) {
         const locale = read(file);
         for (const key of [
