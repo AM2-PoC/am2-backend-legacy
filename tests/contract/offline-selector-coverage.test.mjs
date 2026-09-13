@@ -44,3 +44,16 @@ test('no contract test is invisible to the offline selector', () => {
         `offline tests the selector never emits: ${invisible.join(', ')}`,
     );
 });
+
+// The disqualifier is a text match, so a fixture string can exclude a suite
+// that needs no network at all. promotion-gate.test.mjs stubs curl and named a
+// fixture 'http://' origin, and every production promotion gate test in it went
+// unrun in CI -- including a rehearsal assertion that therefore could not fail.
+// These suites are offline by construction and must stay selected.
+const MUST_RUN_OFFLINE = ['promotion-gate.test.mjs', 'release-assets.test.mjs', 'edge-parity.test.mjs'];
+
+test('offline-by-construction suites are selected, not disqualified by fixture text', () => {
+    const missing = MUST_RUN_OFFLINE.filter((name) => !selected.has(name));
+    assert.deepEqual(missing, [],
+        `suites that must run in CI are not selected: ${missing.join(', ')}`);
+});
