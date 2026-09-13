@@ -312,6 +312,33 @@ test('supersede replaces an active activation without passing through pre-harden
   }
 });
 
+test('rollback refuses a changed superseded receipt before touching the host', () => {
+  // Validating the archive only after restoring files and reloading left the
+  // host on the replaced activation's bytes with the superseding receipt still
+  // active -- a record that contradicts the host, and a rollback that can never
+  // finish. The archive is checked while nothing has changed yet.
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-supersede-archive-'));
+  try {
+    const f = supersedeFixture(base);
+    assert.equal(f.activate(f.first).status, 0);
+    const second = f.activate(f.second, '--supersede');
+    assert.equal(second.status, 0, `${second.stdout}\n${second.stderr}`);
+    const secondReceipt = readFileSync(f.evidence, 'utf8');
+    const archive = join(JSON.parse(secondReceipt).backup_path, 'superseded-activation.json');
+    writeFileSync(archive, readFileSync(archive, 'utf8').replace('"verified"', '"verified" '));
+    const liveBytes = readFileSync(f.prepend);
+    rmSync(f.calls, { force: true });
+
+    const back = f.rollBack();
+    assert.notEqual(back.status, 0, 'rollback restored a superseded receipt that no longer matches its digest');
+    assert.deepEqual(readFileSync(f.prepend), liveBytes, 'refused rollback changed the live files');
+    assert.equal(readFileSync(f.evidence, 'utf8'), secondReceipt, 'refused rollback changed the active receipt');
+    assert.ok(!existsSync(f.calls), 'refused rollback reloaded services');
+  } finally {
+    discard(base);
+  }
+});
+
 test('a supersede that fails verification restores the replaced activation', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-supersede-failed-'));
   try {
