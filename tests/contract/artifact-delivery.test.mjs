@@ -498,7 +498,7 @@ test('server declares the supported Node runtime used by artifacts and deploymen
 
 test('production promotion gate asserts payload_sha256 in receipts', () => {
   const gate = readFileSync('infra/scripts/promote-to-production.sh', 'utf8');
-  assert.match(gate, /payload_sha256 \$identity_payload_sha/,
+  assert.match(gate, /promoted_at[\s\S]*payload_sha256 \$identity_payload_sha[\s\S]*status verified/,
     'promote-to-production does not include payload_sha256 in production receipts');
 });
 
