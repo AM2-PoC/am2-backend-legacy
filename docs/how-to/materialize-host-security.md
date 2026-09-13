@@ -116,23 +116,45 @@ lock, backs up the live files, installs, tests both configurations, reloads each
 service once, and archives the replaced receipt as `superseded-activation.json`
 beside the new rollback anchor.
 
-After it succeeds, make the candidate's trust inputs canonical so the drift audit
-checks the new files against the new payload:
+After it succeeds, keep the current canonical pair under its own payload digest,
+then make the candidate's trust inputs canonical so the drift audit checks the
+new files against the new payload. Between the supersede and this step the drift
+audit fails; a drift alert in that window is expected.
 
 ```sh
-sudo install -o root -g root -m 0644 "$CANDIDATE/receipt.json" /etc/am2/host-security/receipt.json
+HS=/etc/am2/host-security
+OLD=$(jq -r .payload_sha256 "$HS/receipt.json")
+sudo install -d -o root -g root -m 0755 "$HS/candidates/$OLD"
+sudo install -o root -g root -m 0644 "$HS/receipt.json" "$HS/candidates/$OLD/receipt.json"
+sudo install -o root -g root -m 0644 "$HS/trusted-host-security-manifest.json" \
+  "$HS/candidates/$OLD/trusted-host-security-manifest.json"
+sudo install -o root -g root -m 0644 "$CANDIDATE/receipt.json" "$HS/receipt.json"
 sudo install -o root -g root -m 0644 "$CANDIDATE/trusted-host-security-manifest.json" \
-  /etc/am2/host-security/trusted-host-security-manifest.json
+  "$HS/trusted-host-security-manifest.json"
+# all three must print the same digest
+jq -r .payload_sha256 "$HS/activation.json" "$HS/receipt.json" "$HS/trusted-host-security-manifest.json"
 ```
 
-Rolling back a superseding activation restores the files that were live before
-it and makes the replaced activation's receipt active again, so that one can in
-turn be rolled back. Put the previous canonical receipt and manifest back at the
-same time.
+Rolling back a superseding activation checks the archived receipt first, then
+restores the files that were live before it and makes the replaced activation's
+receipt active again, so that one can in turn be rolled back. Restore the
+matching canonical pair in the same change:
+
+```sh
+PREV=$(jq -r .payload_sha256 "$HS/activation.json")   # after the rollback
+sudo install -o root -g root -m 0644 "$HS/candidates/$PREV/receipt.json" "$HS/receipt.json"
+sudo install -o root -g root -m 0644 "$HS/candidates/$PREV/trusted-host-security-manifest.json" \
+  "$HS/trusted-host-security-manifest.json"
+```
+
+If the drift unit is not installed, run the same check directly:
+`infra/scripts/verify-host-security-installed.sh --receipt $HS/receipt.json --expected-manifest $HS/trusted-host-security-manifest.json`.
+`journalctl -u am2-host-security-drift.service` shows why an audit failed. Each
+`/path/incoming/*/` glob above must match exactly one directory.
 
 ## Activate and roll back
 
-Activation and rollback are implemented as approval-bound source tools but are not run by materialization or the timer. Both operations take an exclusive host-security lock, refuse unverified or mutable trust inputs, write targets atomically, run both web-server configuration checks before reload, and keep a complete digest-bound backup—including prior session-store metadata—for exact rollback. Activation refuses to replace an existing active receipt: roll back or archive it through an approved lifecycle before activating another candidate, so a retry cannot discard the original rollback anchor.
+Activation and rollback are implemented as approval-bound source tools but are not run by materialization or the timer. Both operations take an exclusive host-security lock, refuse unverified or mutable trust inputs, write targets atomically, run both web-server configuration checks before reload, and keep a complete digest-bound backup—including prior session-store metadata—for exact rollback. A plain activation refuses to replace an existing active receipt, so a retry cannot discard the original rollback anchor; to install over a live activation use `--supersede` as described in [Replace an active activation](#replace-an-active-activation).
 
 ```sh
 sudo infra/scripts/activate-host-security.sh \
@@ -143,7 +165,7 @@ sudo infra/scripts/activate-host-security.sh \
   --apply --allow-reload
 ```
 
-If post-activation acceptance fails, use the exact activation receipt. Rollback restores files that existed and removes targets introduced by that activation, runs `apache2ctl configtest` and `nginx -t`, reloads only after both pass, and removes the active activation receipt after success.
+If post-activation acceptance fails, use the exact activation receipt. Rollback restores files that existed and removes targets introduced by that activation, runs `apache2ctl configtest` and `nginx -t`, reloads only after both pass, and then removes the active activation receipt — or, for an activation that superseded another, makes the replaced activation's archived receipt active again after checking it before any file is touched.
 
 ```sh
 sudo infra/scripts/rollback-host-security.sh \
