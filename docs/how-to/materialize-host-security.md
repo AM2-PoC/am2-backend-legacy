@@ -9,6 +9,49 @@ receipt; installing into `/etc`, running `apache2ctl configtest` / `nginx -t`,
 and reloading a service are separately approved operations that are not part of
 these scripts.
 
+## Get the bundle
+
+Bundles are built by CI, never on the host. Dispatch the workflow for the exact
+main commit whose host files you want:
+
+```sh
+gh workflow run publish-host-security-bundle.yml --ref main -f source_sha=<40-hex main SHA>
+```
+
+When the run succeeds, trust it only after checking the run record, fetched
+separately from the artifact. A branch that edits the workflow can be
+dispatched too, and its summary would say whatever it likes, so the run must be
+this workflow on main:
+
+```sh
+gh run list --workflow publish-host-security-bundle.yml -L 5 \
+  --json databaseId,headBranch,event,conclusion
+gh run view <run-id> --json headBranch,event,workflowName,conclusion
+# require: headBranch "main", event "workflow_dispatch", conclusion "success"
+```
+
+Then download into a fresh directory and bind the manifest to that run and to
+the commit you meant:
+
+```sh
+gh run download <run-id> --dir /path/incoming
+sha256sum /path/incoming/*/host-security-manifest.json      # must equal the run summary
+jq -r .source_sha /path/incoming/*/host-security-manifest.json   # must equal your SHA
+```
+
+Stage the trusted copy as a candidate, root-owned and outside the bundle
+directory. Do not write the canonical
+`/etc/am2/host-security/trusted-host-security-manifest.json` or `receipt.json`:
+those describe the active activation, and replacing them makes the drift audit
+fail against it. They change only as part of an approved activation.
+
+```sh
+CANDIDATE=/etc/am2/host-security/candidates/<payload_sha256>
+sudo install -d -o root -g root -m 0755 "$CANDIDATE"
+sudo install -o root -g root -m 0644 /path/incoming/*/host-security-manifest.json \
+  "$CANDIDATE/trusted-host-security-manifest.json"
+```
+
 ## Materialize
 
 Needs the bundle, its checksums, and the expected manifest obtained through a

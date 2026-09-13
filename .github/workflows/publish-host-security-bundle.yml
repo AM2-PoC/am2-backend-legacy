@@ -1,0 +1,121 @@
+# Package the host-security bundle for one exact main commit.
+#
+# The files under /etc that AM2 owns -- nginx and Apache vhosts, snippets, the
+# PHP prepend -- ship as a sealed bundle, separate from the backend runtime
+# artifact. The packager and verifier existed, but nothing ran them off-host,
+# so the only way to change one of those files was to assemble the bundle on
+# the production VPS. That is artifact assembly on the runtime host, and it
+# gives the bundle and its trusted manifest a single origin.
+#
+# This run is that origin instead. It needs no credentials beyond the read-only
+# job token: it reads the repository, packages, verifies, and hands the bundle
+# off. Its step summary records the digests. The operator trusts a bundle only
+# after confirming, from the run record fetched separately from the artifact,
+# that the run is this workflow on main for the intended source SHA.
+
+name: publish host-security bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact immutable main commit whose host files to package
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: host-security-bundle-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Confirm reviewed main source with passing checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          # Only the main version of this workflow may publish. A branch that
+          # edited it could skip every check below, so the operator also checks
+          # the run's branch before trusting what it produced.
+          test "$GITHUB_REF" = refs/heads/main
+          [[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]]
+          test "$SOURCE_SHA" = "$(git rev-parse HEAD)"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          # Push runs only: a pull_request run reports the PR branch as
+          # head_branch and tests a merge ref, not this SHA on main.
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/source-checks.yml/runs?head_sha=$SOURCE_SHA&event=push&status=completed&per_page=100" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" and .head_branch == "main") | .id] | first // empty' \
+            | grep -q .
+
+      - name: Package and verify the sealed bundle
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/am2-host-security"
+          infra/scripts/package-host-security-bundle.sh \
+            --source-root "$GITHUB_WORKSPACE" \
+            --sha "$SOURCE_SHA" \
+            --output-dir "$out"
+          # Internal consistency only: the verifier refuses a trusted manifest
+          # beside the bundle, so this uses a copy of the bundle's own manifest.
+          # It proves the bundle matches itself, not that anything vouches for it.
+          trusted="$RUNNER_TEMP/trusted/trusted-host-security-manifest.json"
+          install -D -m 0644 "$out/host-security-manifest.json" "$trusted"
+          infra/scripts/verify-host-security-bundle.sh \
+            --archive "$out/am2-host-security.tar.gz" \
+            --manifest "$out/host-security-manifest.json" \
+            --checksums "$out/SHA256SUMS" \
+            --expected-manifest "$trusted"
+
+      - name: Record the bundle identity
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/am2-host-security"
+          manifest_sha256=$(sha256sum "$out/host-security-manifest.json" | awk '{print $1}')
+          read -r payload_sha256 archive_sha256 < <(python3 - "$out/host-security-manifest.json" <<'PYTHON'
+          import json, sys
+          m = json.load(open(sys.argv[1], encoding='utf-8'))
+          print(m['payload_sha256'], m['archive_sha256'])
+          PYTHON
+          )
+          echo "manifest SHA-256: $manifest_sha256"
+          {
+            echo '## Host-security bundle'
+            echo
+            echo "- source SHA: \`$SOURCE_SHA\`"
+            echo "- manifest SHA-256: \`$manifest_sha256\`"
+            echo "- payload SHA-256: \`$payload_sha256\`"
+            echo "- archive SHA-256: \`$archive_sha256\`"
+            echo
+            echo 'Before trusting the downloaded bundle: confirm this run is on main, then check the manifest against the digest above. Materialization and activation on the host are separately approved.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: am2-host-security-${{ inputs.source_sha }}
+          path: |
+            ${{ runner.temp }}/am2-host-security/am2-host-security.tar.gz
+            ${{ runner.temp }}/am2-host-security/host-security-manifest.json
+            ${{ runner.temp }}/am2-host-security/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 90
