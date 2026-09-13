@@ -15,6 +15,7 @@ Usage: activate-host-security.sh
           [--verify-installed /absolute/command]
           [--lifecycle /absolute/cloudflare-realip-lifecycle.json]
           [--lock /absolute/lock]
+          [--supersede]
          --apply --allow-reload
 USAGE
 }
@@ -27,6 +28,7 @@ root=/
 unprivileged=0
 apply=0
 allow_reload=0
+supersede=0
 apache_configtest=/usr/sbin/apache2ctl
 nginx_configtest=/usr/sbin/nginx
 reload_command=/usr/bin/systemctl
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
         --lock) [[ $# -ge 2 ]] || { usage; exit 64; }; lock=$2; shift 2 ;;
         --apply) apply=1; shift ;;
         --allow-reload) allow_reload=1; shift ;;
+        --supersede) supersede=1; shift ;;
         *) usage; exit 64 ;;
     esac
 done
@@ -79,10 +82,47 @@ done
 mkdir -p -- "$(dirname -- "$lock")"
 exec 9>"$lock"
 flock -x 9
-[[ ! -e $activation_receipt && ! -L $activation_receipt ]] || {
-    echo "an active host-security receipt already exists; roll it back or archive it through an approved lifecycle before another activation" >&2
-    exit 1
-}
+if (( supersede )); then
+    # Replacing a live activation. Rolling it back first would restore the files
+    # from before any activation -- dropping the PHP guard prepend -- and reload
+    # twice. Instead the backup below captures the configuration that is live
+    # now, so rolling this activation back returns to the one it replaces. That
+    # is only sound if the replaced activation is intact: its receipt verified
+    # and protected, and its own rollback anchor unchanged.
+    [[ -f $activation_receipt && ! -L $activation_receipt ]] || {
+        echo "--supersede needs an active host-security activation receipt to replace" >&2
+        exit 1
+    }
+    python3 - "$activation_receipt" "$root" "$unprivileged" <<'PY'
+import hashlib, json, os, pathlib, stat, sys
+path, root, unprivileged = sys.argv[1:]
+receipt = pathlib.Path(path)
+info = receipt.lstat()
+if stat.S_IMODE(info.st_mode) & 0o022 or (unprivileged != '1' and info.st_uid != 0):
+    raise SystemExit('active activation receipt is not protected; refusing to supersede it')
+value = json.load(open(receipt, encoding='utf-8'))
+if value.get('application') != 'am2-host-security-activation' or value.get('status') != 'verified':
+    raise SystemExit('active activation receipt is not verified; refusing to supersede it')
+if value.get('root_path') != os.path.realpath(root):
+    raise SystemExit('active activation receipt root does not match the requested root')
+backup = pathlib.Path(str(value.get('backup_path', '')))
+anchor = backup / 'previous.json'
+if not backup.is_absolute() or backup.is_symlink() or not backup.is_dir() or anchor.is_symlink() or not anchor.is_file():
+    raise SystemExit('active activation rollback anchor is missing; refusing to supersede it')
+if unprivileged != '1':
+    for item in (backup, anchor):
+        details = item.lstat()
+        if details.st_uid != 0 or stat.S_IMODE(details.st_mode) & 0o022:
+            raise SystemExit('active activation rollback anchor is not root-protected')
+if hashlib.file_digest(open(anchor, 'rb'), 'sha256').hexdigest() != value.get('backup_manifest_sha256'):
+    raise SystemExit('active activation rollback anchor changed; refusing to supersede it')
+PY
+else
+    [[ ! -e $activation_receipt && ! -L $activation_receipt ]] || {
+        echo "an active host-security receipt already exists; supersede it with --supersede or roll it back before another activation" >&2
+        exit 1
+    }
+fi
 
 # Materialization receipt and expected manifest are trust inputs. A real-host
 # activation refuses anything not root-owned and immutable to group/other.
@@ -353,6 +393,13 @@ if (( unprivileged )); then
     verify_args+=(--root "$root" --unprivileged-root)
 fi
 "$verify_installed" "${verify_args[@]}"
+
+# Keep the replaced receipt beside the new rollback anchor. The new receipt
+# overwrites the canonical path, and the chain of activations must stay readable.
+if (( supersede )); then
+    install -m 0600 -- "$activation_receipt" "$backup/superseded-activation.json"
+    (( unprivileged )) || chown 0:0 -- "$backup/superseded-activation.json"
+fi
 
 python3 - "$plan" "$activation_receipt" "$backup" "$unprivileged" "$root" "$backup_manifest_sha256" <<'PY'
 import json, os, pathlib, tempfile, time, sys
