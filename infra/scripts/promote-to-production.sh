@@ -288,6 +288,7 @@ actor ${SUDO_USER:-$USER}
 release $release
 source_sha $sha
 archive_sha256 $archive_sha256
+payload_sha256 $identity_payload_sha
 rolled_from $old
 previous_sha $old_sha
 staging_rehearsal_receipt $rehearsal_receipt
