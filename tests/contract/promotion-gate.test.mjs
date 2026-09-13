@@ -81,6 +81,8 @@ describe('production promotion gate', () => {
         const s = read(GATE);
         assert.match(s, /receipt|RECEIPT/,
             'a promotion leaves no record beyond a symlink mtime');
+        assert.match(s, /cat > "\$receipt\.incoming" <<RECEIPT[\s\S]*payload_sha256 \$identity_payload_sha/,
+            'production receipt omits verified payload digest');
     });
 
     test('archive identity comes from verified materialization metadata, not a directory name', () => {
