@@ -91,7 +91,11 @@ test('release boundary documents host security as a separate release lifecycle',
     'the implemented host-security lifecycle is not recorded');
   assert.match(source, /approval-bound activation\/rollback tooling[\s\S]*implemented/i,
     'the implemented host-security activation tooling is not recorded');
-  assert.match(source, /No activation or rollback has been run on a real host yet/i,
+  // Activation first ran on a real host on 2026-09-07, so the boundary records
+  // where bundles come from and that each host step still needs approval.
+  assert.match(source, /runtime host must not assemble a bundle/i,
+    'the release boundary does not keep bundle assembly off the runtime host');
+  assert.match(source, /separate host-approved evidence gate/i,
     'the remaining host-approved evidence gate is not recorded');
   assert.match(source, /cloudflare-realip-lifecycle\.json/i,
     'the separate externally-refreshed real-IP lifecycle is not recorded');
