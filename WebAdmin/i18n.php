@@ -110,6 +110,11 @@ function e(string $key, array $replace = []): string
  */
 function am2_asset(string $path): string
 {
+    // The same bound as am2_asset_url(): the version is a digest of the file,
+    // so a path outside the asset tree would put a digest of that file in the page.
+    if (!preg_match('#^/?asset/[A-Za-z0-9._/-]+$#', $path) || str_contains($path, '..')) {
+        throw new InvalidArgumentException('Invalid asset path');
+    }
     $full = __DIR__ . '/' . ltrim($path, '/');
     return htmlspecialchars($path . '?v=' . am2_asset_version($full), ENT_QUOTES, 'UTF-8');
 }
