@@ -88,6 +88,8 @@ describe('production promotion gate', () => {
         assert.match(s, /\.artifact-identity\.json/,
             'promotion trusts a caller-provided digest without release metadata');
         assert.match(s, /archive_sha256[\s\S]*artifact-identity/i);
+        assert.match(s, /payload_sha256 \$identity_payload_sha/,
+            'production receipt omits verified payload digest');
     });
 
     test('production targets are constrained to the production release root and update stores', () => {
