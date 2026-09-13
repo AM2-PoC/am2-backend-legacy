@@ -76,12 +76,16 @@ test('a missing asset is never cached as immutable', () => {
     const block = read('infra/nginx/am2-webadmin-assets.conf')
         .match(/location\s+~\*\s+\^\/asset\/[^{]*\{[\s\S]*?\n\}/);
     assert.ok(block, 'the asset cache location is missing');
-    const cacheControl = block[0].match(/add_header\s+Cache-Control\s+"([^"]*)"([^;]*);/);
-    assert.ok(cacheControl, 'the asset location no longer sets Cache-Control');
-    assert.match(cacheControl[1], /immutable/,
+    // Every Cache-Control line, so a second one added later cannot bring
+    // `always` back while the first still looks right.
+    const lines = [...block[0].matchAll(/add_header\s+Cache-Control\s+"([^"]*)"([^;]*);/g)];
+    assert.ok(lines.length > 0, 'the asset location no longer sets Cache-Control');
+    assert.ok(lines.some(([, value]) => /immutable/.test(value)),
         'the asset location stopped marking versioned assets immutable');
-    assert.doesNotMatch(cacheControl[2], /\balways\b/,
-        'Cache-Control uses `always`, so a 404 for an asset is cached as immutable');
+    for (const [, , flags] of lines) {
+        assert.doesNotMatch(flags, /\balways\b/,
+            'Cache-Control uses `always`, so a 404 for an asset is cached as immutable');
+    }
 });
 
 test('stable admin update URLs cannot cache one half of a release set', () => {
