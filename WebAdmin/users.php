@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
         $success_msg = t('msg.user_added', ['name' => $name, 'id' => $id]);
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-        $error_msg = $e->getCode() === '23505'
+        $error_msg = am2_is_duplicate_unit_id($e)
             ? t('msg.user_id_taken', ['id' => $id])
             : t('msg.user_add_failed', ['detail' => am2_safe_error($e, 'users')]);
     }

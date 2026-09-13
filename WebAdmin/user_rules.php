@@ -44,6 +44,24 @@ function am2_entity_type($value): string
     return $type;
 }
 
+/**
+ * Whether a failed registration means the unit ID is already taken.
+ *
+ * The page and the endpoint the Admin app calls both register units, and only
+ * the page used to recognise this case; the app was told the system had failed.
+ * One predicate, so the two cannot drift apart again.
+ *
+ * The constraint is named, not just the SQLSTATE: the users trigger also writes
+ * admin_activity_logs, and a unique violation there is a fault to log rather
+ * than a duplicate to report.
+ */
+function am2_is_duplicate_unit_id(Throwable $e): bool
+{
+    return $e instanceof PDOException
+        && (string) $e->getCode() === '23505'
+        && str_contains($e->getMessage(), '"users_pkey"');
+}
+
 function am2_create_user(PDO $pdo, string $id, string $name, string $password, $adminId, string $entityType): void
 {
     am2_require_transaction($pdo, __FUNCTION__);

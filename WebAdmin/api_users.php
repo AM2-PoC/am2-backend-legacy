@@ -141,7 +141,10 @@ elseif ($method == 'POST') {
              * rollback and the abandon are exactly what that case needs.
              */
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
-            echo json_encode(['success' => false, 'message' => 'Gagal: ' . am2_safe_error($e, 'api_users')]);
+            $reason = $action === 'add' && am2_is_duplicate_unit_id($e)
+                ? t('msg.user_id_taken', ['id' => $id])
+                : am2_safe_error($e, 'api_users');
+            echo json_encode(['success' => false, 'message' => 'Gagal: ' . $reason]);
         }
     }
     elseif ($action == 'save_user_channels') {
