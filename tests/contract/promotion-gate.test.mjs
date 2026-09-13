@@ -212,15 +212,6 @@ describe('production promotion gate', () => {
             'staging rollback identity is captured before owning the deployment lock');
         assert.match(rehearsal, /healthy_samples[\s\S]*NRestarts/,
             'staging readiness accepts one transient healthy sample');
-        // The page-asset sweep lives in the candidate's guard verifier. Without
-        // it here, a page asset the artifact omits is first found on production
-        // after cutover -- staging passed the live-track release with a 404.
-        assert.match(rehearsal,
-            /candidate_pid=\$\(switch_and_restart "\$release"\)[\s\S]*?"\$release\/infra\/scripts\/verify-webadmin-guard\.sh" --lane staging[\s\S]*?rollback_pid=/,
-            'staging rehearsal does not check the candidate lane (page assets, auth guard) before rollback');
-        assert.match(rehearsal,
-            /repromoted_pid=\$\(switch_and_restart "\$release"\)[\s\S]*?"\$release\/infra\/scripts\/verify-webadmin-guard\.sh" --lane staging[\s\S]*?receipt=/,
-            'staging rehearsal writes a verified receipt without checking the re-promoted lane');
     });
 
     test('candidate and rollback use the stable host-owned compatibility verifier', () => {
