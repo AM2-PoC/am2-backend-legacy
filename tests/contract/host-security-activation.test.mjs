@@ -271,6 +271,10 @@ test('supersede refuses when there is no active activation to replace', () => {
     const f = supersedeFixture(base);
     const run = f.activate('--supersede');
     assert.notEqual(run.status, 0, 'supersede ran with no active activation');
+    // The reason, not only the exit: an activator that did not know the flag
+    // would also fail here.
+    assert.match(run.stderr, /needs an active host-security activation receipt/,
+      `supersede failed for another reason: ${run.stderr}`);
     assert.equal(readFileSync(f.prepend, 'utf8'), 'pre-hardening-bytes\n');
     assert.ok(!existsSync(f.evidence), 'supersede without an active activation wrote a receipt');
   } finally {
@@ -292,6 +296,8 @@ test('supersede refuses an active activation whose rollback anchor was changed',
 
     const run = f.activate('--supersede');
     assert.notEqual(run.status, 0, 'supersede accepted an activation with a changed rollback manifest');
+    assert.match(run.stderr, /rollback anchor changed/,
+      `supersede failed for another reason: ${run.stderr}`);
     assert.equal(readFileSync(f.evidence, 'utf8'), firstReceipt, 'refused supersede replaced the active receipt');
     assert.ok(!existsSync(f.calls), 'refused supersede reloaded services');
   } finally {
