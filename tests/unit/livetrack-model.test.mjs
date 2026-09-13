@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     accuracyQuality, classifyUnit, formatAccuracy, formatAge, hasValidLocation, summarizeUnits,
-} from '../../WebAdmin/asset/js/src/livetrack-model.js';
+} from '../../WebAdmin/asset/js/livetrack-model.js';
 
 test('classification keeps identity freshness and TX independent', () => {
     assert.deepEqual(classifyUnit({ entity_type: 'tracker', freshness: 'delayed', is_speaking: 1 }), {

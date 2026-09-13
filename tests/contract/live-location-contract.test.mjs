@@ -65,7 +65,7 @@ test('live-track rendering keeps identity freshness TX and accuracy independent'
     for (const field of ['entity_type', 'freshness', 'accuracy', 'location_age_seconds']) {
         assert.match(src, new RegExp(field), `rendering does not consume ${field}`);
     }
-    const model = read('WebAdmin/asset/js/src/livetrack-model.js');
+    const model = read('WebAdmin/asset/js/livetrack-model.js');
     assert.match(model, /has_location/, 'coordinate validation ignores the API has_location decision');
 });
 
