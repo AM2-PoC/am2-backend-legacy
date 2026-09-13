@@ -196,6 +196,109 @@ test('activation refuses to replace an existing rollback receipt', () => {
   }
 });
 
+/*
+ * Replacing an active activation.
+ *
+ * Activation refuses while a receipt is active, and the only other route was a
+ * rollback to the files from before the first activation followed by a fresh
+ * activation: a window on pre-hardening configuration and two reloads. With
+ * --supersede the new activation backs up the configuration that is live now,
+ * so rolling it back returns to the activation it replaced, not to the host as
+ * it was before any activation.
+ */
+function supersedeFixture(base) {
+  const { expected, receipt, data } = candidate(base);
+  const root = join(base, 'root');
+  for (const sapi of ['apache2', 'fpm']) mkdirSync(join(root, `/etc/php/8.3/${sapi}/conf.d`), { recursive: true });
+  const prepend = join(root, '/etc/am2/php/webadmin-prepend.php');
+  mkdirSync(dirname(prepend), { recursive: true });
+  writeFileSync(prepend, 'pre-hardening-bytes\n');
+  chmodSync(prepend, 0o600);
+  const calls = join(base, 'calls');
+  const ok = stubScript(join(base, 'ok'), 'exit 0');
+  const reload = stubScript(join(base, 'reload'), `printf '%s %s\\n' "$1" "$2" >> ${calls}`);
+  const evidence = join(base, 'activation.json');
+  const activate = (...extra) => spawnSync('bash', [activator,
+    '--receipt', receipt, '--expected-manifest', expected,
+    '--root', root, '--unprivileged-root', '--activation-receipt', evidence,
+    '--backup-root', join(base, 'backups'), '--apache-configtest', ok,
+    '--nginx-configtest', ok, '--reload-command', reload,
+    '--lock', join(base, 'activation.lock'), ...extra, '--apply', '--allow-reload'], { encoding: 'utf8' });
+  const rollBack = () => spawnSync('bash', [rollback,
+    '--activation-receipt', evidence, '--root', root, '--unprivileged-root',
+    '--apache-configtest', ok, '--nginx-configtest', ok, '--reload-command', reload,
+    '--lock', join(base, 'activation.lock'), '--apply', '--allow-reload'], { encoding: 'utf8' });
+  const payloadPrepend = readFileSync(join(data.store_path, 'payload/infra/php/webadmin-prepend.php'));
+  return { root, prepend, calls, evidence, activate, rollBack, payloadPrepend };
+}
+
+test('supersede replaces an active activation without passing through pre-hardening files', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-supersede-'));
+  try {
+    const f = supersedeFixture(base);
+    const first = f.activate();
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`);
+    const firstReceipt = readFileSync(f.evidence, 'utf8');
+    const firstBackup = JSON.parse(firstReceipt).backup_path;
+    const firstManifest = readFileSync(join(firstBackup, 'previous.json'), 'utf8');
+    rmSync(f.calls, { force: true });
+
+    const second = f.activate('--supersede');
+    assert.equal(second.status, 0, `${second.stdout}\n${second.stderr}`);
+    assert.deepEqual(readFileSync(f.prepend), f.payloadPrepend, 'supersede did not leave the candidate installed');
+    assert.equal(readFileSync(f.calls, 'utf8'), 'reload apache2\nreload nginx\n',
+      'supersede did not reload each service exactly once');
+
+    const secondData = JSON.parse(readFileSync(f.evidence, 'utf8'));
+    assert.notEqual(secondData.backup_path, firstBackup, 'supersede reused the replaced rollback namespace');
+    assert.equal(readFileSync(join(secondData.backup_path, 'superseded-activation.json'), 'utf8'), firstReceipt,
+      'the replaced activation receipt was not archived with the new rollback anchor');
+    assert.equal(readFileSync(join(firstBackup, 'previous.json'), 'utf8'), firstManifest,
+      'supersede modified the replaced activation backup');
+
+    const back = f.rollBack();
+    assert.equal(back.status, 0, `${back.stdout}\n${back.stderr}`);
+    assert.deepEqual(readFileSync(f.prepend), f.payloadPrepend,
+      'rolling back a superseding activation returned to pre-hardening bytes');
+  } finally {
+    discard(base);
+  }
+});
+
+test('supersede refuses when there is no active activation to replace', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-supersede-none-'));
+  try {
+    const f = supersedeFixture(base);
+    const run = f.activate('--supersede');
+    assert.notEqual(run.status, 0, 'supersede ran with no active activation');
+    assert.equal(readFileSync(f.prepend, 'utf8'), 'pre-hardening-bytes\n');
+    assert.ok(!existsSync(f.evidence), 'supersede without an active activation wrote a receipt');
+  } finally {
+    discard(base);
+  }
+});
+
+test('supersede refuses an active activation whose rollback anchor was changed', () => {
+  const base = mkdtempSync(join(tmpdir(), 'am2-host-security-supersede-tampered-'));
+  try {
+    const f = supersedeFixture(base);
+    const first = f.activate();
+    assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`);
+    const firstReceipt = readFileSync(f.evidence, 'utf8');
+    const manifest = join(JSON.parse(firstReceipt).backup_path, 'previous.json');
+    chmodSync(manifest, 0o600);
+    writeFileSync(manifest, '[]\n');
+    rmSync(f.calls, { force: true });
+
+    const run = f.activate('--supersede');
+    assert.notEqual(run.status, 0, 'supersede accepted an activation with a changed rollback manifest');
+    assert.equal(readFileSync(f.evidence, 'utf8'), firstReceipt, 'refused supersede replaced the active receipt');
+    assert.ok(!existsSync(f.calls), 'refused supersede reloaded services');
+  } finally {
+    discard(base);
+  }
+});
+
 test('each distinct activation receipt gets a unique rollback namespace', () => {
   const base = mkdtempSync(join(tmpdir(), 'am2-host-security-unique-backup-'));
   try {
