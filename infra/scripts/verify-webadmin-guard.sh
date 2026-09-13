@@ -27,6 +27,10 @@ usage() { echo "usage: $0 [--lane staging|production] | --list-assets /path/to/W
 # failed module import is visible only in a browser. So the lane sweep below
 # also asks the origin for every asset a page names -- through am2_asset(),
 # am2_asset_url() for module imports, or a plain src=/href= attribute.
+#
+# What pages reach only indirectly is not listed: files a stylesheet loads with
+# url() (most font weights, image/kawung.svg, Leaflet's marker PNGs), imports
+# inside a JavaScript file, and assets named through a variable.
 list_assets() {
     local dir=$1
     { grep -hoE "(am2_asset(_url)?\(\s*['\"]|(src|href)=['\"])\.?/?asset/[A-Za-z0-9._/-]+" \
@@ -79,7 +83,7 @@ else
     exit 1
 fi
 
-status=$(curl -s -o /dev/null -w '%{http_code}' \
+status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' \
     -H "Host: $host" -H 'Accept: application/json' \
     "http://$origin/$probe" || echo 000)
 
@@ -94,7 +98,7 @@ fi
 # The other half: the two public entry points must still answer, or nobody can
 # obtain the session everything else now requires. A guard that refuses the
 # login page is a locked building with the keys inside.
-login=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+login=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
     "http://$origin/login.php" || echo 000)
 if [[ $login == 200 ]]; then
     echo "ok: login.php still answers without a session"
@@ -119,9 +123,9 @@ echo "sweeping every .php in $docroot"
 sweep_bad=0
 for file in "$docroot"/*.php; do
     name=$(basename "$file")
-    api=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+    api=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
         -H 'Accept: application/json' "http://$origin/$name" || echo 000)
-    nav=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+    nav=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
         -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' \
         "http://$origin/$name" || echo 000)
 
@@ -161,7 +165,7 @@ assets=$(list_assets "$docroot")
 [[ -n $assets ]] || { echo "FAIL: found no page assets in $docroot; the asset sweep proves nothing" >&2; failed=1; }
 asset_bad=0
 for asset in $assets; do
-    status=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+    status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
         "http://$origin/$asset" || echo 000)
     if [[ $status != 200 ]]; then
         echo "FAIL: page asset $asset answered $status, not 200 ($lane)" >&2
