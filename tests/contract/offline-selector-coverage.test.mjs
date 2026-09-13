@@ -45,11 +45,13 @@ test('no contract test is invisible to the offline selector', () => {
     );
 });
 
-// The disqualifier is a text match, so a fixture string can exclude a suite
-// that needs no network at all. promotion-gate.test.mjs stubs curl and named a
-// fixture 'http://' origin, and every production promotion gate test in it went
-// unrun in CI -- including a rehearsal assertion that therefore could not fail.
-// These suites are offline by construction and must stay selected.
+// The disqualifier is a text match, so a fixture string -- or a comment -- that
+// spells a URL scheme excludes a suite that needs no network at all.
+// promotion-gate.test.mjs stubs curl and named a fixture origin with a scheme,
+// and every production promotion gate test in it went unrun in CI, including a
+// rehearsal assertion that therefore could not fail. (This comment first named
+// the scheme itself and disqualified this file the same way.) These suites are
+// offline by construction and must stay selected.
 const MUST_RUN_OFFLINE = ['promotion-gate.test.mjs', 'release-assets.test.mjs', 'edge-parity.test.mjs'];
 
 test('offline-by-construction suites are selected, not disqualified by fixture text', () => {
