@@ -85,10 +85,15 @@ restore_on_failure() {
 trap restore_on_failure ERR INT TERM HUP
 candidate_pid=$(switch_and_restart "$release")
 "$VERIFY_ARTIFACT" --release "$release" --manifest "$manifest" >/dev/null
+# The candidate's own lane check: the PHP auth guard and every asset its pages
+# load. Without it here a page asset the artifact omits is first found on
+# production after cutover. A failure restores the previous release via the trap.
+"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging
 rollback_pid=$(switch_and_restart "$old")
 "$VERIFY_CURRENT" "$old" >/dev/null
 repromoted_pid=$(switch_and_restart "$release")
 "$VERIFY_ARTIFACT" --release "$release" --manifest "$manifest" >/dev/null
+"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging
 
 install -d -o root -g root -m 0755 "$RECEIPTS"
 receipt=$RECEIPTS/$(date -u +%Y%m%dT%H%M%SZ)-$archive_sha256.receipt
