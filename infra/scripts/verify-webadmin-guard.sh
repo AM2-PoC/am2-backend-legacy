@@ -18,12 +18,36 @@ set -euo pipefail
 #
 # Defaults to the staging lane. Production must be named explicitly.
 
+usage() { echo "usage: $0 [--lane staging|production] | --list-assets /path/to/WebAdmin" >&2; }
+
+# Local assets the pages load, one repo-relative path per line.
+#
+# The live map once rendered nothing on either lane while every server-side
+# gate passed: livetrack.php imported a module the artifact did not carry, and a
+# failed module import is visible only in a browser. So the lane sweep below
+# also asks the origin for every asset a page names -- through am2_asset(),
+# am2_asset_url() for module imports, or a plain src=/href= attribute.
+#
+# What pages reach only indirectly is not listed: files a stylesheet loads with
+# url() (most font weights, image/kawung.svg, Leaflet's marker PNGs), imports
+# inside a JavaScript file, and assets named through a variable.
+list_assets() {
+    local dir=$1
+    { grep -hoE "(am2_asset(_url)?\(\s*['\"]|(src|href)=['\"])\.?/?asset/[A-Za-z0-9._/-]+" \
+        "$dir"/*.php "$dir"/partials/*.php 2>/dev/null || true; } \
+        | sed -E "s#^.*['\"]\.?/?(asset/)#\1#" \
+        | sort -u
+}
+
 lane=staging
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --lane) [[ $# -ge 2 ]] || { echo "usage: $0 [--lane staging|production]" >&2; exit 64; }
+        --lane) [[ $# -ge 2 ]] || { usage; exit 64; }
                 lane=$2; shift 2 ;;
-        *) echo "usage: $0 [--lane staging|production]" >&2; exit 64 ;;
+        --list-assets)
+                [[ $# -eq 2 && -d $2 ]] || { usage; exit 64; }
+                list_assets "$2"; exit 0 ;;
+        *) usage; exit 64 ;;
     esac
 done
 
@@ -59,7 +83,7 @@ else
     exit 1
 fi
 
-status=$(curl -s -o /dev/null -w '%{http_code}' \
+status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' \
     -H "Host: $host" -H 'Accept: application/json' \
     "http://$origin/$probe" || echo 000)
 
@@ -74,7 +98,7 @@ fi
 # The other half: the two public entry points must still answer, or nobody can
 # obtain the session everything else now requires. A guard that refuses the
 # login page is a locked building with the keys inside.
-login=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+login=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
     "http://$origin/login.php" || echo 000)
 if [[ $login == 200 ]]; then
     echo "ok: login.php still answers without a session"
@@ -99,9 +123,9 @@ echo "sweeping every .php in $docroot"
 sweep_bad=0
 for file in "$docroot"/*.php; do
     name=$(basename "$file")
-    api=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+    api=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
         -H 'Accept: application/json' "http://$origin/$name" || echo 000)
-    nav=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $host" \
+    nav=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
         -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' \
         "http://$origin/$name" || echo 000)
 
@@ -132,6 +156,26 @@ if (( sweep_bad )); then
 else
     count=$(ls -1 "$docroot"/*.php | wc -l)
     echo "ok: all $count PHP files in the $lane document root refuse an anonymous caller"
+fi
+
+# Every asset the pages load, from the lane's own origin. Assets are public, so
+# this needs no session, and it asks Apache rather than the CDN so a cached
+# copy cannot answer for a file the release does not carry.
+assets=$(list_assets "$docroot")
+[[ -n $assets ]] || { echo "FAIL: found no page assets in $docroot; the asset sweep proves nothing" >&2; failed=1; }
+asset_bad=0
+for asset in $assets; do
+    status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $host" \
+        "http://$origin/$asset" || echo 000)
+    if [[ $status != 200 ]]; then
+        echo "FAIL: page asset $asset answered $status, not 200 ($lane)" >&2
+        asset_bad=1
+    fi
+done
+if (( asset_bad )); then
+    failed=1
+elif [[ -n $assets ]]; then
+    echo "ok: all $(wc -w <<<"$assets") page assets answer 200 on the $lane origin"
 fi
 
 exit "$failed"
