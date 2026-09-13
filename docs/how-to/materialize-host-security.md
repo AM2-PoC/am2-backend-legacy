@@ -9,6 +9,29 @@ receipt; installing into `/etc`, running `apache2ctl configtest` / `nginx -t`,
 and reloading a service are separately approved operations that are not part of
 these scripts.
 
+## Get the bundle
+
+Bundles are built by CI, never on the host. Dispatch the workflow for the exact
+main commit whose host files you want:
+
+```sh
+gh workflow run publish-host-security-bundle.yml --ref main -f source_sha=<40-hex main SHA>
+```
+
+When the run succeeds, download its artifact into a fresh directory, then check
+the manifest against the digest the run summary recorded. The summary is the
+independent channel; the downloaded bundle cannot vouch for itself.
+
+```sh
+gh run download <run-id> --dir /path/incoming
+sha256sum /path/incoming/*/host-security-manifest.json   # must equal the run summary
+sudo install -m 0644 /path/incoming/*/host-security-manifest.json \
+  /etc/am2/host-security/trusted-host-security-manifest.json
+```
+
+The trusted copy must live outside the bundle directory; the verifier refuses one
+beside the bundle or aliasing its manifest.
+
 ## Materialize
 
 Needs the bundle, its checksums, and the expected manifest obtained through a

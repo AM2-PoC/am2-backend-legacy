@@ -42,7 +42,7 @@ exact reviewed source SHA
 → separately approved activation/reload and rollback
 ```
 
-The source contract and deterministic bundle/verifier, the root-owned materializer, protected receipt, installed-state verifier, drift audit, and approval-bound activation/rollback tooling are implemented. No activation or rollback has been run on a real host yet; config tests, reloads, post-activation probes, and rollback rehearsal therefore remain separate host-approved evidence gates.
+The source contract and deterministic bundle/verifier, the root-owned materializer, protected receipt, installed-state verifier, drift audit, and approval-bound activation/rollback tooling are implemented. The bundle is packaged and verified by the dispatch-only `publish-host-security-bundle` workflow for one exact main SHA; its run summary records the manifest digest, which is the independent channel the host checks the downloaded manifest against. The runtime host never assembles a bundle. Each activation, reload, post-activation probe, and rollback remains a separate host-approved evidence gate.
 
 Materialization is digest-addressed and immutable: authenticated bytes are unpacked under their own payload digest, sealed read-only, and never overwritten. It reads no source checkout, so a bounded identity with no Git credential and no build tooling can run it. A receipt records a materialization that happened, names the store it produced, and states whether the run was privileged; an unprivileged receipt is a fixture and the verifier refuses to read it as evidence about a host.
 
