@@ -28,6 +28,17 @@ test('the verifier lists every local asset the pages load', () => {
     }
 });
 
+test('every request the verifier makes is bounded in time', () => {
+    // It runs after the production cutover, under the gate's rollback trap. A
+    // request to a stalled origin with no deadline hangs the gate and holds the
+    // rollback back for as long as the origin stays stalled.
+    const calls = [...source.matchAll(/\$\(curl\s[^)]*\)/g)].map(([call]) => call);
+    assert.ok(calls.length > 0, 'found no curl calls; this test no longer sees the requests');
+    for (const call of calls) {
+        assert.match(call, /--max-time\s+\d+/, `unbounded request: ${call.replace(/\s+/g, ' ')}`);
+    }
+});
+
 test('the lane sweep requires every page asset to answer 200', () => {
     assert.match(source, /--list-assets/);
     assert.match(source, /for asset in[\s\S]{0,400}\$status != 200/,
