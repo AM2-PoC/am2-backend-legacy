@@ -61,6 +61,13 @@ esac
 
 [[ -d $docroot ]] || { echo "no document root at $docroot" >&2; exit 1; }
 
+# Callers run this right after a release symlink swap -- the production gate,
+# with no relay restart, well under a second after it. mod_php keeps a switched
+# path for realpath_cache_ttl (2s in the sealed ini) plus the rest of the
+# current second, so asking at once could test the previous release's PHP and
+# pass. Wait out that window before the first request.
+sleep 3
+
 # A file that never requires config.php, chosen rather than created.
 #
 # This used to write a synthetic probe into the document root and delete it
