@@ -1,3 +1,4 @@
+// offline-tests: exclude -- run with root by the restart-safety job in source-checks.yml
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';

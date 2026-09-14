@@ -12,9 +12,9 @@
 # the worst direction: a test that never runs looks exactly like a test that
 # passes.
 #
-# Two disqualifiers, and the second is the one that is easy to miss -- a file
-# can be credential-free and still be useless in CI because it fetches from
-# apiapi.am2-poc.com.
+# Two declared exclusions for .mjs suites: an import of the credential helper,
+# or an explicit exclude marker for a suite that must run elsewhere (reaches a
+# live host, or needs root in the restart-safety job).
 #
 # Matching is deliberately on real import statements, not on the text
 # "helpers.mjs" anywhere in the file: every offline test in this suite carries a
@@ -47,19 +47,17 @@ for f in "$DIR"/*.test.php; do
 done
 
 for f in "$DIR"/*.test.mjs; do
-    # Credential-bound: pulls in the helper that reads the protected env file.
-    grep -qE "^[[:space:]]*import .*['\"]\./helpers\.mjs" "$f" && continue
-
-    # Network-bound: reaches a running relay, panel or edge. Avoid
-    # `sed | grep -q` here: with pipefail, grep can exit early and give sed
-    # SIGPIPE on a large file, incorrectly selecting a network test. The small
-    # lexer below ignores // comments while preserving :// inside string URLs.
-    if ! perl -ne '
-        s{//.*$}{} unless /https?:\/\//;
-        exit 1 if /fetch\(|https?:\/\/|new WebSocket/;
+    # Exclusion is declared, never guessed from text. Guessing kept offline
+    # suites out of CI for good: a stubbed curl origin, a fixture network call,
+    # even the coverage guard's own regex looked networked. A suite is excluded
+    # when it imports the credential helper -- on any number of lines -- or
+    # says so with a `// offline-tests: exclude` marker line. The whole file is
+    # read at once, which also avoids the `sed | grep -q` pipefail race that
+    # selected a large network test.
+    if perl -0777 -ne '
+        exit 1 if /^\s*import\s[^;]*?from\s*[\x27"]\.\/helpers\.mjs[\x27"]/m;
+        exit 1 if /^\s*\/\/\s*offline-tests:\s*exclude/m;
     ' "$f"; then
-        continue
+        basename "$f"
     fi
-
-    basename "$f"
 done

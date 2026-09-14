@@ -22,15 +22,16 @@ const selected = new Set(
     execFileSync(selector, { encoding: 'utf8' }).split('\n').filter(Boolean),
 );
 
-// Mirrors the selector's disqualifiers, per language. A file that reaches the
-// network or reads the protected env file belongs on the VPS, not in CI.
+// Mirrors the selector's exclusions, per language. A .mjs suite is excluded
+// only when it says so: it imports the credential helper (on any number of
+// lines) or carries the offline-tests exclude marker. Guessing from text that
+// looked networked kept offline suites out of CI.
 //
-// Built from pieces on purpose. The selector matches this file's own text, and
-// written as literals the patterns contained the very phrase it looks for, so
-// this guard was itself disqualified and never ran.
-const WS = ['new', 'Web' + 'Socket'].join(' ');
+// Built from pieces on purpose: the selector reads this file's text too.
+const HELPERS_IMPORT = new RegExp(String.raw`^\s*import\s[^;]*?from\s*['"]\.\/` + 'help' + String.raw`ers\.mjs['"]`, 'm');
+const EXCLUDE_MARKER = new RegExp('^\\s*//\\s*offline-' + 'tests:\\s*exclude', 'm');
 const NETWORK_OR_CREDENTIAL = {
-    '.mjs': new RegExp(String.raw`^\s*import .*['"]\.\/helpers\.mjs|fetch\(|https?:\/\/|` + WS, 'm'),
+    '.mjs': { test: (body) => HELPERS_IMPORT.test(body) || EXCLUDE_MARKER.test(body) },
     '.php': /file_get_contents\(\s*['"]https?:|curl_\w+\(|fsockopen\(|fopen\(\s*['"]https?:|getenv\(/,
 };
 
