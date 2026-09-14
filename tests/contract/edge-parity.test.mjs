@@ -76,16 +76,41 @@ test('a missing asset is never cached as immutable', () => {
     const block = read('infra/nginx/am2-webadmin-assets.conf')
         .match(/location\s+~\*\s+\^\/asset\/[^{]*\{[\s\S]*?\n\}/);
     assert.ok(block, 'the asset cache location is missing');
+    const values = [...block[0].matchAll(/set\s+\$am2_asset_cache_control\s+"([^"]*)"/g)].map(([, v]) => v);
+    assert.ok(values.some((v) => /immutable/.test(v)),
+        'the asset location stopped marking versioned assets immutable');
     // Every Cache-Control line, so a second one added later cannot bring
     // `always` back while the first still looks right.
-    const lines = [...block[0].matchAll(/add_header\s+Cache-Control\s+"([^"]*)"([^;]*);/g)];
-    assert.ok(lines.length > 0, 'the asset location no longer sets Cache-Control');
-    assert.ok(lines.some(([, value]) => /immutable/.test(value)),
-        'the asset location stopped marking versioned assets immutable');
-    for (const [, , flags] of lines) {
-        assert.doesNotMatch(flags, /\balways\b/,
+    const headers = [...block[0].matchAll(/add_header\s+Cache-Control\s+([^;]*);/g)].map(([, v]) => v);
+    assert.ok(headers.length > 0, 'the asset location no longer sets Cache-Control');
+    for (const header of headers) {
+        assert.doesNotMatch(header, /\balways\b/,
             'Cache-Control uses `always`, so a 404 for an asset is cached as immutable');
     }
+});
+
+test('an asset URL without a version is never cached as immutable', () => {
+    /*
+     * Immutable is only safe for a URL that changes with the bytes. Pages add
+     * ?v=<digest>, but a stylesheet's url() (fonts, Leaflet's marker images)
+     * and the font preloads name bare paths, and those were pinned for 30 days
+     * too, so a changed font or icon stayed stale. The cache policy is chosen
+     * per request from the version query.
+     */
+    const block = read('infra/nginx/am2-webadmin-assets.conf')
+        .match(/location\s+~\*\s+\^\/asset\/[^{]*\{[\s\S]*?\n\}/);
+    assert.ok(block, 'the asset cache location is missing');
+    assert.match(block[0], /add_header\s+Cache-Control\s+\$am2_asset_cache_control;/,
+        'the asset Cache-Control value is not chosen per request');
+    assert.match(block[0], /expires\s+\$am2_asset_expires;/,
+        'the asset expiry is not chosen per request');
+    const unversioned = block[0].match(/if\s*\(\$arg_v\s*=\s*""\)\s*\{([\s\S]*?)\}/);
+    assert.ok(unversioned, 'nothing distinguishes an asset URL without a version');
+    const control = unversioned[1].match(/set\s+\$am2_asset_cache_control\s+"([^"]*)"/);
+    assert.ok(control && !/immutable/.test(control[1]),
+        'an asset URL without a version is still cached as immutable');
+    const expiry = unversioned[1].match(/set\s+\$am2_asset_expires\s+(\S+);/);
+    assert.ok(expiry && expiry[1] !== '30d', 'an asset URL without a version still expires in 30 days');
 });
 
 test('stable admin update URLs cannot cache one half of a release set', () => {
