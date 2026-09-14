@@ -51,6 +51,13 @@ test('host-security contract closes every tracked WebAdmin and real-IP input out
   assert.match(readFileSync(resolve(ROOT, ini.source), 'utf8'),
     /^auto_prepend_file = \/etc\/am2\/php\/webadmin-prepend\.php$/m,
     'the sealed PHP configuration template does not name the bounded prepend');
+  // After a release symlink switch, mod_php keeps resolving the old release's
+  // paths for realpath_cache_ttl (120s by default), so the lane guard run right
+  // after activation could check the previous release's PHP. Two seconds is
+  // shorter than the three healthy samples every activation waits for.
+  const ttl = readFileSync(resolve(ROOT, ini.source), 'utf8').match(/^realpath_cache_ttl\s*=\s*(\d+)\s*$/m);
+  assert.ok(ttl && Number(ttl[1]) <= 2,
+    'the PHP guard ini leaves realpath_cache_ttl at its default, so a switched release can serve old PHP paths');
 
   for (const id of ['apache-production-webadmin', 'apache-staging-webadmin']) {
     assert.match(contract.files.find((file) => file.id === id).target, /^\/etc\/apache2\/sites-available\//);
