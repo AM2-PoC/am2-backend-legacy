@@ -321,7 +321,11 @@ exec /usr/bin/readlink "$@"
                     AM2_VERIFY_CURRENT: verify, AM2_VERIFY_ARTIFACT: '/bin/true',
                     AM2_CANDIDATE_MANIFEST: manifest, AM2_RELAY_DIGEST: digest,
                     AM2_RUNTIME_BOUNDARY_AUDIT: '/bin/true',
-                    AM2_PRODUCTION_ENV: join(base, 'prod.env'), AM2_PRODUCTION_URL: 'http://test/', AM2_STAGING_URL: 'http://test/' },
+                    // Not a URL on purpose: curl is stubbed above, and a literal
+                    // scheme here made the offline selector treat this whole
+                    // suite as a network test, so CI never ran any of it.
+                    AM2_PRODUCTION_ENV: join(base, 'prod.env'), AM2_PRODUCTION_URL: 'fixture-production-relay',
+                    AM2_STAGING_URL: 'fixture-staging-relay' },
             });
             assert.notEqual(run.status, 0, 'forced post-cutover failure unexpectedly succeeded');
             assert.match(run.stderr, /promotion failed; restoring/,

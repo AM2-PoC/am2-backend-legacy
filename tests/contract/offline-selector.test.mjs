@@ -13,8 +13,12 @@ test('offline selector rejects a large network-bound test without a pipefail rac
         // Put the match first and enough output after it to overflow a pipe. With
         // `sed | grep -q` under pipefail, grep exits at the first match and sed can
         // receive SIGPIPE; the failed pipeline then incorrectly selects this file.
+        // Assembled from pieces: the selector reads this file's text too, and
+        // spelled out whole the fixture made this suite look network-bound, so
+        // it never ran in CI. The generated file still contains the real call.
+        const networkCall = ['fe', 'tch(', "'htt", 'ps:', '//example.invalid', "');"].join('');
         writeFileSync(join(dir, 'large-network.test.mjs'),
-            "fetch('https://example.invalid');\n" + 'const padding = 1;\n'.repeat(100000));
+            `${networkCall}\n` + 'const padding = 1;\n'.repeat(100000));
         const run = spawnSync('bash', [selector], {
             encoding: 'utf8',
             env: { ...process.env, OFFLINE_TEST_DIR: dir },
