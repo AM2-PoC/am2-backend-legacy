@@ -39,7 +39,7 @@ sudo -u am2release /usr/local/libexec/am2/verify-materialized-artifact.sh \
   --release "$REL" --manifest "$CACHE/artifact-manifest.json"
 ```
 
-Materialization does not activate the release. Use the protected staging rehearsal path documented in `deploy-and-roll-back.md`. It owns the deployment lock, verifies candidate → rollback → exact re-promotion, and writes a protected receipt.
+Materialization does not activate the release. Use the protected staging rehearsal path documented in `deploy-and-roll-back.md`. It owns the deployment lock, verifies candidate → rollback → exact re-promotion, checks the candidate's staging lane (auth guard and page assets) with its own `verify-webadmin-guard.sh`, and writes a protected receipt.
 
 A staging activation or restart requires explicit approval. Re-run WebAdmin login/session/CSRF, representative Admin API, WebSocket/auth, update-channel, service cwd/digest, and `NRestarts` checks after each transition.
 
