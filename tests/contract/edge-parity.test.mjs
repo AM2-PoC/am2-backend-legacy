@@ -102,15 +102,21 @@ test('an asset URL without a version is never cached as immutable', () => {
     assert.ok(block, 'the asset cache location is missing');
     assert.match(block[0], /add_header\s+Cache-Control\s+\$am2_asset_cache_control;/,
         'the asset Cache-Control value is not chosen per request');
-    assert.match(block[0], /expires\s+\$am2_asset_expires;/,
-        'the asset expiry is not chosen per request');
-    const unversioned = block[0].match(/if\s*\(\$arg_v\s*=\s*""\)\s*\{([\s\S]*?)\}/);
+    // One policy leaves nginx. `expires` writes its own Cache-Control max-age
+    // next to add_header's, and a cache may treat duplicate max-age as stale.
+    assert.doesNotMatch(block[0], /^\s*expires\s/m,
+        'expires adds a second Cache-Control header beside the chosen one');
+    const unversioned = block[0].match(/if\s*\(\$arg_v\s*=\s*""\)\s*\{([^}]*)\}/);
     assert.ok(unversioned, 'nothing distinguishes an asset URL without a version');
     const control = unversioned[1].match(/set\s+\$am2_asset_cache_control\s+"([^"]*)"/);
     assert.ok(control && !/immutable/.test(control[1]),
         'an asset URL without a version is still cached as immutable');
-    const expiry = unversioned[1].match(/set\s+\$am2_asset_expires\s+(\S+);/);
-    assert.ok(expiry && expiry[1] !== '30d', 'an asset URL without a version still expires in 30 days');
+    assert.doesNotMatch(control[1], /max-age=2592000/, 'an asset URL without a version is still cached for 30 days');
+    // The immutable default must be set before the branch that overrides it;
+    // set after the if, it would win for every request.
+    const defaultAt = block[0].search(/set\s+\$am2_asset_cache_control\s+"[^"]*immutable[^"]*"/);
+    assert.ok(defaultAt !== -1 && defaultAt < unversioned.index,
+        'the immutable default is not set before the unversioned override');
 });
 
 test('stable admin update URLs cannot cache one half of a release set', () => {
