@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const selector = resolve('tests/offline-tests.sh');
+const selector = fileURLToPath(new URL('../offline-tests.sh', import.meta.url));
 
 /*
  * The selector reads every contract file's text, this one included. Fixture
@@ -46,6 +47,25 @@ test('a helpers import excludes a suite even when it spans lines', () => {
         'plain.test.mjs': 'const value = 1;\n',
     });
     assert.deepEqual(selected, ['plain.test.mjs']);
+});
+
+test('a bare or re-exporting helpers import also excludes a suite', () => {
+    const selected = select({
+        'bare.test.mjs': `import '${HELPERS}';\n`,
+        'reexport.test.mjs': `export { sql } from '${HELPERS}';\n`,
+        'plain.test.mjs': 'const value = 1;\n',
+    });
+    assert.deepEqual(selected, ['plain.test.mjs']);
+});
+
+test('a helpers mention after an unterminated import does not exclude a suite', () => {
+    // Semicolon-less code: the import pattern has to end at its own specifier,
+    // not run on to a later line that only mentions the helper. Overrunning
+    // there would exclude an offline suite silently.
+    const selected = select({
+        'semicolonless.test.mjs': `import test from 'node:test'\n// values come from '${HELPERS}'\nconst value = 1\n`,
+    });
+    assert.deepEqual(selected, ['semicolonless.test.mjs']);
 });
 
 test('an explicit marker excludes a suite', () => {
