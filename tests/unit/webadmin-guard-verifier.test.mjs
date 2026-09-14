@@ -39,6 +39,19 @@ test('every request the verifier makes is bounded in time', () => {
     }
 });
 
+test('the verifier waits out the PHP realpath cache before its first request', () => {
+    // It runs right after a release symlink swap -- in the production gate, with
+    // no relay restart, well under a second after it. mod_php keeps a switched
+    // path for realpath_cache_ttl (2s in the sealed ini) plus the rest of the
+    // current second, so without a wait the PHP half can test the previous
+    // release and pass. The wait is longer than that window.
+    const afterDocroot = source.slice(source.search(/\[\[ -d \$docroot \]\]/));
+    const firstRequest = afterDocroot.search(/\$\(curl\s/);
+    const wait = afterDocroot.slice(0, firstRequest).match(/^\s*sleep\s+(\d+)\s*$/m);
+    assert.ok(wait, 'the verifier sends its first request without waiting out the realpath cache');
+    assert.ok(Number(wait[1]) >= 3, 'the verifier waits less than the realpath cache window');
+});
+
 test('the lane sweep requires every page asset to answer 200', () => {
     assert.match(source, /--list-assets/);
     assert.match(source, /for asset in[\s\S]{0,400}\$status != 200/,

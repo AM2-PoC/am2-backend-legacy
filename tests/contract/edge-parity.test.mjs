@@ -211,9 +211,16 @@ test('the prepended file strips rendered implementation commentary', () => {
         assert.doesNotMatch(read(f), /php_value\s+auto_prepend_file/,
             `${f} still pins the prepend to Apache, which is being retired`);
     }
-    assert.match(read('infra/scripts/install-webadmin-guard.sh'),
-        /auto_prepend_file = \$installed/,
-        'nothing installs the prepend into PHP configuration');
+    // The installer writes the sealed ini, byte for byte, and never a copy of
+    // its own: its hand-written two-line file had already drifted from the
+    // sealed one (no realpath or opcache bounds) and would break its digest.
+    const installer = read('infra/scripts/install-webadmin-guard.sh');
+    assert.match(installer, /infra\/php\/99-am2-webadmin-guard\.ini/,
+        'the guard installer does not install the sealed PHP ini');
+    assert.match(installer, /cmp -s "\$ini_source" "\$target"/,
+        'the guard installer does not compare the installed ini with the sealed one');
+    assert.doesNotMatch(installer, /printf '[^']*auto_prepend_file/,
+        'the guard installer still writes its own copy of the PHP ini');
 });
 
 test('output filter changes HTML comments but preserves explicit non-HTML bytes', () => {
