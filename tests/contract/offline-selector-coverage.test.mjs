@@ -28,7 +28,7 @@ const selected = new Set(
 // looked networked kept offline suites out of CI.
 //
 // Built from pieces on purpose: the selector reads this file's text too.
-const HELPERS_IMPORT = new RegExp(String.raw`^\s*import\s[^;]*?from\s*['"]\.\/` + 'help' + String.raw`ers\.mjs['"]`, 'm');
+const HELPERS_IMPORT = new RegExp(String.raw`^\s*(?:import|export)\s[^;'"]*?['"]\.\/` + 'help' + String.raw`ers\.mjs['"]`, 'm');
 const EXCLUDE_MARKER = new RegExp('^\\s*//\\s*offline-' + 'tests:\\s*exclude', 'm');
 const NETWORK_OR_CREDENTIAL = {
     '.mjs': { test: (body) => HELPERS_IMPORT.test(body) || EXCLUDE_MARKER.test(body) },

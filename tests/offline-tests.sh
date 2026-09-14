@@ -47,17 +47,24 @@ for f in "$DIR"/*.test.php; do
 done
 
 for f in "$DIR"/*.test.mjs; do
+    [ -e "$f" ] || continue
     # Exclusion is declared, never guessed from text. Guessing kept offline
     # suites out of CI for good: a stubbed curl origin, a fixture network call,
     # even the coverage guard's own regex looked networked. A suite is excluded
-    # when it imports the credential helper -- on any number of lines -- or
-    # says so with a `// offline-tests: exclude` marker line. The whole file is
-    # read at once, which also avoids the `sed | grep -q` pipefail race that
-    # selected a large network test.
-    if perl -0777 -ne '
-        exit 1 if /^\s*import\s[^;]*?from\s*[\x27"]\.\/helpers\.mjs[\x27"]/m;
+    # when it imports or re-exports the credential helper -- on any number of
+    # lines -- or says so with a `// offline-tests: exclude` marker line.
+    #
+    # The specifier gap stops at a quote, so a semicolon-less import cannot run
+    # on to a later line that only mentions the helper. The whole file is read at
+    # once, which also avoids the `sed | grep -q` pipefail race.
+    status=0
+    perl -0777 -ne '
+        exit 1 if /^\s*(?:import|export)\s[^;\x27"]*?[\x27"]\.\/helpers\.mjs[\x27"]/m;
         exit 1 if /^\s*\/\/\s*offline-tests:\s*exclude/m;
-    ' "$f"; then
-        basename "$f"
-    fi
+    ' "$f" || status=$?
+    case $status in
+        0) basename "$f" ;;
+        1) ;;
+        *) echo "offline-tests.sh: cannot classify $f (perl exited $status)" >&2; exit 1 ;;
+    esac
 done
