@@ -58,7 +58,11 @@ test('no contract test is invisible to the offline selector', () => {
 // the scheme itself and disqualified this file the same way.) These suites are
 // offline by construction and must stay selected.
 const MUST_RUN_OFFLINE = [
+    // Listed for the record; this entry cannot fail if the guard drops out,
+    // which is why source-checks.yml also refuses a selection without it.
     'offline-selector-coverage.test.mjs',
+    'ci-selector-guard.test.mjs',
+    'offline-selector.test.mjs',
     'promotion-gate.test.mjs',
     'release-assets.test.mjs',
     'edge-parity.test.mjs',
