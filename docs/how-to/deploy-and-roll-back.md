@@ -111,7 +111,7 @@ Admin uses its independent `publish-admin-update.sh` channel. Never copy an APK 
 
 ## Required staging rehearsal
 
-Before production, staging must run the same source SHA and exact archive and payload digests. Do not sequence pointer changes manually. The host-owned rehearsal holds the deployment lock, verifies candidate bytes, performs candidate → rollback → same-digest re-promotion, requires three stable PID/cwd/HTTP/NRestarts samples per transition, and atomically records root-owned evidence.
+Before production, staging must run the same source SHA and exact archive and payload digests. Do not sequence pointer changes manually. The host-owned rehearsal holds the deployment lock, verifies candidate bytes, performs candidate → rollback → same-digest re-promotion, requires three stable PID/cwd/HTTP/NRestarts samples per transition, runs the candidate's `verify-webadmin-guard.sh --lane staging` (PHP auth guard and every page asset answering 200) after activation and after re-promotion, and atomically records root-owned evidence.
 
 ```bash
 STAGING_REL=/var/www/am2/staging/releases/artifact-$ARCHIVE_SHA

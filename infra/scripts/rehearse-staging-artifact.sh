@@ -88,12 +88,17 @@ candidate_pid=$(switch_and_restart "$release")
 # The candidate's own lane check: the PHP auth guard and every asset its pages
 # load. Without it here a page asset the artifact omits is first found on
 # production after cutover. A failure restores the previous release via the trap.
-"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging
+# To stderr: stdout is the receipt path an operator hands to the promotion gate.
+# Static assets follow the symlink at once; PHP's realpath cache can still name
+# the previous release for up to its TTL, so the PHP half is best effort here.
+"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging >&2
 rollback_pid=$(switch_and_restart "$old")
 "$VERIFY_CURRENT" "$old" >/dev/null
 repromoted_pid=$(switch_and_restart "$release")
 "$VERIFY_ARTIFACT" --release "$release" --manifest "$manifest" >/dev/null
-"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging
+# The rollback leg is not guarded on purpose: an older release may predate the
+# asset sweep or the verifier itself, and it already passed its own gates.
+"$release/infra/scripts/verify-webadmin-guard.sh" --lane staging >&2
 
 install -d -o root -g root -m 0755 "$RECEIPTS"
 receipt=$RECEIPTS/$(date -u +%Y%m%dT%H%M%SZ)-$archive_sha256.receipt
