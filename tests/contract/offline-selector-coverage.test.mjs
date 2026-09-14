@@ -22,17 +22,32 @@ const selected = new Set(
     execFileSync(selector, { encoding: 'utf8' }).split('\n').filter(Boolean),
 );
 
-// Mirrors the selector's disqualifiers, per language. A file that reaches the
-// network or reads the protected env file belongs on the VPS, not in CI.
+// Mirrors the selector's exclusions, per language. A .mjs suite is excluded
+// only when it says so: it imports the credential helper (on any number of
+// lines) or carries the offline-tests exclude marker. Guessing from text that
+// looked networked kept offline suites out of CI.
 //
-// Built from pieces on purpose. The selector matches this file's own text, and
-// written as literals the patterns contained the very phrase it looks for, so
-// this guard was itself disqualified and never ran.
-const WS = ['new', 'Web' + 'Socket'].join(' ');
+// Built from pieces on purpose: the selector reads this file's text too.
+const HELPERS_IMPORT = new RegExp(String.raw`^\s*(?:import|export)\s[^;'"]*?['"]\.\/` + 'help' + String.raw`ers\.mjs['"]`, 'm');
+const EXCLUDE_MARKER = new RegExp('^\\s*//\\s*offline-' + 'tests:\\s*exclude', 'm');
 const NETWORK_OR_CREDENTIAL = {
-    '.mjs': new RegExp(String.raw`^\s*import .*['"]\.\/helpers\.mjs|fetch\(|https?:\/\/|` + WS, 'm'),
+    '.mjs': { test: (body) => HELPERS_IMPORT.test(body) || EXCLUDE_MARKER.test(body) },
     '.php': /file_get_contents\(\s*['"]https?:|curl_\w+\(|fsockopen\(|fopen\(\s*['"]https?:|getenv\(/,
 };
+
+// The exclude marker is a declaration, and every declaration is listed here, so
+// adding one is a visible diff rather than a suite quietly leaving CI. The
+// selector's own rules cannot catch an overused marker: they are the marker.
+const MARKED_FOR_EXCLUSION = ['relay-watchdog.test.mjs'];
+
+test('only the listed suites declare themselves excluded from the offline job', () => {
+    const marked = readdirSync(contractDir)
+        .filter((name) => name.endsWith('.test.mjs'))
+        .filter((name) => EXCLUDE_MARKER.test(readFileSync(path.join(contractDir, name), 'utf8')))
+        .sort();
+    assert.deepEqual(marked, MARKED_FOR_EXCLUSION,
+        'a suite declares the offline-tests exclude marker without being listed');
+});
 
 test('no contract test is invisible to the offline selector', () => {
     const invisible = [];
@@ -50,8 +65,8 @@ test('no contract test is invisible to the offline selector', () => {
     );
 });
 
-// The disqualifier is a text match, so a fixture string -- or a comment -- that
-// spells a URL scheme excludes a suite that needs no network at all.
+// The disqualifier used to be a text match, so a fixture string -- or a comment
+// -- that spelled a URL scheme excluded a suite that needs no network at all.
 // promotion-gate.test.mjs stubs curl and named a fixture origin with a scheme,
 // and every production promotion gate test in it went unrun in CI, including a
 // rehearsal assertion that therefore could not fail. (This comment first named
