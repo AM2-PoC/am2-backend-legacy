@@ -7,25 +7,61 @@ import { spawnSync } from 'node:child_process';
 
 const selector = resolve('tests/offline-tests.sh');
 
-test('offline selector rejects a large network-bound test without a pipefail race', () => {
+/*
+ * The selector reads every contract file's text, this one included. Fixture
+ * fragments that would make a file look excluded -- a network call, a helpers
+ * import, the exclusion marker -- are assembled from pieces so this suite is
+ * not excluded by its own fixtures, which is how it went unrun before.
+ */
+const NETWORK_CALL = ['fe', 'tch(', "'htt", 'ps:', '//example.invalid', "');"].join('');
+const HELPERS = ['./help', 'ers.mjs'].join('');
+const MARKER = ['// offline-', 'tests: exclude'].join('');
+
+function select(files) {
     const dir = mkdtempSync(join(tmpdir(), 'am2-offline-selector-'));
     try {
-        // Put the match first and enough output after it to overflow a pipe. With
-        // `sed | grep -q` under pipefail, grep exits at the first match and sed can
-        // receive SIGPIPE; the failed pipeline then incorrectly selects this file.
-        // Assembled from pieces: the selector reads this file's text too, and
-        // spelled out whole the fixture made this suite look network-bound, so
-        // it never ran in CI. The generated file still contains the real call.
-        const networkCall = ['fe', 'tch(', "'htt", 'ps:', '//example.invalid', "');"].join('');
-        writeFileSync(join(dir, 'large-network.test.mjs'),
-            `${networkCall}\n` + 'const padding = 1;\n'.repeat(100000));
+        for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
         const run = spawnSync('bash', [selector], {
             encoding: 'utf8',
             env: { ...process.env, OFFLINE_TEST_DIR: dir },
         });
         assert.equal(run.status, 0, run.stderr);
-        assert.equal(run.stdout, '', 'network-bound test was incorrectly selected');
+        return run.stdout.split('\n').filter(Boolean);
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
+}
+
+test('network-looking text alone does not exclude a suite', () => {
+    // Exclusion is declared, not guessed. A suite that stubs curl or builds a
+    // URL string is offline; guessing from text kept the promotion gate suite
+    // out of CI for its whole life.
+    const selected = select({ 'looks-networked.test.mjs': `const call = "${NETWORK_CALL}";\n` });
+    assert.deepEqual(selected, ['looks-networked.test.mjs']);
+});
+
+test('a helpers import excludes a suite even when it spans lines', () => {
+    const selected = select({
+        'credential.test.mjs': `import {\n    asSuper,\n    sql,\n} from '${HELPERS}';\n`,
+        'plain.test.mjs': 'const value = 1;\n',
+    });
+    assert.deepEqual(selected, ['plain.test.mjs']);
+});
+
+test('an explicit marker excludes a suite', () => {
+    const selected = select({
+        'restart-job.test.mjs': `${MARKER} -- run by the restart-safety job\nconst value = 1;\n`,
+        'plain.test.mjs': 'const value = 1;\n',
+    });
+    assert.deepEqual(selected, ['plain.test.mjs']);
+});
+
+test('offline selector excludes a large marked test without a pipefail race', () => {
+    // Put the exclusion first and enough output after it to overflow a pipe.
+    // With `sed | grep -q` under pipefail, grep exits at the first match and sed
+    // can receive SIGPIPE; the failed pipeline then wrongly selects the file.
+    const selected = select({
+        'large-excluded.test.mjs': `${MARKER}\n${NETWORK_CALL}\n` + 'const padding = 1;\n'.repeat(100000),
+    });
+    assert.deepEqual(selected, [], 'a large excluded test was incorrectly selected');
 });
