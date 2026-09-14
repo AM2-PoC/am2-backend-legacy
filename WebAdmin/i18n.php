@@ -110,9 +110,31 @@ function e(string $key, array $replace = []): string
  */
 function am2_asset(string $path): string
 {
+    // The same bound as am2_asset_url(): the version is a digest of the file,
+    // so a path outside the asset tree would put a digest of that file in the page.
+    if (!preg_match('#^/?asset/[A-Za-z0-9._/-]+$#', $path) || str_contains($path, '..')) {
+        throw new InvalidArgumentException('Invalid asset path');
+    }
     $full = __DIR__ . '/' . ltrim($path, '/');
-    $version = is_file($full) ? filemtime($full) : 0;
-    return htmlspecialchars($path . '?v=' . $version, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars($path . '?v=' . am2_asset_version($full), ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * The version query for one asset file: its content digest.
+ *
+ * It was filemtime(). Runtime artifacts are packed with every mtime at the
+ * epoch, so every asset on staging and production came out as ?v=0 and a
+ * changed file kept the URL that browsers and Cloudflare held as immutable for
+ * 30 days. A digest changes exactly when the bytes do. Memoised per request:
+ * a page names the same few files, and hashing them once is enough.
+ */
+function am2_asset_version(string $full): string
+{
+    static $versions = [];
+    if (!array_key_exists($full, $versions)) {
+        $versions[$full] = is_file($full) ? substr(hash_file('sha256', $full), 0, 12) : '0';
+    }
+    return $versions[$full];
 }
 
 /** Asset URL for JSON/JavaScript contexts; encoding belongs to the caller. */
@@ -125,8 +147,7 @@ function am2_asset_url(string $path): string
         throw new InvalidArgumentException('Invalid asset path');
     }
     $full = __DIR__ . '/' . ltrim(preg_replace('#^\./#', '', $path), '/');
-    $version = is_file($full) ? filemtime($full) : 0;
-    return $path . '?v=' . $version;
+    return $path . '?v=' . am2_asset_version($full);
 }
 
 /** Whether the sidebar is collapsed to an icon rail. */
