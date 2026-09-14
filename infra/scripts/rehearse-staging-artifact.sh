@@ -89,8 +89,8 @@ candidate_pid=$(switch_and_restart "$release")
 # load. Without it here a page asset the artifact omits is first found on
 # production after cutover. A failure restores the previous release via the trap.
 # To stderr: stdout is the receipt path an operator hands to the promotion gate.
-# Static assets follow the symlink at once; PHP's realpath cache can still name
-# the previous release for up to its TTL, so the PHP half is best effort here.
+# Static assets follow the symlink at once; the sealed PHP ini bounds the
+# realpath cache to two seconds and the guard waits longer before it asks.
 "$release/infra/scripts/verify-webadmin-guard.sh" --lane staging >&2
 rollback_pid=$(switch_and_restart "$old")
 "$VERIFY_CURRENT" "$old" >/dev/null
