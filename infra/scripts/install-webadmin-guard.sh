@@ -51,6 +51,8 @@ done
 
 prepend_source=$source_dir/infra/php/webadmin-prepend.php
 [[ -r $prepend_source ]] || { echo "no prepend at $prepend_source" >&2; exit 1; }
+ini_source=$source_dir/infra/php/99-am2-webadmin-guard.ini
+[[ -r $ini_source ]] || { echo "no sealed PHP ini at $ini_source" >&2; exit 1; }
 
 php_version=$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')
 installed=/etc/am2/php/webadmin-prepend.php
@@ -84,18 +86,14 @@ for sapi in apache2 fpm; do
     [[ -d $dir ]] || continue
     installed_into=$((installed_into + 1))
     target=$dir/$ini_name
-    if [[ -r $target ]] && grep -qF "auto_prepend_file = $installed" "$target"; then
-        say "directive already present for $sapi"
+    # The sealed ini, byte for byte. A hand-written copy here drifted from it
+    # (no realpath or opcache bounds) and would not match its bundle digest.
+    if [[ -r $target ]] && cmp -s "$ini_source" "$target"; then
+        say "sealed ini already installed for $sapi"
         continue
     fi
-    say "adding auto_prepend_file for $sapi -> $target"
-    if (( apply )); then
-        printf '; AM2 panel guard. See infra/scripts/install-webadmin-guard.sh.\nauto_prepend_file = %s\n' \
-            "$installed" | sudo tee "$target" >/dev/null
-        sudo chmod 0644 "$target"
-    else
-        say "  would write: auto_prepend_file = $installed"
-    fi
+    say "installing $ini_source -> $target"
+    run sudo install -o root -g root -m 0644 "$ini_source" "$target"
 done
 
 # 3. Take the directive out of the vhosts, so there is one source for it.

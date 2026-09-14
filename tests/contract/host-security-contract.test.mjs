@@ -51,6 +51,22 @@ test('host-security contract closes every tracked WebAdmin and real-IP input out
   assert.match(readFileSync(resolve(ROOT, ini.source), 'utf8'),
     /^auto_prepend_file = \/etc\/am2\/php\/webadmin-prepend\.php$/m,
     'the sealed PHP configuration template does not name the bounded prepend');
+  // After a release symlink switch, mod_php keeps resolving the old release's
+  // paths for realpath_cache_ttl (120s by default), so the lane guard run right
+  // after activation could check the previous release's PHP. The guard waits
+  // longer than this TTL before its first request.
+  const iniText = readFileSync(resolve(ROOT, ini.source), 'utf8');
+  const ttls = [...iniText.matchAll(/^\s*realpath_cache_ttl\s*=\s*(\d+)\s*$/gm)];
+  assert.ok(ttls.length > 0,
+    'the PHP guard ini leaves realpath_cache_ttl at its default, so a switched release can serve old PHP paths');
+  // PHP applies the last directive, so a second line could silently undo it.
+  assert.equal(ttls.length, 1, 'the PHP guard ini sets realpath_cache_ttl more than once');
+  assert.ok(Number(ttls[0][1]) <= 2, 'the PHP guard ini keeps switched release paths for more than two seconds');
+  // opcache looks scripts up by the unresolved path unless told otherwise; with
+  // a cacheable mtime it would keep serving the previous release's bytecode
+  // however short the realpath cache is.
+  assert.match(iniText, /^\s*opcache\.revalidate_path\s*=\s*1\s*$/m,
+    'opcache may serve a switched release by its old unresolved path');
 
   for (const id of ['apache-production-webadmin', 'apache-staging-webadmin']) {
     assert.match(contract.files.find((file) => file.id === id).target, /^\/etc\/apache2\/sites-available\//);
