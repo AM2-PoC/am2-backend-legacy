@@ -125,6 +125,12 @@ jobs:
               echo "::error::No offline tests were selected; the selector is broken."
               exit 1
           fi
+          # The coverage guard is itself a selected suite. If its own text trips
+          # the selector it stops running, and nothing inside it can say so.
+          if ! printf '%s\n' "${files[@]}" | grep -qx offline-selector-coverage.test.mjs; then
+              echo "::error::The selector coverage guard is not selected, so skipped suites would go unnoticed."
+              exit 1
+          fi
           printf 'running %d files\n' "${#files[@]}"
           # Split by extension: the selector now emits PHP contract tests too,
           # and `node --test` on a .php file fails in a way that reads like a
