@@ -32,7 +32,6 @@ const {
     DISCONNECT_GRACE_PERIOD,
     activeSpeakers,
     activeVideoRooms,
-    clearPtpSession,
 } = require('./lib/state');
 
 const {

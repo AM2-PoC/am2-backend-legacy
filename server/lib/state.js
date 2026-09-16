@@ -107,22 +107,6 @@ const resolvePeer = (ws, targetId) => {
     return { peer: allowed, reason: 'ok' };
 };
 
-/**
- * Whether `ws` could open a private call to `targetId` right now.
- *
- * Asked per roster entry so the handset can stop offering a call that the
- * relay will refuse. A button that always fails is worse than no button: the
- * operator reads the failure as a fault in the radio.
- *
- * Deliberately not a promise about the next moment -- the peer may be invited
- * by someone else before the tap lands, and request_ptp checks again.
- */
-const canPrivateCall = (ws, targetId) => {
-    if (String(targetId) === String(ws?.sessionUser?.id ?? '')) return false;
-    const { peer, reason } = resolvePeer(ws, targetId);
-    if (reason !== 'ok' || !peer) return false;
-    return Boolean(ws.enable_p2p && peer.enable_p2p);
-};
 
 /**
  * One channel roster, as one recipient should see it.
@@ -280,7 +264,6 @@ module.exports = {
     activeConnections,
     peerFor,
     resolvePeer,
-    canPrivateCall,
     rosterFor,
     ptpPeerFor,
     createPtpInvite,

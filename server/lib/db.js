@@ -164,31 +164,7 @@ const resetSessions = async () => {
     }
 };
 
-/*
- * Device tokens: issuing, checking, and taking back.
- *
- * The credential itself is made in lib/device-tokens.js, which touches no
- * database and can therefore be tested anywhere. These are the three things
- * that need the pool.
- */
-const { newToken, hashToken } = require('./device-tokens');
-
-/** Issue one, replacing whatever that device held before. */
-const issueDeviceToken = async (userId, deviceId) => {
-    const token = newToken();
-    if (deviceId) {
-        await pool.query(
-            'DELETE FROM public.device_tokens WHERE user_id = $1 AND device_id = $2',
-            [userId, deviceId],
-        );
-    }
-    await pool.query(
-        `INSERT INTO public.device_tokens (token_hash, user_id, device_id, last_used_at)
-         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-        [hashToken(token), userId, deviceId || null],
-    );
-    return token;
-};
+const { hashToken } = require('./device-tokens');
 
 /**
  * The user this token belongs to, or null.
@@ -237,15 +213,6 @@ const userForDeviceToken = async (token) => {
         deviceId: res.rows[0].device_id ?? null,
         tokenHash: hash,
     };
-};
-
-/** Take them all back. What happens when a handset is lost. */
-const revokeDeviceTokens = async (userId) => {
-    const res = await pool.query(
-        'DELETE FROM public.device_tokens WHERE user_id = $1',
-        [userId],
-    );
-    return res.rowCount || 0;
 };
 
 /** On boot, then once a day. */
@@ -303,6 +270,6 @@ async function channelPermission(userId, channelSlug) {
 }
 
 module.exports = {
-    issueDeviceToken, userForDeviceToken, revokeDeviceTokens,
+    userForDeviceToken,
     resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission,
     claimRelayOwnership };
