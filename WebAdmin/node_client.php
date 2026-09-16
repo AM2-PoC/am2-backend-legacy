@@ -1,21 +1,4 @@
 <?php
-/**
- * The panel's client for the node relay.
- *
- * These four calls used to be copy-pasted into eight files — syncUserChannels
- * six times, notifyForceLogout and notifyPermissionUpdate twice each — and the
- * copies had drifted:
- *
- *   - three of the six syncUserChannels copies never sent the API key, so they
- *     fail silently now that the relay refuses a keyless call. The response is
- *     discarded, so nothing would have surfaced.
- *   - the two notifyPermissionUpdate copies disagreed on the duplex fallback,
- *     one defaulting to FULL and the other to HALF.
- *
- * Every call is fire-and-forget with a two second timeout: the panel must not
- * block on the relay, and it already ignores the response.
- */
-
 require_once __DIR__ . '/config.php';
 
 /**

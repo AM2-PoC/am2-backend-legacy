@@ -1,32 +1,4 @@
 <?php
-/**
- * Who may reach this panel at all, decided in one place for every request.
- *
- * There used to be no such place. Each of the thirteen endpoints remembered its
- * own guard and they disagreed: api_logs.php authenticated but never checked
- * CSRF; get-users-ajax.php and fetch_logs.php authenticated nothing and rolled
- * a private session test instead, one of which answered an unauthenticated
- * caller with HTTP 200 and an `error` field -- a refusal no status-reading
- * client could see. A new endpoint inherited whichever neighbour it was copied
- * from, and nobody could tell which without reading all thirteen.
- *
- * This file is loaded twice on purpose, and defines everything conditionally so
- * that loading it twice is free:
- *
- *   1. by config.php, which every endpoint already requires. This is the
- *      authoritative copy and it travels with the code, so it survives the
- *      planned replacement of Apache by nginx and PHP-FPM.
- *   2. by the auto_prepend_file in infra/php/webadmin-prepend.php, which runs
- *      before any script at all. That catches a file which forgets to require
- *      config.php -- but it hangs off host configuration, which is exactly the
- *      kind of thing that goes missing during a web server swap, so it is the
- *      net and not the floor.
- *
- * One definition, two callers. A second copy of the entry list would be a
- * second thing to keep in step, and the pair would disagree exactly once,
- * silently, in the direction of open.
- */
-
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 

@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Alerts are edges, not a level.
-#
-# This used to deliver the same sentence every AM2_ALERT_DEDUP_SECONDS for as
-# long as a fault lasted. The production watchdog was installed into a hybrid
-# runtime state on 11 August and failed every minute for sixteen days; it was
-# correct every time, and it produced twenty-six identical GitHub comments and
-# an hourly `wall` broadcast to every terminal on the VPS. Nobody acted on any
-# of them, which is what repetition does to a signal.
-#
-# So an episode is announced when it opens, repeated only rarely while it stays
-# open, and -- the part that never existed -- announced once more when it
-# clears. The thread then reads as a history of faults rather than a stopped
-# clock, and silence means healthy instead of meaning nothing.
-
 recovered=0
 if [[ ${1:-} == --recovered ]]; then
     recovered=1

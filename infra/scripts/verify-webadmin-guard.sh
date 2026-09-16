@@ -68,19 +68,6 @@ esac
 # pass. Wait out that window before the first request.
 sleep 3
 
-# A file that never requires config.php, chosen rather than created.
-#
-# This used to write a synthetic probe into the document root and delete it
-# again. That was wrong twice over. Releases are immutable and owned by
-# am2release under the artifact-only delivery model, so writing into one --
-# even briefly, even with sudo -- is exactly what that model exists to prevent.
-# And it was unnecessary: seven files already in the panel include no config.php
-# at all, so the property can be checked against something real.
-#
-# i18n.php is the clearest of them. It defines translation helpers, includes
-# nothing, and has no side effects worth triggering. If layer two is not
-# running, it answers 200 with an empty body -- which is what production did
-# until the guard was installed at 16:28 today.
 probe=i18n.php
 if ! grep -q "require.*config\.php" "$docroot/$probe" 2>/dev/null; then
     :

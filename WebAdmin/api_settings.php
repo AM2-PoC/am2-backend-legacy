@@ -18,26 +18,6 @@ require_once __DIR__ . '/config.php';
  * visible at the point it applies.
  */
 if (($_GET['action'] ?? '') === 'check_update') {
-    /*
-     * The published set is validated before it is advertised, not after.
-     *
-     * This endpoint used to echo whatever admin_version.json contained: a
-     * version string, a URL and a changelog. Nothing checked that the file the
-     * URL named actually had the advertised digest, that the APK was signed by
-     * the approved key, or that the version advanced -- and the manifest is a
-     * plain file on disk, so anything that can write it could point every
-     * handset in the field at a different APK.
-     *
-     * The handset verifies the signer itself before installing, and that check
-     * is the one that protects a device; nothing decided here can be trusted by
-     * a client. This is the publishing side of the same rule: refuse to
-     * advertise a set the handset would reject anyway.
-     *
-     * The decision itself lives in am2_admin_update_advertisement() because the
-     * settings card has to reach the same verdict, and when the two read the
-     * manifest separately they disagreed: the card announced a version this
-     * endpoint was refusing to serve.
-     */
     $advertisement = am2_admin_update_advertisement(
         __DIR__ . '/update',
         AM2_ADMIN_UPDATE_BASE,
@@ -214,21 +194,6 @@ elseif ($method == 'POST') {
     $admin_id = (int) ($_SESSION['admin_id'] ?? 0);
 
     if ($action == 'update_password') {
-        /*
-         * Your own, always -- and said so, rather than done quietly.
-         *
-         * This took admin_id from the request, so any signed-in admin could
-         * rewrite the superadmin's password by naming its id, and before the
-         * session gate above so could anyone at all. Ignoring the parameter
-         * closes that, but silently: a caller asking to change admin 5's
-         * password had admin 6's changed instead and was told it worked. A
-         * contract test caught it by having its own fixture password rewritten
-         * underneath it.
-         *
-         * So a request that names someone else is refused outright. There is
-         * no legitimate caller for it: this endpoint has never had a
-         * change-another-admin's-password feature.
-         */
         $named = $_POST['admin_id'] ?? null;
         if ($named !== null && (string) $named !== (string) $admin_id) {
             http_response_code(403);

@@ -212,15 +212,6 @@ try {
     }
     unset($row);
 
-    /*
-     * Nothing new: headers and no body.
-     *
-     * This is the answer to almost every poll -- the console is open all shift
-     * and events arrive in bursts -- and it used to cost a full 46KB of rows
-     * the caller already had. Only for a watermarked request: a caller with no
-     * watermark is starting fresh, and an empty table is a legitimate empty
-     * body it should be told about rather than left guessing.
-     */
     if ($polling && !$ptt_logs && !$adm_logs) {
         http_response_code(204);
         exit;

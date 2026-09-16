@@ -42,15 +42,6 @@ export const NODE_URL = env.CT_NODE_URL;
 export const SRC = process.env.CT_SRC_DIR || '/var/www/am2/staging/current/WebAdmin';
 export const SERVER_JS = process.env.CT_SERVER_JS || '/var/www/am2/staging/current/server/server.js';
 
-/**
- * The whole relay as one string.
- *
- * server.js used to be all of it, so the guards below read that file. It is
- * being split by concern, and the first thing that moved took a message type
- * with it -- ptp_cancelled went to lib/state.js and the guard reported it as
- * deleted. What those guards mean is "the relay still speaks this", and the
- * relay is server.js plus everything in lib/.
- */
 export function serverSrc() {
     const dir = path.dirname(SERVER_JS);
     const lib = path.join(dir, 'lib');
@@ -157,17 +148,6 @@ export async function json(res) {
     }
 }
 
-/**
- * Read the staging database directly.
- *
- * Some invariants have no HTTP surface that reveals them -- whether a
- * membership is RX, which row is the default, whether users.last_channel_id
- * still names a channel the unit holds. Those are exactly the invariants the
- * three editing surfaces used to break, so the tests go to the source.
- *
- * execFileSync without a shell: the queries contain quotes, and building them
- * into a command line is how a test ends up asserting against a syntax error.
- */
 export function sql(query, db = process.env.CT_DB || 'am2_staging') {
     const [command, ...prefix] = psqlInvocation(db);
     const out = execFileSync(

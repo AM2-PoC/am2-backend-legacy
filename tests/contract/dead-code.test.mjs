@@ -1,9 +1,4 @@
-// Dead code does not come back.
-//
-// Three sweeps that each found something real: 32 catalog keys nothing could
-// render, four functions nothing called, and four whole pages nothing linked
-// to. None of it failed anything — dead code never does. It just sits there
-// being read by the next person as though it mattered.
+// Contract checks for unreachable catalog keys and PHP functions.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

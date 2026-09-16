@@ -1,17 +1,5 @@
-# Package the host-security bundle for one exact main commit.
-#
-# The files under /etc that AM2 owns -- nginx and Apache vhosts, snippets, the
-# PHP prepend -- ship as a sealed bundle, separate from the backend runtime
-# artifact. The packager and verifier existed, but nothing ran them off-host,
-# so the only way to change one of those files was to assemble the bundle on
-# the production VPS. That is artifact assembly on the runtime host, and it
-# gives the bundle and its trusted manifest a single origin.
-#
-# This run is that origin instead. It needs no credentials beyond the read-only
-# job token: it reads the repository, packages, verifies, and hands the bundle
-# off. Its step summary records the digests. The operator trusts a bundle only
-# after confirming, from the run record fetched separately from the artifact,
-# that the run is this workflow on main for the intended source SHA.
+# Build a verified host-security bundle for an exact main commit.
+# Materialization and activation remain separately approved host operations.
 
 name: publish host-security bundle
 

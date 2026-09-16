@@ -1,29 +1,4 @@
 <?php
-/**
- * Creating, renaming and removing a unit.
- *
- * The switches on a unit live in user_features.php; this file is the unit
- * itself. Both existed twice — once on the page and once on the endpoint the
- * admin app calls — and the two disagreed about the parts nobody looks at:
- *
- *   - The page set created_by on the way in and again just before a delete,
- *     because the trigger on public.users reads that column to decide who to
- *     attribute the row to. The endpoint set it never, so a unit created from
- *     the app was attributed to nobody, and a unit deleted from the app was
- *     attributed to whoever had created it rather than whoever removed it.
- *
- *   - The page wrapped each operation in a transaction so the row, its
- *     permissions and the log entry either all happened or none did. The
- *     endpoint deleted without one.
- *
- * None of these caused a visible failure, which is why they survived. They
- * only ever produced an audit trail that quietly named the wrong person.
- *
- * Each function requires an open transaction and opens none of its own, so a
- * caller can put its own log write in the same one.
- */
-
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
@@ -44,17 +19,6 @@ function am2_entity_type($value): string
     return $type;
 }
 
-/**
- * Whether a failed registration means the unit ID is already taken.
- *
- * The page and the endpoint the Admin app calls both register units, and only
- * the page used to recognise this case; the app was told the system had failed.
- * One predicate, so the two cannot drift apart again.
- *
- * The constraint is named, not just the SQLSTATE: the users trigger also writes
- * admin_activity_logs, and a unique violation there is a fault to log rather
- * than a duplicate to report.
- */
 function am2_is_duplicate_unit_id(Throwable $e): bool
 {
     return $e instanceof PDOException

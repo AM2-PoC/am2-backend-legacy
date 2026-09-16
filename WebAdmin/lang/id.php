@@ -1,11 +1,4 @@
 <?php
-/**
- * Indonesian catalogue. This is the default, so it is also the fallback for any
- * key another locale has not translated yet.
- *
- * Keys are English and namespaced by area. The rule for this codebase: source,
- * comments and keys are English; Indonesian text lives only in this file.
- */
 return [
     'track.zoom_in' => 'Perbesar',
     'track.zoom_out' => 'Perkecil',

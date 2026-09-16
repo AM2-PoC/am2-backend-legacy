@@ -987,15 +987,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
                 case 'ptt_audio_start_private':
                     if (!ws.sessionUser || !ws.enable_p2p) return;
-                    /*
-                     * Only into a call that already exists.
-                     *
-                     * This used to assign ptpTargetId straight from the frame,
-                     * so naming any online unit was enough to start pushing
-                     * audio at them -- no invitation, no answer, no tenant.
-                     * The pairing is established by request/accept and read
-                     * here, never written.
-                     */
                     if (!ws.ptpTargetId || ws.ptpSessionKind !== 'audio'
                         || String(data.target_id ?? ws.ptpTargetId) !== String(ws.ptpTargetId)) return;
 
@@ -1022,12 +1013,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     break;
 
                 case 'ptt_audio_end_private':
-                    /*
-                     * The guard used to wrap only the database write, leaving
-                     * the send below reachable by a socket that had never
-                     * logged in: enumerate a uid and push a "transmission
-                     * ended" into a stranger's client.
-                     */
                     if (!ws.sessionUser || !ws.ptpTargetId || ws.ptpSessionKind !== 'audio') return;
                     try {
                         await pool.query("UPDATE public.users SET is_speaking = false WHERE id = $1", [String(ws.sessionUser.id)]);
@@ -1208,21 +1193,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     broadcastToChannel(room, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(room) || []).map(s => s.split(':')[1]), channel: room } });
                 }
 
-                /*
-                 * The same for video, which this handler used to forget.
-                 *
-                 * A handset sends no ptt_video_end when it is killed, loses
-                 * power or drives into a tunnel, and nothing else removed it, so
-                 * it stayed listed as streaming forever. Every other client kept
-                 * the incoming-video view up with no frames behind it -- a black
-                 * screen the client cannot clear, because the relay is still
-                 * saying someone is on camera.
-                 *
-                 * The entry is mirrored into Redis, so it outlived the process
-                 * as well: activeVideoRooms is what every announcement is built
-                 * from, so one crash made every later announcement in that
-                 * channel wrong.
-                 */
                 await stopChannelVideo(ws, room);
 
                 // 2. Tunda pembersihan koneksi & status online (Debounce)

@@ -90,18 +90,6 @@ elseif ($method == 'POST') {
     elseif ($action == 'delete') {
         $id = (int)$_POST['id'];
         try {
-            /*
-             * The same four rules the page applies. This used to be
-             * `WHERE id = ? AND role != 'superadmin'` written into the
-             * statement, which protected the superadmin row and nothing else --
-             * so the master admin and the caller's own account were deletable
-             * here and refused on the page.
-             *
-             * Checked before the query rather than after, so a rule doing its
-             * job is not reported to the operator as a system error. Migration
-             * 006 makes the database refuse as well; this is what makes the
-             * refusal readable.
-             */
             $found = $pdo->prepare('SELECT id, role FROM public.admin WHERE id = ?');
             $found->execute([$id]);
             $target = $found->fetch();

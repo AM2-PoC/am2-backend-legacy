@@ -1,21 +1,7 @@
 <?php
 /**
- * The activity log: written as an event, rendered as a sentence.
- *
- * Every entry used to be one Indonesian string built where it was written.
- * That made the sentence the record, so the Logs page could only ever be as
- * bilingual as the database -- and it made two writers of the same event drift
- * apart, which they had: "Update akses X ke: …" in one file and the same event
- * with " (via Mobile)" glued on the end in another. Nothing could group them
- * and no translator could reach either.
- *
- * A row now carries what happened (`event_code`) and the values it happened to
- * (`event_params`). The sentence is produced by am2_log_text() at display time,
- * from the same catalog as every other string in the panel.
- *
- * Rows written before migration 002 have no code and still render from
- * `keterangan`. They clear themselves within 30 days: runCleanup() in
- * server.js deletes anything older than that.
+ * Stores structured audit events and renders localized text at read time.
+ * Legacy rows without `event_code` continue to use `keterangan`.
  */
 
 // Not an endpoint. See am2_refuse_direct_request().
@@ -52,13 +38,7 @@ function am2_audit_expect(string $mutation): void
     $GLOBALS['am2_audit_owed'][] = $mutation;
 }
 
-/**
- * Settle the balance, or refuse.
- *
- * Called immediately before a commit. Throwing here rolls the whole thing back,
- * which is the point: a change that reaches the database with no record of who
- * made it is not something to discover months later from an empty log.
- */
+/** Reject a transaction with unaudited mutations before commit. */
 function am2_audit_complete(): void
 {
     $owed = $GLOBALS['am2_audit_owed'];
@@ -73,28 +53,15 @@ function am2_audit_complete(): void
     }
 }
 
-/**
- * Discard the balance without checking it.
- *
- * For the rollback path, where the mutation is being undone and therefore owes
- * nothing. Separate from am2_audit_complete() so that "this failed" and "this
- * is settled" cannot be spelled the same way by accident.
- */
+/** Clear pending audit state after transaction rollback. */
 function am2_audit_abandon(): void
 {
     $GLOBALS['am2_audit_owed'] = [];
 }
 
 /**
- * Record an event.
- *
- * $aksi stays what it always was -- CREATE_USER, UPDATE_ACCESS, FORCE_LOGOUT --
- * because api_logs.php hands it to the Admin Native log screen, which groups
- * and colours by it. The code is the new, finer thing beside it.
- *
- * A parameter whose value begins with '@' is itself a catalog key, so a
- * feature name or a table name is translated along with the sentence holding
- * it rather than being frozen in whichever language wrote the row.
+ * Record an event while preserving the legacy action category used by the
+ * Admin app. Catalog-key parameters begin with `@`.
  */
 function am2_log(
     PDO $pdo,

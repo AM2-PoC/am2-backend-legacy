@@ -1019,13 +1019,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         applyUnitFilter();
     });
 
-    /*
-     * Select-all means the rows in front of you.
-     *
-     * It used to tick every box in the roster, filtered or not, so filtering to
-     * "Alpha" and pressing it granted access to units the operator could not
-     * see. With nothing typed the two are the same thing.
-     */
     document.querySelector('[data-access-all]')?.addEventListener('change', (e) => {
         shownPicks().forEach((c) => { c.checked = e.target.checked; });
         recount();

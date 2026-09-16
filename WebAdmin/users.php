@@ -589,20 +589,6 @@ include 'partials/notice.php';
 
                                 <?php $actCls = 'am2-chip inline-flex items-center border-edge text-ink-muted'; ?>
                                 <?php
-                                /*
-                                 * A link, not a dialogue. The dialogue that
-                                 * used to open here sent the ticked boxes as
-                                 * the unit's complete channel set, and it
-                                 * opened with every box cleared -- so granting
-                                 * one channel revoked the others. Channel
-                                 * access is decided on one screen, which paints
-                                 * what the unit already holds before anyone
-                                 * changes it.
-                                 *
-                                 * `search` rather than a new parameter: that
-                                 * page already filters on it, and an id matches
-                                 * exactly one unit.
-                                 */
                                 ?>
                                 <a href="user_access.php?search=<?= urlencode($uid) ?>"
                                    class="<?= $actCls ?> hover:text-brand">

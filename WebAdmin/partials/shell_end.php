@@ -188,23 +188,6 @@
         () => (document.hidden ? stopStatus() : startStatus()));
     if (!document.hidden) startStatus();
 
-    /* ---- Command palette --------------------------------------------- */
-    /*
-     * One list, and it is the shell's.
-     *
-     * The sections of Settings used to be added by that page, which meant they
-     * existed in the palette only once you were already looking at them:
-     * "distribusi" from the dashboard matched nothing at all. They are ordinary
-     * destinations with a fragment now, and run() turns one that names the page
-     * you are on back into an in-page jump, so being there still scrolls rather
-     * than reloads. A page may still contribute its own, and nothing does.
-     *
-     * `keys` are search aliases -- never drawn, only matched. They are
-     * deliberately not translated: an operator switching an interface between
-     * two languages does not switch which words come to mind, and "settings"
-     * has to find Pengaturan the same way "keluar" has to find Logout. The
-     * labels are what the palette shows; these are what it hears.
-     */
     const COMMANDS = <?= json_encode(array_merge(array_values(array_filter([
         ['id' => 'p-dash',     'group' => t('nav.home'),       'label' => t('nav.dashboard'),      'href' => 'dashboard.php',
          'keys' => 'dashboard beranda home ringkasan overview'],
@@ -265,16 +248,6 @@
         const matched = COMMANDS.filter(
             (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)
                 || (c.keys || '').includes(q));
-        /*
-         * The unit search is the fallback, so it goes last.
-         *
-         * It used to be prepended, and the cursor starts at 0, so the
-         * highlighted row was always "find a unit" no matter what had been
-         * typed: "dashboard" then Enter landed on the user list searching for
-         * the word dashboard, and the Dashboard row sitting right underneath
-         * could only be reached by arrowing down to it or clicking. Every page
-         * the palette knew about was unreachable by the key everyone presses.
-         */
         results = q
             ? [...matched,
                { id: 's-units', group: UNITS_LABEL, label: input.value.trim(),
@@ -286,29 +259,6 @@
         render();
     }
 
-    /*
-     * Building the list and painting the selection are two different jobs.
-     *
-     * They used to be one, and hovering a row set the cursor and rebuilt the
-     * whole list from scratch. The row under the pointer was therefore replaced
-     * by a new element, which -- with the pointer still resting on it -- took
-     * `mouseenter` in its turn and rebuilt the list again. Measured with a real
-     * pointer resting on the list and nothing else happening: about four
-     * rebuilds a second, indefinitely.
-     *
-     * That is both faults reported. A click needs its mousedown and its mouseup
-     * on the same element, and the element was being swapped out underneath
-     * them -- Playwright, driving a real mouse, reported "element was detached
-     * from the DOM" twelve times over and never landed the hover at all. And
-     * every arrow key was undone: pressing Down moved the selection to Live
-     * Track, and 400ms later it was back on the row under the mouse, because
-     * the loop was re-running `cursor = i` several times a second.
-     *
-     * So the rows are built when the results change, and the selection is
-     * painted onto the rows that are already there. Nothing is detached to move
-     * the highlight. What the pointer contributes is below, and it is keyed off
-     * movement rather than off which element happens to be underneath.
-     */
     let rows = [];
 
     const ROW = 'mx-2 flex h-11 cursor-pointer items-center gap-3 rounded-control px-3 text-sm ';

@@ -15,18 +15,6 @@ function am2_adm_json(array $payload): void
     exit;
 }
 
-/**
- * Whether this admin account may be deleted, and why not.
- *
- * Three rules, and they are stated once here because the row, the bulk path
- * and the handler all have to agree about them -- the confirm dialogue used to
- * offer the act to every row and the handler refused three kinds of it after
- * the fact.
- */
-// The rules moved to admin_rules.php so api_admin_panel.php enforces the same
-// ones. They disagreed: this page refused the master row and your own account,
-// the API refused neither.
-
 if (isset($_POST['delete_admin_id'])) {
     $id_to_delete = (int)$_POST['delete_admin_id'];
     $my_id = (int)$_SESSION['admin_id'];

@@ -1,13 +1,3 @@
-// The activity log: written as an event, rendered as a sentence.
-//
-// The failure this file exists for is quiet. Every entry used to be one
-// Indonesian string built where it was written, so the Logs page could only
-// ever be as bilingual as the database — and nothing failed when it was not.
-// A page simply showed Indonesian to an English reader and looked fine.
-//
-// It also pins the shape api_logs.php hands to the Admin Native log screen.
-// The structure went into the database, not into that response, and this is
-// what says so.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

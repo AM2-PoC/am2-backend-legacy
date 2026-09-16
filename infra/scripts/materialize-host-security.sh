@@ -112,20 +112,6 @@ staged=$work/payload
 cleanup() { chmod -R u+w "$work" 2>/dev/null || true; rm -rf -- "$work"; }
 trap cleanup EXIT INT TERM HUP
 
-# Snapshot the two inputs, then work only from the snapshots.
-#
-# The bundle verifier authenticates and returns, but every path it was given
-# stays writable -- and the manifest beside the archive is as mutable as the
-# archive itself. Swapping both after the verifier returns used to produce a
-# forged archive that agreed with a forged manifest, so re-deriving digests
-# proved only that the attacker was self-consistent. Digests are worth nothing
-# when the thing being compared against can move too.
-#
-# So the trusted expected manifest -- the one input obtained through a channel
-# independent of the bundle -- is the only authority from here on, and it is
-# copied out of reach before it is read. The archive is copied and hashed
-# against it. The bundle's own manifest has served its purpose inside the
-# verifier and is never consulted again.
 trusted=$work/trusted-manifest.json
 snapshot=$work/archive.tar.gz
 cp -- "$expected_manifest" "$trusted"
@@ -257,13 +243,6 @@ else
     fi
 fi
 
-# Unconditionally, whichever path produced it.
-#
-# There is no route to a receipt that skips this. Branching the check -- "the
-# digest was already there" versus "somebody else published first" -- is how a
-# window opens: the loser of a publish race used to accept whatever won it on
-# the strength of the directory existing, and "same digest, so same bytes" is an
-# assumption, not a check.
 compare_against_staged "$destination/payload" || exit 1
 
 python3 - "$trusted" "$destination" "$receipt" "$unprivileged" "$staged" <<'PY'

@@ -114,30 +114,6 @@ function am2_update_state(): array
     return $state;
 }
 
-/**
- * The other update channel: the radio app the units carry.
- *
- * There are two, and the panel only ever showed one. Admin Native reads
- * update/admin_version.json through api_settings.php?action=check_update; the
- * field app reads server/update/version.json directly. The two share nothing --
- * not the directory, not the metadata, not even the shape of it -- and the docs
- * say plainly not to merge them. So this reads the second one and shows it
- * beside the first, rather than leaving an operator to assume the panel covers
- * both.
- *
- * It used to read public.app_versions instead, on the belief that the relay
- * answered from the table and the file beside the APK was "only a deployment
- * note". That was backwards. AboutActivity fetches UPDATE_MANIFEST_URL, which
- * is this file; nothing in the client calls the relay endpoint, and across
- * every retained access log it has been asked for zero times while this file
- * has been fetched by real handsets.
- *
- * So the table was never the channel -- it was a second, hand-written copy that
- * only this card read, which is why this card was the only thing that lied. It
- * showed build 3 while build 124 was published and being downloaded. Reading
- * what the handset reads is the only arrangement in which the two cannot
- * disagree.
- */
 function am2_field_channel(): array
 {
     $dir = dirname(__DIR__) . '/server/update';
@@ -193,12 +169,6 @@ $upload_limit = min(
     am2_ini_bytes((string) ini_get('upload_max_filesize')),
     am2_ini_bytes((string) ini_get('post_max_size'))
 );
-
-// A body over post_max_size is discarded whole: $_POST and $_FILES arrive
-// empty, so am2_csrf_require() finds no token and answers "Sesi tidak valid"
-// -- which is what an operator uploading a 24 MB APK actually saw. The guard
-// runs in config.php and exits before this file, so the only thing that can be
-// done here is refuse the file before it is ever sent. See the page script.
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
     $new_pass     = $_POST['new_password'] ?? '';
@@ -435,18 +405,6 @@ if ($is_super) {
     $field = am2_field_channel();
     [$field_target, $field_present] = am2_channel_target($field['url'], $field['files']);
 
-    /*
-     * The same verdict api_settings.php reaches, from the same function.
-     *
-     * This card used to read admin_version.json itself and print whatever
-     * version_name was in it. The endpoint validated the set and refused it, so
-     * the panel announced a version no handset could ever be offered, and the
-     * number on screen was the reason to believe the channel worked.
-     *
-     * When it is refused there is no version, which also takes away the QR code
-     * and the download URL: an operator should not be invited to install a set
-     * the server will not advertise.
-     */
     $advertisement = am2_admin_update_advertisement(
         __DIR__ . '/update',
         AM2_ADMIN_UPDATE_BASE,
@@ -494,27 +452,11 @@ $pageActions = '<span class="hidden rounded-control border border-edge px-2.5 py
     . ($is_super ? 'border-bad/40 text-bad' : 'text-ink-muted') . '">'
     . htmlspecialchars(strtoupper($role_user)) . '</span>';
 
-// These sections used to be declared here, which is why they were in the
-// palette only while this page was open. They live in the shell's own list now
-// -- partials/shell_end.php -- as destinations with a fragment, so "distribusi"
-// finds this card from the dashboard. Landing here from the palette still
-// scrolls rather than reloads; run() handles a destination naming the page it
-// is already on.
-
 include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
 <?php
-/*
- * One sentence, one place -- the same partial every other page uses. The server
- * renders it for a browser with no script, and the bundle turns it into a
- * toast; a failure waits to be dismissed rather than expiring.
- *
- * This used to be a node the APK upload swapped in from its response. Nothing
- * uploads through the panel any more -- releases arrive from the pipeline --
- * and nothing had referenced the node since.
- */
 $noticeText = $error !== '' ? $error : $msg;
 $noticeOk   = $error === '';
 include 'partials/notice.php';
@@ -1292,12 +1234,6 @@ include 'partials/notice.php';
                 await navigator.clipboard.writeText(btn.dataset.copyUrl);
                 window.AM2?.toast(T.copied);
             } catch {
-                // Clipboard needs a secure context and permission; selecting
-                // the text is the fallback that always works.
-                //
-                // It used to do it in silence, which reads as a button that
-                // does nothing: the address was selected and waiting, and
-                // nothing on screen said so.
                 const code = btn.previousElementSibling;
                 if (!code) return;
                 const r = document.createRange();

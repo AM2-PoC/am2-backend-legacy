@@ -43,19 +43,9 @@ uninstall becomes a real interruption. Then add it, for the dev flavour only,
 and only once the repository is private. Never reuse it for staging: that key
 reaches operators.
 
-## Why staging has its own key, separate from the release key
+## Staging key
 
-Staging APKs reach operator handsets, so they need continuity. That means a key
-that outlives the runner, which means the key must live in CI.
-
-The release key must not. Putting the application's permanent identity on every
-runner that builds a staging APK trades a recoverable loss for an unrecoverable
-one. Losing the staging key costs one uninstall per tester. Losing the release
-key costs a new package name.
-
-Before this existed, every staging APK was signed by a debug key that the runner
-generated and discarded, so no staging build could be installed over the one
-before it and every round of field testing cost an operator their local state.
+Staging APKs reach operator handsets and therefore use a persistent CI-managed key distinct from the production key. Losing the staging key requires reinstalling tester devices; exposing the production key compromises the application's permanent identity.
 
 ## Why the release key is also the Play app signing key
 

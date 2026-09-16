@@ -107,23 +107,6 @@ function sameKey(sent, real) {
     const b = Buffer.from(String(real));
     return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-/*
- * There is no mode.
- *
- * This used to read an environment variable that chose between recording an
- * unauthenticated admin call and refusing it -- and recording meant running it.
- * Defaulting that to the safe value was an improvement and not a fix: the PHP
- * panel read a variable of the same name, so one setting meant two different
- * things on two systems, and production ran the panel on the permissive value
- * for weeks while this side looked correct.
- *
- * The variable is not named here on purpose. A name in a comment is a name
- * somebody greps for, and finding it suggests there is still something to set.
- *
- * A control with an off position is a control somebody will find in a hurry.
- * The off position is gone: a wrong or missing key is refused, always, and
- * there is no value anybody can set to change that.
- */
 app.use('/api/admin', (req, res, next) => {
     /*
      * The header, and only the header.

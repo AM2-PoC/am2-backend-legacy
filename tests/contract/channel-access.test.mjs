@@ -1,15 +1,3 @@
-// One contract for user-to-channel membership, whichever page writes it.
-//
-// Three pages used to write user_channels and all three disagreed. The Units
-// page recreated every row as FULL DUPLEX, so a receive-only unit silently
-// gained transmit rights; it also made whichever channel came first in the
-// JSON the default and never touched users.last_channel_id. The Channels page
-// recreated a whole roster with is_default = false, stripping the default from
-// every unit on it. A unit whose last_channel_id names a channel it does not
-// hold, or holds without a default, cannot sign in.
-//
-// These tests state the invariants rather than the implementation, so they
-// keep their meaning if the service is rewritten.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import { asBranchA, asSuper, postForm, sql, sqlOne } from './helpers.mjs';
@@ -66,10 +54,6 @@ before(async () => {
 });
 
 after(() => {
-    // Only the units this file touches. It used to clear CT_A2 as well, which
-    // session-order.test.mjs is using -- the runner executes files in parallel,
-    // so that cleanup was deleting rows out from under another file's
-    // assertions. It failed roughly one run in ten and looked like a flake.
     sql(`DELETE FROM public.user_channels WHERE user_id IN ('CT_A1','CT_B1')`);
     sql(`UPDATE public.users SET last_channel_id = NULL WHERE id IN ('CT_A1','CT_B1')`);
 });
@@ -96,20 +80,6 @@ describe('membership invariants hold whichever page writes them', () => {
         assertConsistent(UNIT);
     });
 
-    /*
-     * These three used to post save_user_channels to users.php, which sent a
-     * membership list and nothing else. That page no longer grants channels:
-     * its dialogue opened with every box cleared and replaced the whole set, so
-     * granting one channel revoked the rest.
-     *
-     * The invariants are not about that page, though -- they are about what
-     * am2_set_user_channels() must never do to rows the caller did not mention.
-     * Retargeted onto user_access.php, which is now the only writer.
-     *
-     * Two of them had started passing without testing anything: a POST to the
-     * removed handler renders the page, `status < 400` holds, and the seeded
-     * rows satisfy the assertion. A vacuous green is worse than a red.
-     */
     test('re-saving a membership does not grant transmit to an RX channel', async () => {
         await seed();
         // Same two channels, and permissions[] omitted entirely: every channel

@@ -1,30 +1,4 @@
 <?php
-/**
- * The one place user-to-channel membership is written.
- *
- * Three pages used to write `user_channels`, and all three disagreed:
- *
- *   user_access.php  kept the permission the form sent, kept the default, and
- *                    updated users.last_channel_id.
- *   users.php        deleted every row and recreated them all as FULL DUPLEX,
- *                    made whichever channel happened to be first in the JSON
- *                    array the default, and never touched last_channel_id.
- *   channels.php     deleted every membership of the channel it was editing
- *                    and recreated them all with is_default = 'false'.
- *
- * So editing a unit from the Units page silently granted transmit rights to a
- * receive-only unit, and editing a channel's roster stripped the default
- * channel from everyone on it while users.last_channel_id went on pointing at
- * it. A unit whose last_channel_id names a channel it no longer holds, or
- * holds without a default, cannot sign in at all -- which is what the eight
- * units found stranded in production have in common.
- *
- * Both functions below must be called inside a transaction, and neither talks
- * to the relay: they return the user ids they touched so the caller can sync
- * after the commit, and see it fail.
- */
-
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
