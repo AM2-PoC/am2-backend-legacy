@@ -28,27 +28,7 @@ function am2_node_transport(string $url, string $header, ?array $payload): ?stri
     return is_string($body) ? $body : null;
 }
 
-/**
- * Send a request to the relay, and say whether it confirmed.
- *
- * This returned void, and said so: "these callers never read the body, and
- * never have." For three of the four callers that is a reasonable trade -- a
- * channel sync that misses is corrected by the next one.
- *
- * For force logout it is not. The panel writes the row, so the database says
- * the unit is offline and its token is revoked; the relay is what actually
- * closes the socket. If this call fails -- relay restarting, 401, a timeout
- * under load -- the unit stays connected and keeps transmitting while the panel
- * reports success and the roster shows it offline. A unit on the air that
- * nobody can see is the exact failure this system keeps producing.
- *
- * Still not blocking: the two second ceiling in am2_node_transport() stands,
- * because the panel must not wait on the relay. Reading the answer that already
- * came back costs nothing.
- *
- * True only for a relay that answered JSON saying it did the thing. A 401 and a
- * 500 both carry a body, so the presence of one proves nothing.
- */
+/* Return true only when the relay confirms success within the bounded transport timeout. */
 function am2_node_call(string $path, ?array $payload = null): bool
 {
     $header = $payload === null

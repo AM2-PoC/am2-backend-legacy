@@ -1,27 +1,6 @@
-/*
- * Every string the relay puts in front of an operator, in one place.
- *
- * These are not log lines. Each one is a `data.message` the handset displays
- * verbatim -- WebSocketManager reads it straight into a toast, and its own
- * fallback for a missing one is "Permintaan Gagal". So the audience reads
- * Indonesian, and that is the decision until i18n lands.
- *
- * They were literals scattered through protocol.js, and it showed: the same
- * sentence appeared three times, two of them English while the handlers beside
- * them spoke Indonesian, and a contract test demanding English had sat red for
- * weeks without anyone reconciling the two. Naming them makes the set countable
- * -- the contract test pins this object, the protocol tests compare against it
- * instead of guessing at a regex, and i18n has exactly one file to translate.
- *
- * A new operator-facing string belongs here before it belongs in a handler.
- */
+/* Operator-facing protocol messages remain centralized and Indonesian. */
 module.exports = Object.freeze({
-    /**
-     * The stored credential stopped being the current one mid-login -- revoked,
-     * rotated, or force-logged-out from the panel while the handset was signing
-     * in. Indonesian like the rest: this file's whole point is that a handler
-     * beside an Indonesian one must not answer in English.
-     */
+    /* The credential changed while login was in flight. */
     AUTH_STATE_CHANGED: 'Status login berubah. Silakan masuk lagi.',
 
     NOT_A_CHANNEL_MEMBER: 'Bukan anggota channel ini',

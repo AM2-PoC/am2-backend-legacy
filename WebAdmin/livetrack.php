@@ -9,7 +9,7 @@ include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
-<section class="am2-surface relative h-[calc(100dvh-11rem)] overflow-hidden rounded-card">
+<section class="am2-surface relative h-[calc(100dvh-11rem)] overflow-hidden rounded-card" data-speaking-marker="speaking-marker">
 
     <div id="map" class="absolute inset-0 z-0"></div>
 

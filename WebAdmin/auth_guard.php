@@ -3,22 +3,7 @@ require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
 if (!defined('AM2_PUBLIC_ENTRY')) {
-    /**
-     * The only entry points that answer without a session.
-     *
-     * A constant in the code, deliberately, and not a setting. The failure this
-     * whole change exists to end was a control with an off position: an env
-     * file on a host said `log`, the panel stopped refusing anyone, and there
-     * was nothing in the repository to show for it. A list that lives in /etc
-     * or in a vhost has the same shape -- it grows by one line, on one machine,
-     * in a hurry, and nobody ever sees it again. Here it can only grow through
-     * a commit somebody reads, and a test pins its exact contents so the growth
-     * cannot be quiet.
-     *
-     * Two names, because there are two ways to obtain a session and nothing
-     * else that legitimately has none. Signing out is not among them: with no
-     * session there is nothing to sign out of, and the refusal says so.
-     */
+    /* Public entry points are code-reviewed and fail closed; this is not host configuration. */
     define('AM2_PUBLIC_ENTRY', ['login.php', 'api_login.php']);
 }
 
@@ -51,25 +36,7 @@ if (!function_exists('am2_signed_in')) {
 }
 
 if (!function_exists('am2_answers_json_only')) {
-    /**
-     * True for an endpoint that renders no HTML under any circumstance.
-     *
-     * Header sniffing alone is not enough, and the gap is not theoretical: a
-     * browser fetch() sends `Accept: *\/*`, and the contract suite sends no
-     * Accept and no Sec-Fetch-Dest at all. A caller in that position asking
-     * fetch_logs.php for data would be handed a 302 to a login *page*, and
-     * following it yields 200 and a page of markup -- the exact "refusal
-     * nobody can see" that had Admin Native reporting an expired session as a
-     * broken feature.
-     *
-     * So the answer's shape is decided by what the endpoint is first, and by
-     * what the caller asked for second. These three families never render a
-     * page, so a redirect to one is never a useful answer from them.
-     *
-     * A presentation rule, not a security one. Guessing wrong costs a caller
-     * the wrong error format, never access: whether the caller is signed in
-     * has already been decided by the time this is consulted.
-     */
+    /* JSON-only endpoints must return machine-readable auth failures, never redirects. */
     function am2_answers_json_only(string $entry): bool
     {
         return str_starts_with($entry, 'api_')
