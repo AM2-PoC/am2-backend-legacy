@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Materialize authenticated host-security bytes into an immutable store.
-#
-# This is the step between a sealed bundle and an approved activation, and it
-# deliberately stops short of activation: it never writes to /etc, never tests a
-# service configuration, and never reloads anything. Those are separate,
-# separately approved operations.
-#
-# Two properties matter more than convenience.
-#
-# The store is digest-addressed. A materialization lives under its payload
-# digest, so two different payloads can never occupy one path and "the same
-# path" always means the same bytes. Re-materializing an identical payload is a
-# no-op; finding different bytes already there is a refusal, not an overwrite.
-#
-# It never reads a source checkout. Everything it needs -- including the file
-# contract that names the install targets -- travels inside the authenticated
-# payload. That is what makes it usable by a bounded identity with no Git
-# credential, no repository, and no build tooling.
-#
-# Authentication is delegated to verify-host-security-bundle.sh rather than
-# reimplemented here, so there is one place where a bundle is judged.
 
 usage() {
     cat >&2 <<'USAGE'
@@ -52,7 +31,7 @@ while [[ $# -gt 0 ]]; do
         --store-root) [[ $# -ge 2 ]] || { usage; exit 64; }; store_root=$2; shift 2 ;;
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
         --unprivileged-store) unprivileged=1; shift ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -64,14 +43,6 @@ here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier=$here/verify-host-security-bundle.sh
 [[ -f $verifier && ! -L $verifier ]] || { echo "host-security bundle verifier is missing" >&2; exit 1; }
 
-# A privileged materialization is the real one: root, and a store only root can
-# write. Anything else is a fixture, and must not be able to claim otherwise --
-# so it is confined away from system paths and stamped as unprivileged in its
-# receipt. That keeps "this receipt describes the host" an honest statement.
-#
-# Resolved before it is judged: a leading-string match lets `/tmp/../etc/am2`
-# and `//etc/am2` walk straight past the bound and land a fixture receipt on
-# the very path the drift timer reads.
 system_paths='^/(etc|usr|bin|sbin|lib|lib64|boot|opt|var|srv|root)(/|$)'
 resolved_store=$(realpath -m -- "$store_root")
 resolved_receipt=$(realpath -m -- "$receipt")
@@ -85,9 +56,6 @@ elif [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# The expected manifest is the independent authority that names the only
-# archive/payload/file digests this materializer may accept. Do not snapshot a
-# writable attacker input and call the private copy trusted.
 [[ -f $expected_manifest && ! -L $expected_manifest ]] \
     || { echo "trusted expected manifest is missing or not a regular file" >&2; exit 1; }
 manifest_mode=$(stat -c '%a' -- "$expected_manifest")
@@ -112,20 +80,6 @@ staged=$work/payload
 cleanup() { chmod -R u+w "$work" 2>/dev/null || true; rm -rf -- "$work"; }
 trap cleanup EXIT INT TERM HUP
 
-# Snapshot the two inputs, then work only from the snapshots.
-#
-# The bundle verifier authenticates and returns, but every path it was given
-# stays writable -- and the manifest beside the archive is as mutable as the
-# archive itself. Swapping both after the verifier returns used to produce a
-# forged archive that agreed with a forged manifest, so re-deriving digests
-# proved only that the attacker was self-consistent. Digests are worth nothing
-# when the thing being compared against can move too.
-#
-# So the trusted expected manifest -- the one input obtained through a channel
-# independent of the bundle -- is the only authority from here on, and it is
-# copied out of reach before it is read. The archive is copied and hashed
-# against it. The bundle's own manifest has served its purpose inside the
-# verifier and is never consulted again.
 trusted=$work/trusted-manifest.json
 snapshot=$work/archive.tar.gz
 cp -- "$expected_manifest" "$trusted"
@@ -156,15 +110,6 @@ if find "$staged" -type l -print -quit | grep -q .; then
     exit 1
 fi
 
-# Authenticate the extracted bytes against the trusted manifest.
-#
-# Against the trusted one specifically: comparing them to the manifest that
-# travelled with the archive would only establish that the two agree, which an
-# attacker who can replace both gets for free.
-#
-# This also covers the contract, which the manifest's file list does not name:
-# the payload digest spans every byte in the payload, so an edited contract --
-# the file that decides where everything installs -- changes it.
 python3 - "$trusted" "$staged" <<'PY' || exit 1
 import hashlib, json, pathlib, subprocess, sys
 manifest_path, payload_root = sys.argv[1:]
@@ -201,11 +146,6 @@ PY
 
 contract=$staged/infra/contracts/host-security-contract.json
 
-# Prove a materialization already on disk is still the tree just authenticated.
-#
-# Called both when the digest was already present and when another process wins
-# the publish race: "the digest matches, so the bytes must" is an assumption, and
-# assuming it is how unverified bytes end up sealed under an authenticated name.
 compare_against_staged() {
     python3 - "$staged" "$1" <<'PY' || exit 1
 import hashlib, pathlib, sys
@@ -257,13 +197,6 @@ else
     fi
 fi
 
-# Unconditionally, whichever path produced it.
-#
-# There is no route to a receipt that skips this. Branching the check -- "the
-# digest was already there" versus "somebody else published first" -- is how a
-# window opens: the loser of a publish race used to accept whatever won it on
-# the strength of the directory existing, and "same digest, so same bytes" is an
-# assumption, not a check.
 compare_against_staged "$destination/payload" || exit 1
 
 python3 - "$trusted" "$destination" "$receipt" "$unprivileged" "$staged" <<'PY'
@@ -271,8 +204,7 @@ import json, os, pathlib, re, sys, tempfile, time
 
 manifest_path, destination, receipt_path, unprivileged, staged = sys.argv[1:]
 manifest = json.load(open(manifest_path, encoding='utf-8'))
-# Read from the tree this run authenticated, not from the store: the store is
-# only known-good because it was just compared against exactly this tree.
+
 contract = json.load(open(pathlib.Path(staged, 'infra/contracts/host-security-contract.json'), encoding='utf-8'))
 
 by_origin = {item['source']: item for item in contract['files']}
@@ -289,10 +221,7 @@ for item in manifest['files']:
         'mode': declared['mode'],
         'consumer': declared['consumer'],
     }
-    # Most files name one absolute target. The PHP auto_prepend configuration
-    # is installed once per SAPI, and which SAPI versions exist is host state
-    # that is unknown here, so the receipt carries the rule and the
-    # installed-state verifier resolves it against the host it is checking.
+
     if 'target' in declared:
         target = declared['target']
         if not re.fullmatch(r'/[A-Za-z0-9._/-]+', target) or '..' in target.split('/'):
@@ -322,7 +251,6 @@ receipt = {
     'files': files,
 }
 
-# Written whole and moved into place, so a reader never sees half a receipt.
 receipt_dir = pathlib.Path(receipt_path).parent
 receipt_dir.mkdir(parents=True, exist_ok=True)
 handle, temporary = tempfile.mkstemp(dir=receipt_dir, prefix='.host-security-receipt-')

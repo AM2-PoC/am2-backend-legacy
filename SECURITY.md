@@ -1,7 +1,7 @@
-# Security handling
+# Security
 
-This internal repository does not provide a public vulnerability-reporting channel. Authorized personnel must use the security process assigned to their role; do not create a public issue or pull request for an undisclosed vulnerability.
+Report suspected vulnerabilities through the team's security channel. Do not open a public issue or pull request containing undisclosed vulnerability details.
 
-Do not include credentials, tokens, private keys, personal data, customer data, production database rows, or destructive proof-of-concept payloads in tickets, pull requests, logs, or fixtures.
+Never include credentials, tokens, private keys, personal or production data, database rows, or destructive proof-of-concept payloads in tickets, pull requests, logs, or fixtures.
 
-External disclosure and customer communication require the applicable internal approval.
+External disclosure and customer communication require internal approval.

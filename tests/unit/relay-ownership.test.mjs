@@ -33,14 +33,16 @@ const smoke = read('infra/scripts/smoke-release.sh');
 const usersAjax = read('WebAdmin/get-users-ajax.php');
 
 test('nothing writes at boot before ownership is settled', () => {
-    const boot = server.slice(server.indexOf('connectRedis();'), server.indexOf('// --- MIDDLEWARE ---'));
+    const bootStart = server.indexOf('connectRedis();');
+    const bootEnd = server.indexOf('const CORS_ALLOWED');
+    const boot = server.slice(bootStart, bootEnd);
     assert.match(boot, /claimRelayOwnership\(\)\.then\(\(owned\) => \{/);
-    // Both writers live inside the gate, and neither is called anywhere else.
+
     for (const call of ['startCleanup();', 'resetSessions();']) {
         assert.equal(server.split(call).length - 1, 1, `${call} is called more than once`);
         const at = server.indexOf(call);
         assert.ok(at > server.indexOf('claimRelayOwnership()'), `${call} runs before ownership is known`);
-        assert.ok(at < server.indexOf('// --- MIDDLEWARE ---'), `${call} moved out of the boot block`);
+        assert.ok(at < bootEnd, `${call} moved out of the boot block`);
     }
     assert.match(boot, /if \(!owned\) return;/, 'a visitor still performs the boot writes');
 });

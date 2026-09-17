@@ -3,12 +3,10 @@ require_once 'auth.php';
 require_once 'config.php';
 
 
-
 $success_msg = "";
 $error_msg = "";
 $current_admin_id = $_SESSION['admin_id'];
 $admin_role = $_SESSION['admin_role'];
-
 
 
 $stmt_auth = $pdo->prepare("SELECT can_manage_maps, can_manage_p2p, can_manage_video FROM public.admin WHERE id = ?");
@@ -52,9 +50,6 @@ if (isset($_POST['update_feature'])) {
     $u_id = $_POST['u_id'];
     $feature = $_POST['feature'];
 
-    // Which switches exist, which value each takes and who may move them all
-    // live in user_features.php now. Both this page and the endpoint behind
-    // the admin app read them from there, so the two cannot drift again.
     try {
         $pdo->beginTransaction();
         $stmtTarget = $pdo->prepare("SELECT name FROM public.users WHERE id = ?");
@@ -94,8 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
         if (array_key_exists('edit_entity_type', $_POST)) {
             $edit_entity_type = am2_entity_type($_POST['edit_entity_type']);
         } else {
-            // Preserve the classification for older callers that do not know
-            // about this field yet; omission must never turn a tracker into a user.
+
             $stmtType = $pdo->prepare('SELECT entity_type FROM public.users WHERE id = ?');
             $stmtType->execute([$edit_id]);
             $edit_entity_type = am2_entity_type($stmtType->fetchColumn() ?: 'user');
@@ -134,8 +128,7 @@ if (isset($_POST['delete_user'])) {
 
         am2_audit_complete();
         $pdo->commit();
-        // The bulk path asks over fetch and cannot follow a redirect into a
-        // page it then throws away. Same guard, same query, different reply.
+
         if (!empty($_POST['ajax'])) {
             header('Content-Type: application/json');
             echo json_encode(['success' => true]);
@@ -148,13 +141,6 @@ if (isset($_POST['delete_user'])) {
     }
 }
 
-/*
- * Export exactly the units that were selected, as CSV.
- *
- * Scoped by the same ownership rule the list uses, so a branch admin cannot
- * widen the selection by editing the ids it posts -- the ids narrow the query,
- * they never widen it.
- */
 if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST['ids'])) {
     $ids = array_values(array_filter(array_map('strval', $_POST['ids'])));
     $marks = implode(',', array_fill(0, count($ids), '?'));
@@ -188,24 +174,13 @@ if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST
     exit;
 }
 
-/** Page size. Twenty rows fill a screen without needing two scrolls. */
 const AM2_USER_PAGE = 20;
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-/*
- * Chips are filters that mean something operationally. "Tanpa channel default"
- * is a unit that cannot talk to anyone, and nothing in this panel said so
- * before. There is deliberately no "memancar" chip: users.is_speaking is false
- * on all 218 rows because nothing maintains it, so the filter would match
- * nothing forever. Transmitting is shown live in the row instead, from the
- * poll that computes it from the logs.
- */
 $chip = in_array($_GET['chip'] ?? '', ['online', 'nochannel', 'full'], true)
     ? (string) $_GET['chip'] : '';
 
-// Whitelisted. Neither the column nor the direction is ever interpolated from
-// what arrived in the query string.
 $sortable = ['id' => 'u.id', 'name' => 'u.name', 'duplex' => 'p.duplex_mode', 'seen' => 'u.updated_at'];
 $sortCol  = $sortable[$_GET['sort'] ?? ''] ?? 'u.created_at';
 $sortDir  = ($_GET['dir'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
@@ -250,16 +225,10 @@ $stmt_users = $pdo->prepare(
 $stmt_users->execute($params);
 $users = $stmt_users->fetchAll();
 
-// Every id the filter matches, so "pilih semua yang cocok" can mean it rather
-// than quietly meaning the twenty on screen. Two hundred call signs is under
-// two kilobytes; the alternative is an endpoint that exists to answer a
-// question this request already knows.
 $stmt_all = $pdo->prepare("SELECT u.id {$fromWhere} ORDER BY u.id");
 $stmt_all->execute($params);
 $allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
 
-// The channels each visible unit holds, default first. One query for the page,
-// not one per row.
 $rowChannels = [];
 if ($users) {
     $ids = array_column($users, 'id');
@@ -288,14 +257,12 @@ if ($admin_role === 'superadmin') {
 $pageTitle = t('usr.heading');
 $pageLede  = t('usr.lede', ['n' => number_format($total)]);
 
-/** Feature switches, in the order they appear on a row. */
 $features = [
     ['enable_maps',      'usr.f_maps',  (bool) ($auth['can_manage_maps'] ?? false)],
     ['enable_p2p',       'usr.f_p2p',   (bool) ($auth['can_manage_p2p'] ?? false)],
     ['enable_ptt_video', 'usr.f_video', (bool) ($auth['can_manage_video'] ?? false)],
 ];
 
-/** The table frame reads these. See partials/table_open.php. */
 $tableId = 'am2-roster';
 $searchPlaceholder = 'usr.search';
 $countKey = 'usr.count';
@@ -314,23 +281,12 @@ $columns = [
 ];
 $pageSize = AM2_USER_PAGE;
 
-/*
- * The page's own verb, handed to the table's toolbar.
- *
- * It was in the shell's header slot, which is where the application's
- * navigation lives -- theme, language, the account. A button that creates a
- * unit is not navigation, and putting it up there meant it sat beside the
- * search box on every page whether or not the page could create anything.
- */
 $tableAction = '<button type="button" data-hs-overlay="#am2-add-unit"'
     . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('usr.add') . '</button>';
 
-// Every verb here is owned by this page: each one needs to ask something
-// first -- which channels, which mode, which feature, are you sure -- so none
-// of them can be declared as a single fixed request on a button.
 $bulkActions = [
     ['verb' => 'duplex',   'key' => 'usr.bulk_duplex',   'toolbar_key' => 'usr.bulk_duplex_label', 'icon' => 'swap',
      'data' => ['hs-overlay' => '#am2-bulk-duplex']],
@@ -347,12 +303,7 @@ include 'partials/shell.php';
 ?>
 
 <?php
-/*
- * One sentence, one place. The shared partial renders it for a browser with no
- * script and the bundle turns it into a toast for everyone else; a failure is
- * the one that waits to be dismissed. An error outranks a success when both
- * are somehow set -- the thing that went wrong is the thing to read.
- */
+
 $noticeText = $error_msg !== '' ? $error_msg : $success_msg;
 $noticeOk   = $error_msg === '';
 include 'partials/notice.php';
@@ -362,10 +313,7 @@ include 'partials/notice.php';
 
             <tbody class="divide-y divide-edge">
                 <?php if (!$users): ?>
-                    <!-- Two empty states, not one. "Nothing yet" and "nothing
-                         matched" are different problems and want different
-                         next steps; the same blank panel for both is a dead
-                         end half the time. -->
+
                     <tr>
                         <td colspan="6" class="px-5 py-16 text-center">
                             <?php $filtered = $search !== '' || $chip !== ''; ?>
@@ -424,21 +372,13 @@ include 'partials/notice.php';
                                                      text-[11px] uppercase tracking-[0.1em] text-bad">TX</span>
                                     </span>
                                     <span class="block truncate text-sm text-ink-muted"><?= htmlspecialchars((string) $u['name']) ?></span>
-                                    <!-- Desktop: the freshness, because channel
-                                         has a column of its own. -->
+
                                     <span data-seen class="hidden font-mono text-[11px] text-ink-subtle lg:block">
                                         <?= $online
                                             ? e('usr.online_now')
                                             : ($seen ? e('usr.last_seen', ['when' => date('d M H:i', $seen)]) : '') ?>
                                     </span>
 
-                                    <!--
-                                        Narrow: one line, and a fault outranks a
-                                        fact on it. A unit with no default
-                                        channel cannot talk to anyone, so it says
-                                        that rather than saying nothing where the
-                                        channel would have been.
-                                    -->
                                     <span data-summary class="block text-xs lg:hidden">
                                         <?php if (!$primary): ?>
                                             <span class="text-warn"><?= e('usr.no_channel_short') ?></span>
@@ -453,20 +393,6 @@ include 'partials/notice.php';
                                     </span>
                                 </span>
 
-                                <!--
-                                    Everything else about this unit is one tap
-                                    away, and the chevron is what says so.
-
-                                    The button is 28px wide inside a row of
-                                    around 356, and it used to be the only way
-                                    in: a thumb had to find the chevron exactly.
-                                    It stretches across the whole cell now
-                                    (data-sheet-row), so anywhere on the row
-                                    opens the sheet -- the chevron stays as the
-                                    thing that says the row is tappable, and the
-                                    text above it keeps its own selection
-                                    because the stretched layer sits behind it.
-                                -->
                                 <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-unit-sheet"
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"
@@ -487,14 +413,7 @@ include 'partials/notice.php';
 
                         <td data-cell="channel" data-label="<?= e('usr.channel') ?>" class="px-4 py-2.5 align-middle">
                             <?php if ($primary): ?>
-                                <!--
-                                    The same chip as FITUR and DUPLEX, in brand:
-                                    a default channel is a live setting, and the
-                                    row now reads as one family of controls
-                                    rather than one column of prose beside three
-                                    of chips. max-w keeps a long channel name
-                                    from widening the column past its share.
-                                -->
+
                                 <span class="am2-chip inline-flex max-w-full items-center border-brand
                                              bg-brand/10 text-brand">
                                     <span class="truncate"><?= htmlspecialchars((string) $primary['display_name']) ?></span>
@@ -505,15 +424,7 @@ include 'partials/notice.php';
                                     </span>
                                 <?php endif; ?>
                             <?php else: ?>
-                                <!--
-                                    The shared chip, not a copy of it. This
-                                    column reproduced the chip's padding and
-                                    type scale by hand and had already drifted
-                                    from the other three. Warning rather than
-                                    brand: a unit with no default channel cannot
-                                    talk to anyone, which is a fault, not a
-                                    setting that happens to be off.
-                                -->
+
                                 <span class="am2-chip inline-flex items-center gap-1.5 border-warn/40
                                              bg-warn/5 text-warn">
                                     <?= am2_icon('alert', 'h-3 w-3') ?><?= e('usr.no_channel') ?>
@@ -574,35 +485,12 @@ include 'partials/notice.php';
                             </button>
                         </td>
 
-                        <!--
-                            Same chip as the three status columns, so the row
-                            reads as one family of controls rather than four
-                            inventions. The colours stay different on purpose:
-                            these are verbs, not states, so they are neutral
-                            until hovered, and delete is the one thing here that
-                            must never be mistaken for a status that happens to
-                            be on.
-                        -->
                         <td data-cell="actions" data-label="<?= e('usr.actions') ?>" class="px-4 py-2.5 text-right align-middle">
                             <span class="inline-flex flex-wrap items-center justify-end gap-2">
                                 <span data-row-result class="w-3 font-mono text-xs"></span>
 
                                 <?php $actCls = 'am2-chip inline-flex items-center border-edge text-ink-muted'; ?>
                                 <?php
-                                /*
-                                 * A link, not a dialogue. The dialogue that
-                                 * used to open here sent the ticked boxes as
-                                 * the unit's complete channel set, and it
-                                 * opened with every box cleared -- so granting
-                                 * one channel revoked the others. Channel
-                                 * access is decided on one screen, which paints
-                                 * what the unit already holds before anyone
-                                 * changes it.
-                                 *
-                                 * `search` rather than a new parameter: that
-                                 * page already filters on it, and an id matches
-                                 * exactly one unit.
-                                 */
                                 ?>
                                 <a href="user_access.php?search=<?= urlencode($uid) ?>"
                                    class="<?= $actCls ?> hover:text-brand">
@@ -636,12 +524,7 @@ include 'partials/notice.php';
 <?php include 'partials/table_close.php'; ?>
 
 <?php
-/*
- * The dialogues. Preline owns open, close, Escape and the focus trap; this
- * page only decides what a dialogue is about before Preline shows it. Nothing
- * here opens an overlay from script -- opening one that way is what left the
- * command palette unclosable once.
- */
+
 $ovl = 'hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto bg-slate-950/50 backdrop-blur-sm';
 $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-card';
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
@@ -656,7 +539,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
 
-<!-- Add a unit. Field names are the contract: the handler reads id, name, password. -->
 <div id="am2-add-unit" role="dialog" tabindex="-1" aria-labelledby="am2-add-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <form method="POST">
@@ -714,14 +596,8 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!--
-    Edit, as a side panel rather than a modal, so the table stays visible and
-    the row being changed is still in view. Below lg it becomes a sheet.
--->
 <div id="am2-edit-unit" role="dialog" tabindex="-1" aria-labelledby="am2-edit-label" class="<?= $ovl ?>">
-    <!-- A card in the middle, like the channel dialogue. A drawer for a
-         two-field form put the controls where nothing else on this page puts
-         them. -->
+
     <div data-am2-panel class="<?= $card ?>">
         <form method="POST">
             <?= am2_csrf_field() ?>
@@ -756,8 +632,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Channels. One dialogue for a single row and for a selection; the heading
-     says which, so the two can never be confused. -->
 <div id="am2-bulk-duplex" role="dialog" tabindex="-1" aria-labelledby="am2-duplex-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -777,7 +651,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Features, for a selection. -->
 <div id="am2-bulk-feature" role="dialog" tabindex="-1" aria-labelledby="am2-feature-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -808,8 +681,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Deleting a selection. The count is the sentence, and it has to be typed:
-     fifty deletions is fifty times the damage of one. -->
 <div id="am2-bulk-delete" role="dialog" tabindex="-1" aria-labelledby="am2-del-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="flex items-start gap-3 border-b border-edge px-5 py-4">
@@ -836,15 +707,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!--
-    The unit sheet.
-
-    It holds no copy of anything: on open, the row's own cells are moved into
-    it and moved back when it closes. One set of toggles, one set of handlers,
-    and a control that works in the sheet is the control that works in the
-    table -- the alternative was rendering every attribute twice for twenty
-    rows and hoping the two stayed in step.
--->
 <div id="am2-unit-sheet" role="dialog" tabindex="-1" aria-labelledby="am2-sheet-label"
      class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
             bg-slate-950/50 backdrop-blur-sm lg:hidden">
@@ -865,14 +727,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             </button>
         </header>
 
-        <!--
-            Label beside the value, on a narrower gutter.
-
-            Stacking the label above cost a whole line per row for four
-            characters of text, and with 44px chips that made the sheet 61% of a
-            390px screen. The label sits back alongside instead, on 4rem rather
-            than 5, and the row is only as tall as the chips it holds.
-        -->
         <div class="divide-y divide-edge">
             <?php foreach ([['channel', 'usr.channel'], ['duplex', 'usr.duplex'],
                             ['features', 'usr.features']] as [$slot, $label]): ?>
@@ -885,11 +739,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             <?php endforeach; ?>
         </div>
 
-        <!--
-            The verbs on one row. Three of them wrapped to two lines in a
-            two-column grid, which added ninety pixels to a sheet reached with
-            one thumb; sharing a single row keeps them all within reach of it.
-        -->
         <footer data-slot="actions"
                 class="flex items-stretch gap-2 border-t border-edge bg-card-muted px-5 py-3
                        pb-[max(0.75rem,env(safe-area-inset-bottom))]
@@ -918,7 +767,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         'failed' => t('usr.failed'),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
-    /** What the next dialogue is about: a row, or the selection. */
     let scope = { ids: [], label: '' };
 
     const setScope = (ids, label) => {
@@ -929,9 +777,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     const scopeLabel = (n) => (n === 1 ? T.one : T.many.replace(':n', String(n)));
 
-    // A bulk verb the table runtime handed back because it needs to ask
-    // something first. Preline opens the dialogue; this only says what it is
-    // about, and must run before the operator can answer.
     table?.addEventListener('am2:bulk', (e) => {
         const { verb, ids } = e.detail;
         setScope(ids, scopeLabel(ids.length));
@@ -946,8 +791,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         if (verb === 'export') exportSelection(ids);
     });
 
-    // A single row. The button carries data-hs-overlay as well, so Preline
-    // opens the dialogue through its own trigger.
     document.querySelectorAll('[data-row-edit]').forEach((btn) => {
         btn.setAttribute('data-hs-overlay', '#am2-edit-unit');
         btn.addEventListener('click', () => {
@@ -1017,7 +860,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             '#am2-bulk-feature'));
     });
 
-    // The count has to be typed. The number is the whole sentence.
     const delInput = $('am2-delete-count');
     delInput?.addEventListener('input', () => {
         document.querySelector('[data-delete-apply]').disabled =
@@ -1027,7 +869,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         applyToScope((id) => ({ delete_user: id, ajax: '1' }), '#am2-bulk-delete');
     });
 
-    /** A native POST, because the answer to it is a file. */
     function exportSelection(ids) {
         const form = document.createElement('form');
         form.method = 'POST';
@@ -1048,14 +889,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         form.remove();
     }
 
-    /*
-     * The unit sheet borrows the row's own cells rather than copying them.
-     *
-     * A copy would mean twenty rows rendering every toggle twice and two sets
-     * of handlers that have to agree forever. Moving the nodes means the
-     * control in the sheet is the control in the table: the same element, the
-     * same state, the same listener. They go home when the sheet closes.
-     */
     const sheet = $('am2-unit-sheet');
     const SLOTS = ['channel', 'duplex', 'features', 'actions'];
     let borrowed = [];
@@ -1086,7 +919,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    // Preline owns the closing; this only puts the furniture back.
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
 
     /*
@@ -1107,10 +939,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     };
     desktop.addEventListener('change', closeSheetAboveLg);
 
-    /**
-     * The roster is live. The same endpoint the shell polls and the map reads,
-     * so the three cannot disagree; paused while the tab is hidden.
-     */
     async function syncPresence() {
         try {
             const res = await fetch('get-users-ajax.php', { headers: { Accept: 'application/json' } });
@@ -1126,8 +954,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                 if (tx && !tx.hidden) tx.classList.add('am2-live');
             });
         } catch {
-            // Leave the server-rendered state alone rather than claim everyone
-            // dropped off because one request failed.
+
         }
     }
 

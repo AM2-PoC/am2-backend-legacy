@@ -11,17 +11,11 @@ $pageLede  = t('logs.lede');
 include 'partials/head.php';
 include 'partials/shell.php';
 
-/** Page size. 20 rows of 44px fills a screen without needing two scrolls. */
 const AM2_LOG_PAGE = 20;
 ?>
 
 <section class="am2-surface flex flex-col rounded-card">
 
-    <!--
-        Filter toolbar. Category first: it narrows the set, and search then
-        works within it. The button ids are the contract this page has always
-        exposed.
-    -->
     <div class="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 lg:px-5">
         <div class="flex gap-1.5" role="group" aria-label="<?= e('logs.filter') ?>">
             <?php foreach ([['ALL', 'btn-all', 'logs.all'], ['PTT', 'btn-ptt', 'logs.ptt'],
@@ -39,17 +33,6 @@ const AM2_LOG_PAGE = 20;
             <?php endforeach; ?>
         </div>
 
-        <!--
-            Search, folded to its icon on a narrow screen.
-
-            Under about 600px the toolbar cannot hold three category buttons, a
-            text field and the freshness readout on one line, and the field was
-            the piece that wrapped and then squeezed to a few characters wide.
-            The icon is the affordance at that width; asking for it gives the
-            field a row of its own rather than a share of a crowded one. The
-            input keeps its id, which is the contract the script below and the
-            table filter are written against.
-        -->
         <div id="logSearch" data-log-search
              class="group relative min-w-0 flex-1 sm:max-w-xs
                     max-[602px]:flex-none max-[602px]:data-[expanded=true]:flex-[1_0_100%]">
@@ -76,7 +59,7 @@ const AM2_LOG_PAGE = 20;
         <div class="ml-auto flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
             <span id="loading-indicator" hidden class="text-brand">•••</span>
             <span id="logStale" hidden class="text-warn"><?= e('rail.stale') ?></span>
-            <!-- Live is a state, so it is shown as one. Paused says why. -->
+
             <span id="logPaused" hidden
                   class="flex items-center gap-1.5 rounded-control bg-warn/10 px-2 py-1 text-warn">
                 <span aria-hidden="true">❙❙</span><span id="logPausedWhy"></span>
@@ -87,13 +70,6 @@ const AM2_LOG_PAGE = 20;
         </div>
     </div>
 
-    <!--
-        The wrapper scrolls in both directions, and the header sticks to it.
-        An overflow container is what sticky positions against, so a thead
-        sticking to the viewport inside an overflow-x wrapper does nothing at
-        all -- it scrolls away with the rest of the table, which is what this
-        did until it was measured.
-    -->
     <div class="max-h-[calc(100dvh-19rem)] overflow-auto">
         <table class="data-table am2-roster am2-roster-log w-full text-sm lg:min-w-[48rem]">
             <thead class="sticky top-0 z-10 bg-card">
@@ -105,7 +81,7 @@ const AM2_LOG_PAGE = 20;
                     <th scope="col" class="px-4 py-2.5 font-normal"><?= e('logs.actor') ?></th>
                 </tr>
             </thead>
-            <!-- id is the contract. -->
+
             <tbody id="log-table-body" class="divide-y divide-edge"></tbody>
         </table>
     </div>
@@ -113,22 +89,10 @@ const AM2_LOG_PAGE = 20;
     <div id="logEmpty" hidden></div>
     <div id="logError" hidden></div>
 
-    <!--
-        Footer. The count is of what is held, not of what exists: the endpoint
-        answers a page at a time, and "load older" asks for the one before it
-        until the server says there is nothing left. It used to stop at the
-        newest 200 and say so, which was honest but was also the whole log
-        anybody could reach.
-    -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-edge px-4 py-3 lg:px-5">
         <p id="logCount" class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle"></p>
         <div class="flex items-center gap-3">
-            <!--
-                The endpoint pages backwards from the oldest row held, so the
-                log is no longer whatever fitted in the first two hundred.
-                Hidden once the server says there is nothing older, rather than
-                left to be pressed for no result.
-            -->
+
             <button type="button" id="logMore" hidden
                     class="am2-chip inline-flex items-center border-edge text-ink-muted
                            hover:text-brand">
@@ -177,8 +141,7 @@ const AM2_LOG_PAGE = 20;
         return rows.filter((r) => {
             if (category !== 'ALL' && r.kategori !== category) return false;
             if (!q) return true;
-            // Searches the fields, not the rendered text: matching on innerText
-            // meant a change of column count silently changed what a search found.
+
             return [r.target, r.pelaksana, r.pelaksana_id, r.aksi]
                 .some((v) => String(v ?? '').toLowerCase().includes(q));
         });
@@ -199,18 +162,10 @@ const AM2_LOG_PAGE = 20;
         if (['RELEASE', 'RELEASE_PRIVATE'].includes(t)) return 'RX';
         if (t === 'LOGIN') return LABEL.login;
         if (t === 'LOGOUT' || t === 'FORCE_LOGOUT') return LABEL.logout;
-        // Admin actions have long names. Truncating them produced
-        // "UPDATE_FEATU", which reads as a rendering fault rather than a label.
+
         return ADM[t] ?? t.slice(0, 10);
     }
 
-    /**
-     * textContent throughout: keterangan is free text an admin typed.
-     *
-     * data-cell is the roster contract the shared CSS reads. Below lg every
-     * cell but the summary is hidden, so the four columns built with this are
-     * the desktop table and nothing else.
-     */
     function cell(name, cls) {
         const td = document.createElement('td');
         td.setAttribute('data-cell', name);
@@ -218,16 +173,6 @@ const AM2_LOG_PAGE = 20;
         return td;
     }
 
-    /**
-     * The card a narrow screen gets.
-     *
-     * An event is read as a sentence -- when, what, to whom, by whom -- not as
-     * four labelled fields, which is what the generic card transform made of it
-     * and why the log was unreadable on a phone. It borrows data-cell="unit"
-     * because that is the one cell the roster CSS reveals below lg; `hidden`
-     * keeps it out of the desktop table, where the four real columns already
-     * say all of this.
-     */
     function summaryCell(r) {
         const td = cell('unit', 'hidden');
 
@@ -245,8 +190,6 @@ const AM2_LOG_PAGE = 20;
         day.textContent = r.tanggal ?? '';
         head.append(b, when, day);
 
-        // The target is the longest string on the row and the reason anyone
-        // opened this page. It wraps rather than truncates.
         const what = document.createElement('span');
         what.className = 'mt-1 block break-words text-sm text-ink';
         what.textContent = r.target ?? '';
@@ -317,18 +260,14 @@ const AM2_LOG_PAGE = 20;
             .replace(':total', set.length);
 
         renderPager(pages);
-        // Offered on the last page, where running out of rows is the thing the
-        // reader has just hit, and only while the server says more exist.
+
         $('logMore').hidden = exhausted() || page < pages;
 
-        // Polling is only honest on page one; anywhere else the numbering moves
-        // under the reader. Say so rather than quietly stopping.
         const browsing = page > 1;
         $('logPaused').hidden = !browsing;
         $('logPausedWhy').textContent = browsing ? LABEL.pausedBrowsing : '';
     }
 
-    /** Preline pagination markup: https://preline.co/docs/pagination.html */
     function renderPager(pages) {
         pager.textContent = '';
         if (pages <= 1) return;
@@ -349,8 +288,7 @@ const AM2_LOG_PAGE = 20;
             return b;
         };
         pager.appendChild(mk('‹', page - 1, { disabled: page === 1, label: 'prev' }));
-        // A window around the current page: 200 rows at 20 a page is ten
-        // buttons, which is already more than anyone counts.
+
         const start = Math.max(1, Math.min(page - 2, pages - 4));
         for (let i = start; i <= Math.min(pages, start + 4); i++) {
             pager.appendChild(mk(String(i), i, { current: i === page }));
@@ -358,33 +296,19 @@ const AM2_LOG_PAGE = 20;
         pager.appendChild(mk('›', page + 1, { disabled: page === pages, label: 'next' }));
     }
 
-    /*
-     * One cursor per category, because the endpoint limits the two separately.
-     *
-     * Sharing a watermark between them is what dropped rows: whichever table
-     * was busier decided where the shared mark landed, and the quieter one's
-     * rows underneath it were never asked for again. `more` is the server
-     * saying its answer filled the page, so there is certainly another one.
-     */
     const cursor = {
         ptt: { newest: '', oldest: '', more: true },
         adm: { newest: '', oldest: '', more: true },
     };
     let loadingOlder = false;
 
-    /** Nothing older left to ask for in either table. */
     const exhausted = () => !cursor.ptt.more && !cursor.adm.more;
 
-    // Plain comparison, not localeCompare: collation can ignore or reorder
-    // punctuation, and these are timestamps whose byte order is already their
-    // time order.
     const byTimeDesc = (a, b) => (String(a.raw_time) < String(b.raw_time) ? 1 : -1);
 
     function absorb(data, { append = false, polling = false } = {}) {
         const incoming = [...(data.ptt ?? []), ...(data.adm ?? [])];
-        // Merge by id within category: a poll near a second boundary can
-        // legitimately return a row already held, and a duplicated line in an
-        // audit trail reads as the action having happened twice.
+
         const key = (r) => `${r.kategori}:${r.id}`;
         const seen = new Set(rows.map(key));
         const fresh = incoming.filter((r) => !seen.has(key(r)));
@@ -394,14 +318,7 @@ const AM2_LOG_PAGE = 20;
             const b = data.cursor?.[cat];
             if (!b) continue;
             if (b.newest) cursor[cat].newest = b.newest;
-            /*
-             * The paging cursor belongs to the downward queries -- the first
-             * load and each "older" page. A poll returns rows newer than
-             * everything held, so letting it move `oldest` would drag the mark
-             * forward and skip the history in between, and letting it set
-             * `more` would report on the wrong direction entirely: a poll that
-             * fills its page says nothing about how deep the log goes.
-             */
+
             if (!polling) {
                 if (b.oldest) cursor[cat].oldest = b.oldest;
                 cursor[cat].more = !!b.more;
@@ -413,9 +330,7 @@ const AM2_LOG_PAGE = 20;
     async function tick() {
         $('loading-indicator').hidden = false;
         try {
-            // With a watermark the endpoint answers only what is newer, and
-            // answers 204 when that is nothing -- which is most polls. One
-            // watermark per category: see `cursor`.
+
             const polling = !!(cursor.ptt.newest || cursor.adm.newest);
             const qs = polling
                 ? '?since_ptt=' + encodeURIComponent(cursor.ptt.newest)
@@ -423,9 +338,7 @@ const AM2_LOG_PAGE = 20;
                 : '';
             const res = await fetch('fetch_logs.php' + qs, { headers: { Accept: 'application/json' } });
             if (res.status === 204) {
-                // Nothing new. The rendered rows are still correct, so they are
-                // left exactly as they are -- re-rendering would throw away the
-                // reader's place for no new information.
+
                 $('logStale').hidden = true;
                 $('logError').hidden = true;
                 stamp();
@@ -441,20 +354,12 @@ const AM2_LOG_PAGE = 20;
             $('logStale').hidden = true;
             $('logError').hidden = true;
             if (added) { faster(); render(); } else { slower(); }
-            /*
-             * A poll that filled its page has left a backlog behind it. Come
-             * back at once rather than waiting out the interval: the window is
-             * oldest-first, so the rows still owed are the newer ones, and a
-             * tab that was hidden for an hour would otherwise trickle them in
-             * a hundred at a time. A short delay rather than an immediate call:
-             * the watermark always advances so this terminates, but a tight
-             * loop against a busy table is not a thing to leave to that.
-             */
+
             if (polling && (data.cursor?.ptt?.more || data.cursor?.adm?.more)) {
                 setTimeout(tick, 250);
             }
         } catch {
-            // Keep the rows on screen but say they are no longer current.
+
             $('logStale').hidden = false;
         } finally {
             $('loading-indicator').hidden = true;
@@ -466,21 +371,13 @@ const AM2_LOG_PAGE = 20;
             { hour12: false, timeZone: 'Asia/Jakarta' });
     }
 
-    /** One page older, on demand. This is what makes the log deeper than 200. */
     async function loadOlder() {
         if (loadingOlder || exhausted()) return;
         if (!cursor.ptt.oldest && !cursor.adm.oldest) return;
         loadingOlder = true;
         $('loading-indicator').hidden = false;
         try {
-            /*
-             * Each category asks from its own tail. Sharing one `before` across
-             * both is what skipped rows: when they filled their pages and ended
-             * at different times, the older tail became the next request and
-             * everything the other table held between the two was never asked
-             * for again. A category with nothing left sends no bound and is
-             * simply not queried further.
-             */
+
             const qs = new URLSearchParams();
             if (cursor.ptt.more && cursor.ptt.oldest) qs.set('before_ptt', cursor.ptt.oldest);
             if (cursor.adm.more && cursor.adm.oldest) qs.set('before_adm', cursor.adm.oldest);
@@ -529,16 +426,6 @@ const AM2_LOG_PAGE = 20;
         render();
     });
 
-    /*
-     * Opening and closing the folded search.
-     *
-     * data-expanded is the whole state; the two elements are shown and hidden
-     * from it in CSS, so nothing here has to know which classes are involved.
-     * It collapses again only when the field is empty -- a field holding a term
-     * that is filtering the table must stay visible, or the operator is left
-     * looking at a filtered log with no sign of what filtered it. Wide screens
-     * never read the attribute, so leaving it set costs nothing there.
-     */
     const searchBox = $('logSearch');
     const searchToggle = $('logSearchToggle');
     const searchInput = $('logSearchInput');
@@ -568,16 +455,6 @@ const AM2_LOG_PAGE = 20;
         searchToggle.focus();
     });
 
-    /*
-     * How often to ask.
-     *
-     * Four seconds is right while something is happening -- a dispatch log is
-     * read as it moves -- and wasteful at three in the morning, when the same
-     * interval bought 900 requests an hour to be told nothing had changed. So
-     * four seconds is the floor, not the rate: every quiet poll backs off a
-     * step, and the first new row snaps it back. An event still surfaces within
-     * four seconds of the one before it, which is what the number was for.
-     */
     const MIN_EVERY = 4000;
     const MAX_EVERY = 30000;
     let every = MIN_EVERY, timer = null;
@@ -587,24 +464,14 @@ const AM2_LOG_PAGE = 20;
 
     function schedule() {
         clearTimeout(timer);
-        // A chain of timeouts rather than an interval: the delay is decided
-        // after each response, and an interval cannot change its own period.
+
         timer = setTimeout(async () => {
-            // Only on page one. Anywhere else the numbering moves under the
-            // reader -- see render(), which says so on screen.
+
             if (page === 1 && !document.hidden) await tick();
             schedule();
         }, every);
     }
 
-    /*
-     * A hidden tab asks for nothing.
-     *
-     * This console is left open on several screens all shift, and a tab nobody
-     * is looking at was polling at exactly the same rate as the one in front of
-     * the operator. Coming back asks immediately, so the first thing seen is
-     * current rather than however old the last answer was.
-     */
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) { clearTimeout(timer); return; }
         faster();
@@ -612,8 +479,6 @@ const AM2_LOG_PAGE = 20;
         schedule();
     });
 
-    // Older rows, on request. The endpoint pages backwards from the oldest row
-    // held, so this is what makes the log deeper than the newest 200 events.
     $('logMore')?.addEventListener('click', loadOlder);
 
     tick();

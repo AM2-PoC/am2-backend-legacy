@@ -33,7 +33,7 @@
  */
 
 if (!function_exists('am2_refuse_direct_request')) {
-    /** Return 404 when a library file is requested as an HTTP endpoint. */
+
     function am2_refuse_direct_request(string $file): void
     {
         if (PHP_SAPI === 'cli') {

@@ -1,13 +1,3 @@
-// The api_*.php layer and the authorization behaviour of the whole panel.
-//
-// The second describe block used to be headed KNOWN BROKEN and recorded
-// behaviour that was wrong: an anonymous caller naming its own admin_id and
-// role was served. It carried the instruction that the security release had to
-// change it deliberately. This is that change -- made after the hole was
-// exploited on production on 2026-09-04, which is a more expensive way to
-// learn that a test recording a hole is not the same as a test closing one.
-//
-// Every call here now carries a session, because there is no other way in.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -87,17 +77,6 @@ describe('api_*.php response contracts (consumed by the Admin Native app)', () =
 
 describe('CLOSED — the hole that was exploited on 2026-09-04', () => {
     test('an anonymous caller claiming superadmin is refused', async () => {
-        /*
-         * This test used to assert status 200 and a full body, under the
-         * heading KNOWN BROKEN, with the note "tightening the API credential
-         * will make this fail; when it does, update this test".
-         *
-         * It was not tightened in time. At 11:35:58 on 2026-09-04 a caller in
-         * exactly this position -- no session, no key, naming its own role --
-         * was answered 200 by api_admin_panel.php and deleted an admin row,
-         * which cascaded to 186 units, 191 channel memberships and 114,514 log
-         * rows.
-         */
         const res = await get('/api_dashboard_stats.php?admin_id=1&role=superadmin', null);
         assert.equal(res.status, 401, 'an unauthenticated caller is still served');
     });
@@ -142,10 +121,6 @@ describe('node relay routes', () => {
     });
 
     test('authentication is decided before the parameters are', async () => {
-        // Both routes used to answer 400 for a missing parameter. Behind the
-        // key the answer is 401 and the body says only "Unauthorized": the
-        // parameter check is real and still there, but it is not reachable
-        // without a credential, so it cannot be used to probe the API's shape.
         assert.equal((await fetch(`${NODE_URL}/api/admin/sync-channels`)).status, 401);
         const r = await fetch(`${NODE_URL}/api/admin/refresh-branch-permissions`, {
             method: 'POST',
@@ -187,10 +162,6 @@ describe('node relay routes', () => {
 });
 
 describe('tenant scoping, corrected in the security release', () => {
-    // These four assertions replace entries that used to sit in the KNOWN
-    // BROKEN block above. They are kept, not deleted, so a regression reads as
-    // a failure rather than as silence.
-
     test('the roster is scoped by the session, not by the query string', async () => {
         // Was: "omitting admin_id narrows to nothing". admin_id is no longer
         // read at all, so the property worth asserting is the stronger one --
@@ -226,17 +197,6 @@ describe('tenant scoping, corrected in the security release', () => {
     });
 
     test('the dashboard chart scopes to the branch', async () => {
-        /*
-         * This used to assert branch < global, which says "some other branch
-         * must also be busy" rather than "the filter works". It went red the
-         * day ct_branch_a happened to own every event in the window: 430 out
-         * of 430, filter working perfectly, test failing.
-         *
-         * The property is that each answer matches what the database holds for
-         * that scope. A small tolerance covers rows arriving between the two
-         * reads -- staging takes real traffic, and the alternative is a test
-         * that fails whenever a unit keys the mic at the wrong moment.
-         */
         const branchId = ctAdminId('ct_branch_a');
         // Scope now follows the session, so the two answers come from two
         // sessions rather than from two different query strings.

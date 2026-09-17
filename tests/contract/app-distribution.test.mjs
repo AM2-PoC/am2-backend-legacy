@@ -19,20 +19,6 @@ import { asSuper, BASE, HOST, SRC } from './helpers.mjs';
 let sup;
 before(async () => { sup = await asSuper(); });
 
-/**
- * What the endpoint serves to a handset asking for an update.
- *
- * With a session, because that is the only way it is ever asked: the check is a
- * button on SettingsActivity, and that screen is reached through the navigation
- * drawer in BaseActivity -- after signing in. This helper used to call
- * anonymously, which stopped being a faithful simulation when api_*.php began
- * requiring a session; it then reported "the endpoint refuses to serve" for
- * every version, including correct ones.
- *
- * A handset that cannot sign in is not cut off from recovery: the manifest and
- * the APK are plain files under /update/, served by the web server without
- * touching PHP, so neither passes through this guard.
- */
 async function advertised() {
     const res = await fetch(`${BASE}/api_settings.php?action=check_update`, {
         headers: { Host: HOST, Cookie: sup },

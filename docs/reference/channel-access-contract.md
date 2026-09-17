@@ -4,23 +4,7 @@ Reference for `WebAdmin/channel_access.php`, the only place `user_channels` is w
 
 ## Why there is a single writer
 
-Three pages used to write membership rows, and all three disagreed:
-
-| Surface | `permission` | `is_default` | `users.last_channel_id` |
-|---|---|---|---|
-| `user_access.php` | from the form | from the form | updated |
-| `users.php` | hardcoded `FULL DUPLEX` | element 0 of the JSON array | never touched |
-| `channels.php` | hardcoded `FULL DUPLEX` | hardcoded `false` | never touched |
-
-Two consequences reached the field:
-
-- A unit configured receive-only on the Channel Access page **gained transmit
-  rights** the next time anyone opened its channel list from the Units page.
-- Editing a channel's roster **stripped the default channel from every unit on
-  it**, while `users.last_channel_id` went on naming that channel.
-
-A unit whose `last_channel_id` names a channel it does not hold, or holds
-without a default, cannot sign in.
+Membership updates must preserve permission, default-channel, and `users.last_channel_id` consistency across every caller.
 
 ## Invariants
 
@@ -77,18 +61,3 @@ authorization, so every surface checks:
 - `am2_first_foreign_channel()` — the channel was created by this admin or
   delegated to it through `admin_managed_channels`, which is the same pair of
   conditions `channels.php` lists the page with. `channels` has no `admin_id`.
-
-## Known state in production
-
-Measured on the staging copy, 3 Aug 2026, 217 units:
-
-| Condition | Units |
-|---|---|
-| `last_channel_id` names a channel the unit does not hold | 1 |
-| Holds channels but has no default | 1 |
-| More than one default | 0 |
-| Holds no channels at all | 9 |
-
-The first two are the corruption this service prevents. The nine are a
-different problem — those units were never given a channel — and the service
-does not fix them; they need an operator to assign one.

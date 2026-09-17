@@ -39,13 +39,7 @@ try {
                     FROM public.admin_activity_logs a
                     LEFT JOIN public.admin adm ON a.admin_id = adm.id
                     ORDER BY a.waktu DESC LIMIT 50";
-        /*
-         * Rendered server-side, so this endpoint's shape does not move.
-         *
-         * The Admin Native log screen reads `target` as a finished string and
-         * `aksi` as the code it groups by. Both are exactly what they were:
-         * the structure went into the database, not into this response.
-         */
+
         $adm = $pdo->query($sql_adm)->fetchAll(PDO::FETCH_ASSOC);
         foreach ($adm as &$row) {
             $row['target'] = am2_log_text($row['event_code'], $row['event_params'], $row['keterangan']);

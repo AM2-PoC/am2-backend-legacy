@@ -24,8 +24,7 @@ const broadcastChannelUpdate = async (userId) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return true;
 
     return serializeChannelState(ws, async () => {
-        // Invalidate in-flight decisions only after earlier room work has
-        // drained. That makes join and sync one ordered state machine.
+
         const previousRxOnly = ws.is_rx_only;
         ws.channelJoinGeneration += 1;
         ws.transmitAuthGeneration += 1;
@@ -92,8 +91,7 @@ const broadcastChannelUpdate = async (userId) => {
         }
         return true;
     }).catch(async (error) => {
-        // Unknown membership is no membership: stop routing immediately. The
-        // handset can reconnect and re-read durable access after recovery.
+
         const room = ws.currentRoom;
         const entry = ws.sessionUser ? `${ws.sessionUser.id}:${ws.sessionUser.name}` : null;
         if (room) {
@@ -117,7 +115,7 @@ const broadcastChannelUpdate = async (userId) => {
             ]);
             for (const result of cleanup) {
                 if (result.status === 'rejected') {
-                    console.error("❌ Failed channel-state cleanup:", result.reason?.message || result.reason);
+                    console.error("Failed channel-state cleanup:", result.reason?.message || result.reason);
                 }
             }
         }
@@ -179,8 +177,6 @@ const stopChannelVideo = async (ws, channelSlug) => {
         });
     }
 
-    // Unconditionally, because the mirror can outlive memory. Live authority
-    // is already revoked and viewers already know before Redis can fail.
     await redisClient.sRem(`video:${channelSlug}`, entry);
     return wasStreaming;
 };
@@ -221,7 +217,7 @@ const broadcastUsersInChannel = async (channelSlug) => {
             });
         }
     } catch (err) {
-        console.error("❌ Broadcast User Error:", err.message);
+        console.error("Broadcast User Error:", err.message);
     }
 };
 
@@ -237,7 +233,7 @@ const updateUserLocation = async (userId, lat, lng, acc, address = "") => {
             WHERE id = $5
         `, [lat, lng, acc || 0, address, uid]);
     } catch (err) {
-        console.error("❌ Update Location Error:", err.message);
+        console.error("Update Location Error:", err.message);
     }
 };
 
@@ -250,7 +246,7 @@ const broadcastChannelNameChange = async (channelId) => {
         const failed = updates.find((result) => result.status === 'rejected');
         if (failed) throw failed.reason;
     } catch (err) {
-        console.error("❌ Global Channel Sync Error:", err.message);
+        console.error("Global Channel Sync Error:", err.message);
     }
 };
 

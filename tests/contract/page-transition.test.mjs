@@ -1,16 +1,3 @@
-/**
- * The page transition, and the blink it used to have.
- *
- * Navigation here is a full PHP page load, so the only moving part is the View
- * Transitions API plus whatever the deferred bundle does after first paint.
- * Both are read as text: there is no browser in this suite, and the failure
- * being guarded against -- content painting, then being hidden, then fading
- * back in -- is a property of when the opacity is set, not of what it renders.
- *
- * Credential-free by construction. It must never import
- * tests/contract/helpers.mjs, which reads a protected environment file at
- * module scope.
- */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

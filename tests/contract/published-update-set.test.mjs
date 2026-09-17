@@ -1,14 +1,3 @@
-// The published update manifest must be validated before it is advertised.
-//
-// The endpoint used to read admin_version.json and echo whatever it found:
-// a version string, a URL, and a changelog. Nothing checked that the file it
-// pointed at had that digest, that the APK was signed by the approved key, or
-// that the version advanced. The validator written for exactly that job sat
-// unused and unimplemented -- see #60.
-//
-// Source-contract rather than HTTP: the live suite for this endpoint needs the
-// panel running and a session, so it lives on the VPS. These assertions run in
-// CI, where the regression would otherwise land unseen.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

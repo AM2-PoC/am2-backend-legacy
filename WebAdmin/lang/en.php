@@ -1,11 +1,5 @@
 <?php
-/**
- * English catalogue. Only keys that differ from the default need to be here;
- * anything missing falls back to the Indonesian entry.
- *
- * Keys are English and namespaced by area, matching lang/id.php.
- *
- */
+
 return [
     'track.zoom_in' => 'Zoom in',
     'track.zoom_out' => 'Zoom out',
@@ -266,11 +260,7 @@ return [
     'adm.locked_super' => 'A superadmin account cannot be deleted',
     'adm.locked_master' => 'The system master account cannot be deleted',
     'adm.locked_self' => 'The account you are signed in as cannot be deleted',
-    // The number, not just a refusal. On 2026-09-04 one admin deletion took
-    // 186 units with it by cascade, and that number never appeared on
-    // anyone's screen before or after.
-    // The database change is saved; what went unconfirmed is the relay
-    // closing the socket that is open right now.
+
     'msg.relay_unconfirmed' => 'Saved, but the relay did not confirm. The unit may still be connected — check Livetrack.',
     'adm.locked_owns_units' => 'This admin still owns :count unit(s). Move or remove them first.',
     'adm.username' => 'Username',
@@ -298,7 +288,7 @@ return [
     'adm.bulk_delete_title' => 'Delete :n admin accounts?',
     'adm.bulk_delete_prompt' => 'Every member under :who loses access. Type :n to continue',
     'adm.bulk_done' => ':ok succeeded, :failed failed',
-    // Navigation
+
     'nav.home'            => 'Home',
     'nav.management'      => 'Management',
     'nav.monitoring'      => 'Monitoring',
@@ -309,17 +299,7 @@ return [
     'nav.channels'        => 'Channels',
     'nav.channel_access'  => 'Channel Access',
     'nav.live_track'      => 'Live Track',
-    /*
-     * The result of a write.
-     *
-     * These were written straight into four pages in Indonesian and never went
-     * through t(), so an English interface answered an action in Indonesian.
-     * The banner made that easy to miss; the toast does not.
-     *
-     * Values arrive as placeholders rather than by concatenation -- the pieces
-     * of a sentence do not sit in the same order in both languages -- and
-     * ':detail' carries whatever am2_safe_error() decided is safe to show.
-     */
+
     'msg.user_added'             => 'Unit :name (User: :id) registered.',
     'msg.user_updated'           => 'Unit :id updated.',
     'msg.user_delete_failed'     => 'Could not delete the unit.',
@@ -356,7 +336,6 @@ return [
     'nav.open_menu'       => 'Open navigation menu',
     'nav.logout'          => 'Logout',
 
-    // Login
     'login.heading' => 'Sign in to the console',
     'login.lede' => 'Use a registered administrator account.',
     'login.connecting' => 'Connecting…',
@@ -377,10 +356,9 @@ return [
     'login.error_disabled'   => 'This account has been disabled.',
     'login.error_throttled'  => 'Too many failed attempts. Try again in a few minutes.',
 
-    // Preferences
     'pref.language'   => 'Language',
     'pref.theme'      => 'Theme',
-    // Settings
+
     'set.heading'               => 'Configuration',
     'set.lede'                  => 'Account, licence and data backups.',
     'set.stat_admins'           => 'Branch admins',
@@ -475,7 +453,7 @@ return [
     'set.err_server_store'      => 'The server could not store the temporary file.',
     'set.err_upload'            => 'The upload failed.',
     'set.err_denied'            => 'Access denied.',
-    // Tables
+
     'tbl.rows'                  => ':n rows',
     'tbl.select_page'           => 'Select everything on this page',
     'tbl.items_selected'        => 'items selected',
@@ -490,7 +468,7 @@ return [
     'tbl.pagination'            => 'Pages',
     'tbl.prev'                  => 'Previous',
     'tbl.next'                  => 'Next',
-    // Roster table
+
     'usr.count'                  => ':n units',
     'usr.chip_all'               => 'All',
     'usr.chip_online'            => 'Online',

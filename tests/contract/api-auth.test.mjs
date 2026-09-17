@@ -1,11 +1,3 @@
-// The credential, against the running staging host.
-//
-// This file used to read the auth-mode variable out of the env file and assert
-// whatever that value implied -- 401 when it said one thing, 200 when it said
-// another. A test that agrees with the configuration cannot disagree with it,
-// so it stayed green through the whole period production was serving
-// unauthenticated writes. The expectations are now fixed: an anonymous caller
-// is refused, and there is no value anybody can set that changes it.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

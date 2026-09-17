@@ -1,33 +1,8 @@
-/**
- * The roster tables: selection, keyboard, optimistic toggles, bulk dispatch.
- *
- * One implementation for users.php, channels.php and user_access.php. A page
- * supplies markup and data attributes; it writes no JavaScript of its own, so
- * a behaviour fixed here is fixed on all three.
- *
- * The rule this module exists to enforce: a control that changes state writes
- * its own DOM. The bug it replaces bound `:class` and `x-text` to
- * `$el.dataset`, which Alpine does not observe -- the write reached the
- * database and the screen never moved until a reload.
- *
- * Markup contract
- *   [data-am2-table]            the wrapper, with data-total = rows matching the filter
- *   tr[data-row-id]             one row
- *   [data-select]               row checkbox
- *   [data-select-page]          header checkbox: this page only
- *   [data-select-all-matching]  the offer to extend to the whole filter
- *   [data-bulk-bar]             the floating bar
- *   [data-bulk-count]           where the count is written
- *   [data-bulk="<verb>"]        a verb; simple ones declare their own request
- *   [data-row-result]           where a row's outcome is written
- *   [data-toggle]               a control that flips one field
- */
 
 import { playExit } from './am2-exit.js';
 
 const csrf = () => document.querySelector('input[name="_csrf"]')?.value ?? '';
 
-/** Paint a toggle. Both appearances live on the element, so either can be put back. */
 function paintToggle(btn, on) {
     btn.dataset.on = on ? '1' : '0';
     btn.className = `${btn.dataset.baseClass || ''} ${on ? btn.dataset.onClass : btn.dataset.offClass}`.trim();
@@ -52,14 +27,10 @@ async function postFields(fields) {
     return res.json();
 }
 
-/** The request a toggle or a simple bulk verb declares on itself. */
 function fieldsFor(el, rowId, on) {
     const fields = { [el.dataset.endpoint]: '1', u_id: rowId };
     if (el.dataset.field) fields.feature = el.dataset.field;
-    // Three shapes, in order of how specific they are. A bulk verb declares
-    // one fixed value; a toggle declares the value for each of its two states
-    // -- duplex is 'FULL DUPLEX' and 'HALF DUPLEX', not true and false, and
-    // sending the boolean got the change refused and rolled straight back.
+
     if (el.dataset.value !== undefined) {
         fields.val = el.dataset.value;
     } else if (el.dataset.onValue !== undefined) {
@@ -74,8 +45,6 @@ async function runToggle(btn) {
     if (btn.getAttribute('aria-busy') === 'true') return;
     const was = btn.dataset.on === '1';
 
-    // Paint first: an interface that waits for the network to answer before
-    // acknowledging a click reads as broken on any connection worth the name.
     paintToggle(btn, !was);
     btn.setAttribute('aria-busy', 'true');
 
@@ -98,10 +67,6 @@ function setupTable(table) {
 
     const rows = () => [...table.querySelectorAll('tr[data-row-id]')];
 
-    // The bar is a sibling of the table, not a descendant: it is fixed to the
-    // viewport so it can stay with the operator while the rows scroll. Looking
-    // for it inside the table found nothing, and the selection highlighted
-    // rows while the bar stayed hidden and the count stayed at zero.
     const bar = document.querySelector('[data-bulk-bar]');
     const offer = document.querySelector('[data-select-all-matching]');
     const total = () => Number(table.dataset.total || 0);
@@ -118,13 +83,11 @@ function setupTable(table) {
         const n = selected();
         const count = document.querySelector('[data-bulk-count]');
         if (count) count.textContent = String(n);
-        // Leaving is animated, so `hidden` is set after the bar has travelled
-        // rather than the frame the last row is unticked -- otherwise it
-        // disappears mid-slide and only the arrival is ever seen.
+
         if (bar) {
             if (n === 0 && !bar.hidden) {
                 playExit(bar).then(() => {
-                    // Re-checked: a row can be ticked again while it is leaving.
+
                     if (selected() === 0) bar.hidden = true;
                 });
             } else if (n > 0) {
@@ -139,9 +102,6 @@ function setupTable(table) {
             pageBox.indeterminate = !state.all && onPage > 0 && onPage < rows().length;
         }
 
-        // Only worth offering when the page is full and the filter holds more:
-        // otherwise "select all matching" and "select this page" are the same
-        // act, and offering both invites the belief that they differ.
         if (offer) {
             offer.hidden = state.all
                 || rows().length === 0
@@ -169,8 +129,6 @@ function setupTable(table) {
             const list = rows();
             const index = list.indexOf(tr);
 
-            // Shift extends from the last row touched, which is the gesture a
-            // file manager taught everyone.
             if (e.shiftKey && state.anchor !== null) {
                 const [from, to] = [state.anchor, index].sort((a, b) => a - b);
                 state.all = false;
@@ -201,18 +159,12 @@ function setupTable(table) {
      * nothing about the three that failed.
      */
     async function runBulk(btn) {
-        // "All matching" has to mean all matching, not the twenty on screen --
-        // that confusion is the whole reason the offer is a separate act. The
-        // page renders every matching id into data-all-ids; two hundred call
-        // signs is under two kilobytes, and the alternative is an endpoint
-        // that exists only to answer a question the page already knows.
+
         const ids = state.all
             ? (table.dataset.allIds || '').split(' ').filter(Boolean)
             : [...state.ids];
         if (!ids.length) return;
 
-        // A verb the page owns -- a channel picker, a typed confirmation, an
-        // export -- says so by not declaring an endpoint.
         if (!btn.dataset.endpoint) {
             table.dispatchEvent(new CustomEvent('am2:bulk', {
                 bubbles: true,
@@ -244,8 +196,6 @@ function setupTable(table) {
             .replace(':failed', String(failed.length));
         window.AM2?.toast(say, failed.length === 0);
 
-        // The rows the page is showing are now stale in one field; reload
-        // rather than guess which cells moved.
         if (ok > 0 && btn.dataset.reload !== 'false') {
             setTimeout(() => window.location.reload(), failed.length ? 2500 : 900);
         }
@@ -282,10 +232,6 @@ function setupTable(table) {
         btn.addEventListener('click', () => runBulk(btn));
     });
 
-    /**
-     * Keyboard. A dispatcher's hands are on the keyboard, and a table that can
-     * only be worked with a mouse is a table they will not use under load.
-     */
     let cursor = -1;
     function focusRow(next) {
         const list = rows();
@@ -329,14 +275,6 @@ function setupTable(table) {
     paint();
 }
 
-/*
- * Toggles are delegated from the document, not from the table.
- *
- * The unit sheet borrows a row's cells, so the control moves out of the table
- * while it is open -- and a listener bound to the table stops hearing it. The
- * button carries everything the request needs, so the table was never the
- * right place to listen from. Bound once, whatever the page holds.
- */
 let toggleBound = false;
 
 export function initTables(root = document) {

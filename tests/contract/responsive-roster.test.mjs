@@ -131,8 +131,8 @@ test('activity log rows carry data-cell metadata, the contract the roster CSS re
 });
 
 test('a narrow activity log row shows time, event, detail and actor in one visible summary cell', () => {
-    const summary = logsPhp.match(/data-cell'?,?\s*'unit'|data-cell="unit"/);
-    assert.ok(summary, 'no data-cell="unit" summary, so every log cell is hidden below lg');
+    assert.match(logsPhp, /cell\(['"]unit['"],\s*['"]hidden['"]\)/,
+        'no unit summary, so every log cell is hidden below lg');
 
     for (const field of ['jam', 'tanggal', 'target', 'pelaksana', 'pelaksana_id']) {
         assert.ok(new RegExp(`summary[\\s\\S]{0,900}r\\.${field}\\b`).test(logsPhp)

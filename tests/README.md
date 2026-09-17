@@ -29,40 +29,11 @@ existing rows and refuses to run against any database but `am2_staging`.
 | `api-and-authz.test.mjs` | The ten `api_*.php` response shapes, the node routes, tenant scoping |
 | `source-and-markup.test.mjs` | Form field dispatch names, websocket message types, `data-label` coverage, the id families queried by prefix selector, leaflet divIcon classes |
 
-## Two things that will bite you
+## Test execution
 
-**Requests go to `http://127.0.0.1:8081` with a `Host` header, not to the public
-hostname.** `staging-webadmin` is proxied by Cloudflare, which caches HTML. Point
-the suite at the public name and it will happily report green against a cached
-copy of code you already deleted. Only the assertion about the nginx deny rules
-uses the public URL, because the edge is what it is testing.
-
-**mod_php caches compiled bytecode.** With `opcache.revalidate_freq=2`, a file
-edited less than two seconds ago is still served from the old bytecode. If you
-change something and the suite does not react, wait two seconds or
-`systemctl reload apache2` before concluding the test is broken.
-
-## The `KNOWN BROKEN` block
-
-`api-and-authz.test.mjs` has a describe block that asserts behaviour which is
-wrong: unauthenticated access to `api_*.php`, a tenant filter that does nothing,
-a search that is a SQL syntax error, mutations with no ownership check.
-
-Those tests exist so the security release has to change them **on purpose**, and
-so nothing else changes them quietly in the meantime. When that release lands,
-update the assertions. Do not delete them.
-
-## Proving the suite works
-
-A suite that has never failed is not evidence of anything:
-
-```bash
-sudo tests/mutation-check.sh
-```
-
-Breaks one thing at a time in the staging tree, checks a test notices, and puts
-it back. Every mutation should be reported as `caught`. Anything reported as
-`ESCAPED` is a gap — the first version of this suite escaped three of ten.
+- Requests use the staging loopback endpoint with an explicit `Host` header; public Cloudflare endpoints may serve cached HTML.
+- Protocol tests run serially because they share fixture identities and sessions.
+- `app_login` authenticates a socket; tests must send `join_channel` before asserting media relay.
 
 ## Protocol harness
 
@@ -71,12 +42,7 @@ sudo infra/scripts/ptt-harness-fixtures.sh   # once
 ./tests/run-protocol.sh
 ```
 
-Serially, and that is not optional. The wrapper deliberately uses Node's
-`--test-concurrency=1`: every protocol file signs in as the same fixture units,
-and `app_login` treats a second sign-in for a unit as a new device by terminating
-the first socket. Run in parallel, the files knock each other's clients offline
-and failures land on whichever file lost the race instead of on the behavior
-that broke.
+Run the wrapper serially; all protocol files share fixture identities, and concurrent logins invalidate earlier sockets.
 
 Two WebSocket clients sign in, join a channel, key the mic, relay a real audio
 frame and release it, against the staging relay on 5001. This is the surface

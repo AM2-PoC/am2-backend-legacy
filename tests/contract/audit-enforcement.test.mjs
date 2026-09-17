@@ -208,12 +208,6 @@ test('rewriting a unit\'s channel membership is recorded, from either surface', 
     for (const file of ['users.php', 'api_users.php', 'user_access.php', 'api_user_access.php']) {
         const src = code(file);
         for (const m of src.matchAll(/am2_set_user_channels\(/g)) {
-            /*
-             * To the settlement, not a fixed number of characters. The window
-             * used to be 1600 and a comment added above the log write pushed
-             * am2_log() past it -- a test that fails when prose grows is a test
-             * that will be silenced rather than believed.
-             */
             const end = src.indexOf('am2_audit_complete()', m.index);
             const after = src.slice(m.index, end === -1 ? m.index + 2400 : end);
             assert.match(after, /am2_log\(/,
@@ -254,17 +248,6 @@ function owedRegions(src) {
 }
 
 test('the audit event is never the one thing behind a condition', () => {
-    /*
-     * This is the shape that broke api_user_access.php: the mutating helper
-     * declares the debt unconditionally, the handler wraps only the am2_log()
-     * in `if ($current_admin_id)`, and am2_audit_complete() then throws for an
-     * API-key caller that sends no admin id -- rolling back an access update
-     * that used to succeed.
-     *
-     * The membership test above cannot catch it: its 1600-character window
-     * merely requires am2_log( to appear somewhere, which a conditional call
-     * does. What matters is not presence but reachability.
-     */
     const offenders = [];
     for (const file of readdirSync(WEBADMIN).filter((f) => f.endsWith('.php'))) {
         for (const region of owedRegions(read(file))) {

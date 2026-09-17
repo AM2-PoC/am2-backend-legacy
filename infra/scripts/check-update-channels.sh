@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Is each distribution channel telling the truth?
-#
-# Every contract test in this repo targets staging -- tests/contract/helpers.mjs
-# defaults CT_HOST to staging-webadmin.am2-poc.com -- so production was never
-# checked by anything. Its client channel has advertised version_code 1 with a
-# download_url that 404s since 3 May, and its admin manifest has held three
-# empty strings since 16 August. Both survived every green build.
-#
-# The assertions there are consistency-shaped too: they compare the panel card
-# against the endpoint, so two things that are consistently empty agree and pass.
-#
-# This asks a different question, and asks it of every channel:
-#
-#   empty            no manifest at all. Honest. Nothing is published here.
-#   nothing offered  a manifest that names a release and offers no download.
-#                    Also honest: "this is what you have, there is nothing here",
-#                    which is the truthful state of a channel that cannot ship.
-#   coherent         manifest parses, names an artefact that exists, digest matches.
-#   INCOHERENT   manifest exists and lies -- malformed, or names an artefact
-#                that is not there. This is the state that must never be quiet.
-#
-# An intentionally empty channel is not a failure. A channel that advertises
-# something it cannot deliver is, and that is the only thing this exits non-zero
-# for -- so it can run on a timer without crying wolf.
 
 usage() { echo "Usage: $0 [--quiet]" >&2; }
 quiet=
@@ -52,9 +28,6 @@ except Exception as err:
     print("INCOHERENT   does not parse: " + str(err))
     raise SystemExit(2)
 
-# Two shapes are in the field: the current manifests use update_url, and the
-# 3 May production one still uses download_url. Naming the wrong key would make
-# this report the wrong reason for a real breakage.
 url = ''
 for key in (url_key, 'download_url', 'update_url'):
     candidate = str(manifest.get(key) or '').strip()
@@ -62,14 +35,10 @@ for key in (url_key, 'download_url', 'update_url'):
         url = candidate
         break
 
-# A manifest with no version name is malformed: nothing can act on it.
 if not str(manifest.get('version_name') or '').strip():
     print("INCOHERENT   version_name is empty; nothing can act on this")
     raise SystemExit(2)
 
-# A manifest that names a release and offers no download is honest. It says
-# "this is what you have and there is nothing here", which is exactly the
-# truthful state of a channel that has nothing it can ship. Not a failure.
 if not url:
     print(f"nothing offered  {manifest['version_name']}  (no download url)")
     raise SystemExit(0)

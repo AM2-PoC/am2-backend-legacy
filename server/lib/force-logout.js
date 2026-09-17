@@ -38,7 +38,7 @@ async function forceLogoutUser(pool, userId) {
         try {
             await client.query('ROLLBACK');
         } catch (rollbackError) {
-            console.error('❌ Force logout rollback error:', rollbackError.message);
+            console.error('Force logout rollback error:', rollbackError.message);
         }
         throw error;
     } finally {

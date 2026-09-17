@@ -31,16 +31,6 @@ const server = read('server/server.js');
 const config = read('WebAdmin/config.php');
 
 test('the relay has no setting that stops it refusing', () => {
-    /*
-     * The control used to be a mode: one value recorded an unauthenticated
-     * admin call and ran it, the other refused. Defaulting it to the safe value
-     * was not enough, because the panel read a variable of the same name and
-     * production had it set to the permissive one -- so a single word in one
-     * env file disarmed a system nobody was looking at.
-     *
-     * Asserted by absence. Forbidding the value that hurt only ever forbids one
-     * spelling; forbidding the mechanism forbids the next one too.
-     */
     const middleware = server.slice(server.indexOf("app.use('/api/admin'"));
     const guard = middleware.slice(0, middleware.indexOf('\n});'));
     assert.doesNotMatch(guard, /process\.env/,

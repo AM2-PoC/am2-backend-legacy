@@ -95,20 +95,6 @@ if [[ $ready -ne 1 ]]; then
     exit 1
 fi
 
-# A release must not go live ahead of its own schema.
-#
-# 80ab744 shipped the device-token login and 005_device_tokens.sql together,
-# and nothing tied them: whether the table existed came down to somebody
-# remembering apply-migrations.sh. A relay that starts without it does not
-# complain -- the issuing call is wrapped in a try that logs and continues,
-# and the verifying call leaves through the login catch-all, which the handset
-# is told is a database timeout.
-#
-# This asks the database the relay itself will use, with the relay's own
-# credentials, because a superuser seeing the row proves nothing about the
-# account that has to read it. And it runs here rather than at ExecStartPre:
-# refusing to start has already stopped the release that was working, while
-# refusing to pass leaves it serving until the migration is run.
 (
     set -a
     # shellcheck disable=SC1090
@@ -128,9 +114,6 @@ if (carried.length === 0) {
     process.exit(0);
 }
 
-// After the early exit, not before: a release that carries no migrations has
-// nothing to ask the database, and the restart-safety fixture is exactly such
-// a release -- a bare entrypoint with no node_modules to require pg from.
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -159,8 +142,7 @@ pool.query('SELECT filename FROM public.schema_migrations')
         process.exit(0);
     })
     .catch((err) => {
-        // A missing schema_migrations table is itself the answer: nothing has
-        // ever been applied here.
+
         console.error(`cannot read the applied migrations from ${process.env.DB_NAME}: ${err.message}`);
         console.error('  run: infra/scripts/apply-migrations.sh --db ' + process.env.DB_NAME);
         process.exit(1);

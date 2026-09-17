@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
         --manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; manifest=$2; shift 2 ;;
         --checksums) [[ $# -ge 2 ]] || { usage; exit 64; }; checksums=$2; shift 2 ;;
         --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 

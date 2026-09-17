@@ -3,8 +3,6 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-// am2_session_boot() is a no-op when a session is already open, so the
-// status check it used to carry lives inside it now.
 require_once __DIR__ . '/session_boot.php';
 am2_session_boot();
 am2_csrf_require();
@@ -12,9 +10,8 @@ am2_csrf_require();
 $method = $_SERVER['REQUEST_METHOD'];
 
 
-
 if ($method == 'GET') {
-    // Identity is resolved by the server; see am2_api_identity().
+
     [$admin_id, $admin_role] = am2_api_identity();
     $is_superadmin = ($admin_role === 'superadmin');
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -63,7 +60,7 @@ if ($method == 'GET') {
 }
 elseif ($method == 'POST') {
     $action = $_POST['action'] ?? '';
-    // Identity is resolved by the server; see am2_api_identity().
+
     [$current_admin_id, $current_admin_role] = am2_api_identity();
 
     if ($action == 'force_logout') {
@@ -142,19 +139,6 @@ elseif ($method == 'POST') {
                 $logParams = ['name' => $target_name, 'via' => 'mobile'];
             }
 
-            /*
-             * Unconditional, for the same reason the force_logout path above is.
-             *
-             * am2_set_user_channels() declares the audit debt where the change is
-             * made, so it is owed on every call. Skipping the write when the
-             * caller had no admin id left the debt unpaid, and
-             * am2_audit_complete() -- correctly -- threw, which the catch below
-             * turned into a rollback: an access update that used to work now
-             * failed for exactly the caller least able to report it. An API-key
-             * caller that sends no admin_id is a real path (am2_api_identity()
-             * returns null for it), not a hypothetical one. am2_log() stores an
-             * absent id as null, so the row says what is true.
-             */
             am2_log($pdo, $current_admin_id, 'UPDATE_ACCESS', $logCode, $logParams,
                     'users', (string) $user_id);
 

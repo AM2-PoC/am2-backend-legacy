@@ -1,16 +1,3 @@
-/**
- * Changing the theme.
- *
- * It used to be deliberately instant: every transition on the page was
- * suppressed for a frame, because a few hundred controls each easing to a new
- * colour on its own schedule reads as a sweep rather than a switch. That
- * reasoning still holds for per-element transitions -- the answer is not to
- * re-enable them, but to animate the page as one picture.
- *
- * Credential-free by construction. It must never import
- * tests/contract/helpers.mjs, which reads a protected environment file at
- * module scope.
- */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -65,13 +65,6 @@ test('no contract test is invisible to the offline selector', () => {
     );
 });
 
-// The disqualifier used to be a text match, so a fixture string -- or a comment
-// -- that spelled a URL scheme excluded a suite that needs no network at all.
-// promotion-gate.test.mjs stubs curl and named a fixture origin with a scheme,
-// and every production promotion gate test in it went unrun in CI, including a
-// rehearsal assertion that therefore could not fail. (This comment first named
-// the scheme itself and disqualified this file the same way.) These suites are
-// offline by construction and must stay selected.
 const MUST_RUN_OFFLINE = [
     // Listed for the record; this entry cannot fail if the guard drops out,
     // which is why source-checks.yml also refuses a selection without it.

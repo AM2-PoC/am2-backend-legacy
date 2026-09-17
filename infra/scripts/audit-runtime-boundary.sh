@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --deploy-gate) mode=deploy-gate; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) usage; exit 64 ;;
+
   esac
 done
 
@@ -30,10 +30,6 @@ PRODUCTION_UNIT=${AM2_RUNTIME_PRODUCTION_UNIT:-am2-api}
 STAGING_UNIT=${AM2_RUNTIME_STAGING_UNIT:-am2-api-staging}
 RELAY_DIGEST=${AM2_RUNTIME_RELAY_DIGEST:-$LIBEXEC_DIR/relay-source-digest.sh}
 
-# The VPS checkout is an explicit temporary operator exception only. It is not
-# accepted as a runtime path and this audit never treats it as deploy input.
-# Task 14 removes this exception after an approved non-production destination
-# exists for chat-assisted coding and GitHub work.
 
 failures=()
 fail() { failures+=("$*"); }
@@ -81,9 +77,6 @@ PY
 release_identity production "$CURRENT" "$PRODUCTION_UNIT"
 release_identity staging "$STAGING_CURRENT" "$STAGING_UNIT"
 
-# Source based deployment tooling is forbidden in privileged deployment scopes.
-# Search only controlled service/cron/libexec configuration, never user docs or
-# the approved transitional operator checkout.
 for root in "$SYSTEMD_DIR" "$CRON_DIR" "$LIBEXEC_DIR"; do
   [[ -d $root ]] || continue
   if grep -RIlE --exclude=audit-runtime-boundary.sh 'git (clone|fetch|pull|checkout)|npm (ci|install)|build-release\.sh' "$root" 2>/dev/null | grep -q .; then
@@ -107,6 +100,4 @@ if (( ${#failures[@]} )); then
   exit 1
 fi
 
-# Healthy timer runs intentionally emit no output. A deploy gate performs this
-# same fresh check, so a stale prior timer result cannot inhibit deployment.
 exit 0

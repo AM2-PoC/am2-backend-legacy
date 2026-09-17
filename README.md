@@ -1,37 +1,31 @@
 # AM2 Backend
 
-**Internal repository:** Not intended for public use or external contributions. Repository access and use require authorization by the repository owner.
+Backend services for the AM2 push-to-talk platform.
 
-Backend runtime for the AM2 push-to-talk platform: Node.js HTTP/WebSocket relay, PHP WebAdmin, PostgreSQL, and Redis.
+## Components
 
-## Repository map
+- `server/`: Node.js HTTP/WebSocket relay and protocol logic
+- `WebAdmin/`: PHP operator console
+- `infra/`: development, packaging, deployment, and host configuration
+- `tests/`: unit, contract, protocol, and release checks
+- `docs/`: developer and operator documentation
 
-- `server/` — HTTP/WebSocket relay and protocol logic.
-- `WebAdmin/` — operator-facing PHP application.
-- `infra/` — immutable artifact, deployment, host-security, and local DEV definitions.
-- `tests/` — unit, contract, and protocol verification.
-- `docs/` — current tutorials, how-to guides, reference, and explanation.
+## Local development
 
-## Development and delivery
-
-Use only an isolated development machine or ephemeral CI runner. Never use the production host for dependency installation, builds, tests, Docker DEV, or artifact assembly.
+Use an isolated development machine or ephemeral CI runner.
 
 ```bash
 cp .env.example .env
 docker compose up -d --wait
 ```
 
-Start with [`docs/tutorial/your-first-local-am2.md`](docs/tutorial/your-first-local-am2.md). Deployment uses CI-built immutable artifacts; see [`docs/how-to/deploy-and-roll-back.md`](docs/how-to/deploy-and-roll-back.md).
+See [Your first local AM2](docs/tutorial/your-first-local-am2.md) for setup and [Deploy and roll back](docs/how-to/deploy-and-roll-back.md) for delivery procedures.
 
-## Verification
+## Tests
 
 ```bash
 node --test tests/unit/*.test.mjs
 docker compose config
 ```
 
-GitHub Actions is the clean-room gate for dependencies, generated assets, protocol integration, and release-artifact verification.
-
-## Security
-
-This repository does not provide a public vulnerability-reporting channel. Authorized personnel must use the security process assigned to their role. Do not include credentials, personal data, production data, or exploit details in tickets, logs, or pull requests.
+Additional checks run in GitHub Actions. Do not run dependency installation, builds, tests, or artifact assembly on a runtime host.

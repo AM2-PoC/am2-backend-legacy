@@ -9,35 +9,11 @@ include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 
-<!--
-    The map breaks out of <main>'s gutter: a tracking view is the page, not a
-    card on it. The negative margins undo the shell's padding exactly, which is
-    cheaper and less brittle than giving the shell a second layout mode for one
-    page.
--->
-<!--
-    The map is a card like every other page's, sitting in the shell's gutter
-    rather than bleeding past it. Full-bleed made this page the only one whose
-    content did not line up with the rest, which is what it looked like.
-    overflow-hidden is what makes Leaflet respect the rounded corners.
--->
-<section class="am2-surface relative h-[calc(100dvh-11rem)] overflow-hidden rounded-card">
+<section class="am2-surface relative h-[calc(100dvh-11rem)] overflow-hidden rounded-card" data-speaking-marker="speaking-marker">
 
-    <!-- Leaflet writes into this. The id is the contract. -->
     <div id="map" class="absolute inset-0 z-0"></div>
 
-    <!--
-        Map controls. Leaflet's own zoom buttons were switched off and nothing
-        replaced them, so the only way to move around was a scroll wheel -- and
-        nothing at all on a touch screen except pinching. These are the console's
-        own, in the console's tokens.
-    -->
-    <!--
-        Left, under the transmitting badge. They used to sit top-right and step
-        aside when the panel collapsed -- straight underneath the handle that
-        brings the panel back, which covered the zoom-in button entirely. The
-        left edge belongs to nothing else, so nothing can land on top of them.
-    -->
+
     <div class="absolute left-4 top-16 z-30 flex flex-col gap-1.5" id="mapControls">
         <button type="button" id="mapZoomIn" aria-label="<?= e('track.zoom_in') ?>"
                 title="<?= e('track.zoom_in') ?>"
@@ -69,10 +45,6 @@ include 'partials/shell.php';
         </button>
     </div>
 
-    <!--
-        Legend. The marker colours mean something, and colour alone does not
-        carry meaning for everyone looking at this screen.
-    -->
     <div class="absolute bottom-4 left-4 z-20 hidden flex-wrap items-center gap-3 rounded-control
                 border border-edge bg-card/95 px-3 py-2 font-mono text-[11px] uppercase
                 tracking-[0.12em] text-ink-subtle shadow-pop backdrop-blur-sm lg:flex">
@@ -90,7 +62,6 @@ include 'partials/shell.php';
         <?= e('track.feed_disconnected') ?>
     </div>
 
-    <!-- Transmitting right now. The one pulse in the application. -->
     <div id="tx-indicator" hidden
          class="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-control
                 border border-bad/40 bg-card/95 px-3 py-2 font-mono text-[11px]
@@ -99,7 +70,6 @@ include 'partials/shell.php';
         <?= e('track.transmitting') ?>
     </div>
 
-    <!-- Brings the panel back on desktop once it has been collapsed. -->
     <button type="button" id="panelRestore" hidden
             class="absolute right-4 top-4 z-30 hidden h-11 items-center gap-2 rounded-control
                    border border-edge bg-card px-3 font-mono text-[11px] uppercase
@@ -110,7 +80,6 @@ include 'partials/shell.php';
         <span id="panelRestoreCount">0</span>
     </button>
 
-    <!-- Opens the panel below lg, where it is a sheet rather than a column. -->
     <button type="button" id="panelToggle" aria-expanded="false" aria-controls="unitPanel"
             class="absolute bottom-4 right-4 z-30 flex h-12 items-center gap-2 rounded-card
                    border border-edge bg-card px-4 font-mono text-[11px] uppercase
@@ -121,11 +90,6 @@ include 'partials/shell.php';
               class="rounded-control bg-brand/15 px-1.5 py-0.5 text-brand">0</span>
     </button>
 
-    <!--
-        Unit panel. A floating card from lg up; below that it is a sheet that
-        rises from the bottom, because a side panel on a phone leaves the map
-        too narrow to be a map.
-    -->
     <aside id="unitPanel" aria-label="<?= e('track.units') ?>"
            class="am2-surface absolute inset-x-3 bottom-3 z-20 flex max-h-[70%] translate-y-[110%]
                   flex-col rounded-card transition-transform
@@ -144,8 +108,7 @@ include 'partials/shell.php';
                 <span id="count-fresh" class="text-ok">0</span>
                 <span class="text-ink-subtle"><?= e('track.fresh_locations') ?></span>
             </span>
-            <!-- Desktop gets the same escape the phone has: the panel covers a
-                 third of the map, and sometimes the map is the point. -->
+
             <button type="button" id="panelCollapse"
                     class="hidden h-8 w-8 place-items-center rounded-control text-ink-subtle
                            transition-colors duration-[var(--duration-micro)]
@@ -166,7 +129,6 @@ include 'partials/shell.php';
                           focus:ring-2 focus:ring-brand/25">
         </div>
 
-        <!-- id is the contract; rows are built as DOM, never as markup. -->
         <div id="unitList" class="flex-1 overflow-y-auto"></div>
     </aside>
 </section>
@@ -178,7 +140,6 @@ include 'partials/shell.php';
 import {
     accuracyQuality, classifyUnit, formatAccuracy, formatAge, hasValidLocation, summarizeUnits,
 } from <?= json_encode(am2_asset_url('./asset/js/livetrack-model.js')) ?>;
-// Stable class hook produced by classifyUnit(): speaking-marker.
 
 (() => {
     'use strict';
@@ -204,27 +165,8 @@ import {
     const map = L.map('map', { zoomControl: false, attributionControl: true })
                  .setView([-2.5, 118], 5);
 
-    // Attribution was switched off. Every provider here requires it, so this is
-    // a licence term rather than a design choice -- it is small and in the
-    // corner, but it is there.
     map.attributionControl.setPrefix('');
 
-    /*
-     * The basemap follows the theme, and costs nothing to draw.
-     *
-     * It was CARTO's Positron and Dark Matter, chosen because the two share a
-     * structure so switching between them changes the palette and nothing else.
-     * CARTO has since put its free basemaps behind an API key, and the way it
-     * enforces that is the reason this went unnoticed for weeks: the tile still
-     * returns 200 with a valid PNG, and the words "API KEY REQUIRED" are
-     * painted diagonally across the image. No status code and no content type
-     * says anything is wrong. The map simply reads as vandalised.
-     *
-     * Esri's Light Gray and Dark Gray Canvas are the same pair of properties --
-     * one structure, two palettes -- served without a key. They are a deliberate
-     * basemap-under-data design, which is what this page is: markers and tracks
-     * over terrain that must not compete with them.
-     */
     const BASEMAP = {
         light: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
         dark: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -233,13 +175,6 @@ import {
                + '&mdash; Esri, HERE, Garmin, &copy; '
                + '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-    /*
-     * Esri's canvases stop at zoom 16; past that the service answers with a
-     * blank tile rather than a 404. Leaflet upscales level 16 instead, but only
-     * because it is told where the real levels end -- without this, zooming in
-     * to find one unit empties the map, which is exactly when an operator does
-     * it.
-     */
     const MAX_NATIVE_ZOOM = 16;
 
     let tiles = null;
@@ -254,8 +189,6 @@ import {
     }
     paintBasemap();
 
-    // The theme toggle lives in the shell and only writes the attribute, so
-    // the map watches the attribute rather than the button.
     new MutationObserver(paintBasemap).observe(document.documentElement,
         { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -266,11 +199,8 @@ import {
     let syncInFlight = false;
     const FETCH_TIMEOUT_MS = 2500;
 
-    /** Zoom at which unit names stop colliding. */
     const LABEL_ZOOM = 9;
 
-    /** Leaflet's divIcon takes a string, so the one place markup is built from
-     *  a unit's name escapes it. The name is admin-entered free text. */
     const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
         (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -293,7 +223,7 @@ import {
             updateMarkers();
             renderList();
         } catch {
-            // The last known positions stay on the map rather than vanishing.
+
             feedFailures += 1;
             if (feedFailures >= 2) {
                 $('feed-status').textContent = FEED_DISCONNECTED;
@@ -322,11 +252,6 @@ import {
             const isSpeaking = state.speaking;
             if (isSpeaking) txFound = true;
 
-            // Class names are the contract am2-ui.css styles the markers with.
-            // Below zoom 9 the labels collide into an unreadable stack -- a
-            // dozen units over Java is one smear of overlapping names. The dot
-            // still says where each unit is, and the name is a click or a
-            // glance at the panel away.
             const showLabel = map.getZoom() >= LABEL_ZOOM;
             const markerDescription = `${TYPES[state.entityType]}, ${FRESHNESS_LABELS[state.freshness]}`;
             const icon = L.divIcon({
@@ -335,7 +260,7 @@ import {
                     + (showLabel ? `<div class="marker-label">${esc(user.name)}</div>` : '')
                     + '<div class="pulse-dot" aria-hidden="true"></div>',
                 iconSize: showLabel ? [100, 40] : [16, 16],
-                // Dot centre is y=32: 40px icon minus 8px radius.
+
                 iconAnchor: showLabel ? [50, 32] : [8, 8],
             });
 
@@ -418,8 +343,6 @@ import {
             const state = classifyUnit(u);
             const speaking = state.speaking;
 
-            // A button, so it is reachable by keyboard. The old rows were divs
-            // with an inline onclick and could only be used with a mouse.
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'unit-item flex w-full items-center gap-3 border-b border-edge px-4 '
@@ -480,7 +403,7 @@ import {
     }
 
     function gotoUnit(lat, lng, id) {
-        // Below lg the panel covers the map, so it gets out of the way.
+
         if (window.innerWidth <= 992) closePanel();
         map.flyTo([lat, lng], 17, { duration: 1.2 });
         setTimeout(() => { if (markers[id]) markers[id].openPopup(); }, 1300);
@@ -500,7 +423,6 @@ import {
         panel.classList.contains('translate-y-[110%]') ? openPanel() : closePanel();
     });
 
-    // Redraw the markers when crossing the label threshold.
     let lastLabelState = null;
     map.on('zoomend', () => {
         const now = map.getZoom() >= LABEL_ZOOM;
@@ -513,16 +435,12 @@ import {
     $('mapZoomIn').addEventListener('click', () => map.zoomIn());
     $('mapZoomOut').addEventListener('click', () => map.zoomOut());
     $('mapFit').addEventListener('click', () => {
-        // Every unit on screen at once, which is the question this page is
-        // usually opened to answer.
+
         const pts = Object.values(markers).map((m) => m.getLatLng());
         if (!pts.length) return;
         map.flyToBounds(L.latLngBounds(pts).pad(0.25), { duration: 0.8 });
     });
 
-    // Desktop collapse. Translating rather than hiding keeps Motion's job and
-    // Preline's separate -- this panel is not an overlay, so nothing else owns
-    // its visibility.
     const collapse = $('panelCollapse');
     const restore = $('panelRestore');
     const setCollapsed = (on) => {

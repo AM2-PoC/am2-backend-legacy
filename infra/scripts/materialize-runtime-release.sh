@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
             esac
             shift 2
             ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -101,7 +101,7 @@ PYTHON
 )
 mkdir "$temporary/payload"
 tar --no-same-owner -xzf "$snapshot/am2-backend-runtime.tar.gz" -C "$temporary/payload"
-# The wrapper stays 0700 even when tar restores the payload root mode.
+
 payload="$temporary/payload"
 python3 - "$snapshot/artifact-manifest.json" "$payload/.artifact-identity.json" <<'PYTHON'
 import json

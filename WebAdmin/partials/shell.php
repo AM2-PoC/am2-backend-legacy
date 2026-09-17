@@ -27,8 +27,7 @@ $navGroups = [
     'nav.home' => [
         ['dashboard.php', 'nav.dashboard', 'gauge', 0],
     ],
-    // Channel access is the same subject as users seen from another angle, so
-    // it sits under it. A fourth item is a child when it is indented.
+
     'nav.management' => [
         ['users.php', 'nav.users', 'users', 0],
         ['user_access.php', 'nav.channel_access', 'key', 1],
@@ -46,7 +45,6 @@ if ($isSuper) {
     $navGroups['nav.administrator'] = [['admin_panel.php', 'nav.admin_panel', 'shield', 0]];
 }
 
-/** Which group holds the page being viewed, so it opens and the rest do not. */
 $activeGroup = null;
 foreach ($navGroups as $groupKey => $items) {
     foreach ($items as [$href]) {
@@ -56,10 +54,6 @@ foreach ($navGroups as $groupKey => $items) {
     }
 }
 
-/**
- * Inline SVG rather than an icon font: one fewer network dependency, and one
- * family throughout — these are Lucide outlines at 1.75 stroke.
- */
 function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
 {
     $paths = [
@@ -118,8 +112,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
               border-e border-edge bg-card
               <?= $rail ? 'lg:w-[72px]' : 'lg:w-[272px]' ?>">
 
-    <!-- Brand. In the rail only the mark survives; the wordmark is the first
-         thing to go because the mark alone already identifies the product. -->
     <div class="flex h-16 shrink-0 items-center gap-3 border-b border-edge px-4">
         <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt=""
              width="36" height="36"
@@ -136,11 +128,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 aria-label="<?= e('nav.close_menu') ?>"><?= am2_icon('close') ?></button>
     </div>
 
-    <!--
-        Navigation. Preline accordion group, always-open so several sections can
-        stay expanded at once; the section holding the current page is the one
-        that starts open.
-    -->
     <nav class="hs-accordion-group flex-1 overflow-y-auto overflow-x-hidden px-3 py-4"
          data-hs-accordion-always-open>
         <ul class="flex flex-col gap-1">
@@ -174,22 +161,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                         <?php foreach ($items as [$href, $labelKey, $icon, $depth]):
                             $on = $currentPage === $href; ?>
                             <li>
-                                <!--
-                                    Active state carries four signals, not one:
-                                    the indicator bar, the background, the icon
-                                    colour and the label weight. Colour alone
-                                    fails for anyone who cannot separate these
-                                    two hues.
-                                -->
-                                <!--
-                                    aria-label, because in rail mode the label
-                                    beside the icon is display:none -- which
-                                    takes it out of the accessibility tree as
-                                    well as off the screen, leaving the link
-                                    announced as its icon and nothing else. The
-                                    visible text stays; this only guarantees a
-                                    name when that text is hidden.
-                                -->
+
                                 <a href="<?= $href ?>" <?= $on ? 'aria-current="page"' : '' ?>
                                    aria-label="<?= e($labelKey) ?>"
                                    class="am2-nav-item group relative flex h-11 items-center gap-3
@@ -219,52 +191,17 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         </ul>
     </nav>
 
-    <!--
-        The foot.
-
-        The account menu used to live here and moved to the header, which left
-        a column of nothing under the navigation. It carries kawung now -- one
-        of the oldest Javanese batik patterns, and the one that is purely
-        geometric, so it survives being drawn as a hairline and sits beside the
-        console's own grid without fighting it.
-
-        Decoration, and only that. It was briefly a relay dot and a build stamp;
-        the space reads better as pattern, and the relay readout it duplicated
-        is still in the strip under the header where it always was.
-
-        The pattern is a mask rather than an image, so its colour is the same
-        token the console ground uses -- it follows the theme and disappears
-        under prefers-contrast: more without a second rule.
-    -->
     <div class="am2-rail-batik shrink" aria-hidden="true"></div>
 </aside>
 
-<!--
-    The ground the console sits on is painted on the body itself -- see the
-    `body` background rule in tailwind.src.css. It began as a layer here and
-    drew nothing: body paints an opaque background of its own, and a layer
-    behind that is buried, while a layer in front of it covers the console. As
-    a background there is no painting order to argue with, and no overlay,
-    dropdown or dialogue has to be lifted past it.
--->
 
-<!--
-    Content column. Preline navbar composition:
-    https://preline.co/docs/navbar.html
--->
 <div id="am2-content"
      class="transition-[padding] duration-[var(--duration-drawer)] ease-enter
             <?= $rail ? 'lg:ps-[72px]' : 'lg:ps-[272px]' ?>">
 
     <header class="sticky top-0 z-40 border-b border-edge bg-card/90 backdrop-blur-md">
         <div class="flex h-16 items-center gap-3 px-4 lg:px-6">
-            <!--
-                One control in one place: left of the page title, at every
-                width, with the same icon. Below lg it opens the drawer through
-                Preline's own trigger; from lg up it collapses the rail. Two
-                elements because the drawer must be opened by Preline rather
-                than from script.
-            -->
+
             <button type="button" data-hs-overlay="#am2-sidebar"
                     class="grid h-11 w-11 shrink-0 place-items-center rounded-control text-ink-muted
                            transition-colors duration-[var(--duration-micro)]
@@ -292,7 +229,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <?php endif; ?>
             </div>
 
-            <!-- Contextual action slot: the page's primary verb, next to its title. -->
             <?php if (!empty($pageActions)): ?>
                 <div class="flex shrink-0 items-center gap-2"><?= $pageActions ?></div>
             <?php endif; ?>
@@ -314,12 +250,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="am2-palette"
                     aria-label="<?= e('search.placeholder') ?>"><?= am2_icon('search', 'h-4 w-4') ?></button>
 
-            <!--
-                Language and theme sit in the bar, not behind a menu. They are
-                switched often enough that a click to reveal them is a click
-                too many, and hiding a theme control behind an account menu
-                makes it look like an account setting.
-            -->
             <div class="hidden items-center gap-1.5 sm:flex" role="group"
                  aria-label="<?= e('pref.language') ?>">
                 <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
@@ -345,7 +275,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                 <span data-theme-icon="dark" class="<?= am2_theme() === 'dark' ? '' : 'hidden' ?>"><?= am2_icon('sun', 'h-4 w-4') ?></span>
             </button>
 
-            <!-- Who is signed in, and the way out. Preline dropdown. -->
             <div class="hs-dropdown relative [--placement:bottom-right]">
                 <button id="am2-account" type="button"
                         class="hs-dropdown-toggle flex h-11 items-center gap-2 rounded-control
@@ -377,8 +306,7 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
                             rounded-panel border border-edge bg-card p-1.5 shadow-pop
                             transition-opacity duration-[var(--duration-pop)]"
                      role="menu" aria-orientation="vertical" aria-labelledby="am2-account">
-                    <!-- Language repeats here for narrow screens, where the bar
-                         has no room for it. -->
+
                     <div class="flex gap-1 px-1 pb-1.5 sm:hidden">
                         <?php foreach (AM2_LOCALES as $loc): $onLoc = am2_locale() === $loc; ?>
                             <a href="?lang=<?= $loc ?>" role="menuitem"
@@ -405,12 +333,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
             </div>
         </div>
 
-        <!--
-            Operational status. Full width and on every page, because an
-            operator should not have to navigate to the dashboard to find out
-            whether the relay is up. aria-live is polite: it reports when the
-            numbers change without interrupting whatever is being read.
-        -->
         <div id="am2-status" aria-live="polite"
              class="flex items-center gap-4 overflow-x-auto border-t border-edge
                     bg-card-muted/60 px-4 py-2 font-mono text-[11px] uppercase

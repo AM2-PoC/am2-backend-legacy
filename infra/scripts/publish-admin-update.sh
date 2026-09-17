@@ -22,17 +22,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# The package and the URL are one decision, not two.
-#
-# This accepted only the production pair, so the staging channel had no
-# validating publisher at all and was fed by copying files into place by hand --
-# which is how it came to advertise a manifest whose version_name was empty, and
-# how a stale APK once sat behind a fresh manifest.
-#
-# Naming them as a pair per lane is what makes crossing lanes impossible: a
-# staging APK cannot satisfy the production URL and a production APK cannot
-# satisfy the staging one, so neither can be published to the other's channel
-# even by passing the wrong --update-dir.
 case "$lane" in
     production)
         expect_package=com.am2.admin

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Fixtures: dedicated accounts in am2_staging for the contract tests.
-# Never touches existing rows. Idempotent. Staging database only.
+
 set -euo pipefail
 
 DB=am2_staging
 ENVF=/etc/am2/contract-test.env
 
-# Refuse to run against production, however this script is invoked.
 [ "$DB" = "am2_staging" ] || { echo "REFUSING: not the staging database"; exit 1; }
 
 if [ -f "$ENVF" ]; then
@@ -18,7 +16,7 @@ else
     CT_BRANCH_B_PASS=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
     umask 077
     cat > "$ENVF" <<EOF
-# Contract-test accounts. Staging only. Not in git.
+
 CT_BASE_URL=https://staging-webadmin.am2-poc.com
 CT_NODE_URL=http://127.0.0.1:5001
 CT_SUPER_USER=ct_super
@@ -33,9 +31,6 @@ EOF
     echo "== kredensial baru ditulis ke $ENVF (mode 600)"
 fi
 
-# P must be exported into php's environment. Passing "P=..." as an argument
-# instead leaves getenv('P') false, which silently hashes the empty string and
-# makes every one of these accounts accept a blank password.
 hash_pw() { P="$1" php -r 'echo password_hash(getenv("P"), PASSWORD_BCRYPT);'; }
 
 H_SUPER=$(hash_pw "$CT_SUPER_PASS")
@@ -45,7 +40,7 @@ H_B=$(hash_pw "$CT_BRANCH_B_PASS")
 for h in "$H_SUPER" "$H_A" "$H_B"; do
     case "$h" in \$2y\$*) ;; *) echo "REFUSING: bad bcrypt hash"; exit 1;; esac
 done
-# Never let a blank password verify against what we are about to store.
+
 H="$H_SUPER" php -r 'exit(password_verify("", getenv("H")) ? 1 : 0);' \
     || { echo "REFUSING: hash accepts an empty password"; exit 1; }
 

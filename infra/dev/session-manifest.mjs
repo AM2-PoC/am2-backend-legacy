@@ -20,7 +20,6 @@ const RESOURCE_TYPES = new Set([
     'docker_volume', 'docker_network', 'process', 'emulator_avd', 'build_cache',
 ]);
 
-/** The only class a cleanup handler may destroy. */
 const DISPOSABLE = 'disposable';
 const RETENTION_CLASSES = new Set([DISPOSABLE, 'release', 'source', 'evidence', 'shared']);
 
@@ -70,7 +69,6 @@ const SECRET_VALUES = [
 const MANIFEST_FIELDS = new Set(['session_id', 'session_root', 'created_at', 'resources']);
 const RESOURCE_FIELDS = new Set(['type', 'id', 'owner_session', 'ownership_proof', 'retention']);
 
-/** True when `candidate` is strictly inside `root`, by resolved path rather than by prefix. */
 function containedIn(root, candidate) {
     const base = resolve(root);
     const target = resolve(candidate);
@@ -81,13 +79,6 @@ function looksSecret(value) {
     return typeof value === 'string' && SECRET_VALUES.some((pattern) => pattern.test(value));
 }
 
-/**
- * Checks a manifest against every boundary.
- *
- * @returns {{ok: boolean, errors: string[]}} `ok` only when nothing was wrong;
- * the errors are all of them, not the first, so a broken manifest is fixed in
- * one pass rather than one refusal at a time.
- */
 export function validateManifest(manifest) {
     const errors = [];
     const refuse = (message) => errors.push(message);
@@ -156,13 +147,6 @@ export function validateManifest(manifest) {
     return { ok: errors.length === 0, errors };
 }
 
-/**
- * The resources a cleanup handler may act on.
- *
- * Returns nothing at all for a manifest that did not validate, and nothing for
- * any resource that is not disposable. A caller cannot reach a protected
- * resource by ignoring a return value it did not check.
- */
 export function cleanupTargets(manifest) {
     if (!validateManifest(manifest).ok) return [];
     return manifest.resources.filter((resource) => resource.retention === DISPOSABLE);
