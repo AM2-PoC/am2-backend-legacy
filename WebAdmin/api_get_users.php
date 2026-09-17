@@ -2,7 +2,6 @@
 require_once 'config.php';
 am2_api_auth();
 
-// Identity is resolved by the server; see am2_api_identity().
 [$admin_id, $admin_role] = am2_api_identity();
 $is_superadmin = ($admin_role === 'superadmin');
 

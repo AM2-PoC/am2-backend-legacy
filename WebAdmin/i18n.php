@@ -10,7 +10,6 @@
  * visible on every navigation.
  */
 
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
@@ -47,7 +46,6 @@ function am2_theme(): string
     return in_array($wanted, AM2_THEMES, true) ? $wanted : 'light';
 }
 
-/** Attributes for the <html> element. */
 function am2_html_attrs(): string
 {
     return sprintf(
@@ -57,7 +55,6 @@ function am2_html_attrs(): string
     );
 }
 
-/** The catalogue for the active locale, with the default as a fallback. */
 function am2_catalogue(): array
 {
     static $catalogue = null;
@@ -74,18 +71,11 @@ function am2_catalogue(): array
     return $catalogue;
 }
 
-/**
- * Translate. Returns the key itself when it is missing, which makes a gap
- * obvious on the page instead of rendering an empty element.
- */
 function t(string $key, array $replace = []): string
 {
     $catalogue = am2_catalogue();
     $text = $catalogue[$key] ?? $key;
 
-    // Longest name first. ':to' is a prefix of ':total', so replacing in the
-    // caller's order turned "dari :total" into "dari 20tal" on the roster
-    // footer -- a bug that only appears when one placeholder starts another.
     $names = array_keys($replace);
     usort($names, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
     foreach ($names as $k) {
@@ -94,7 +84,6 @@ function t(string $key, array $replace = []): string
     return $text;
 }
 
-/** Translate and escape, for use directly in markup. */
 function e(string $key, array $replace = []): string
 {
     return htmlspecialchars(t($key, $replace), ENT_QUOTES, 'UTF-8');
@@ -110,8 +99,7 @@ function e(string $key, array $replace = []): string
  */
 function am2_asset(string $path): string
 {
-    // The same bound as am2_asset_url(): the version is a digest of the file,
-    // so a path outside the asset tree would put a digest of that file in the page.
+
     if (!preg_match('#^/?asset/[A-Za-z0-9._/-]+$#', $path) || str_contains($path, '..')) {
         throw new InvalidArgumentException('Invalid asset path');
     }
@@ -137,11 +125,9 @@ function am2_asset_version(string $full): string
     return $versions[$full];
 }
 
-/** Asset URL for JSON/JavaScript contexts; encoding belongs to the caller. */
 function am2_asset_url(string $path): string
 {
-    // Leading ./ is meaningful to a browser module import, but not on disk.
-    // Reject everything except this application's relative asset paths.
+
     if (!preg_match('#^\.?/??asset/[A-Za-z0-9._/-]+$#', $path)
             || str_contains($path, '..')) {
         throw new InvalidArgumentException('Invalid asset path');
@@ -150,7 +136,6 @@ function am2_asset_url(string $path): string
     return $path . '?v=' . am2_asset_version($full);
 }
 
-/** Whether the sidebar is collapsed to an icon rail. */
 function am2_sidebar_collapsed(): bool
 {
     return ($_COOKIE['am2_nav'] ?? 'wide') === 'rail';
@@ -166,8 +151,7 @@ function am2_folded_groups(): array
 function am2_release_notes($notes, ?string $locale = null): string
 {
     if (is_string($notes)) {
-        // A row or a manifest may hold the object as encoded JSON rather than
-        // as a decoded array; anything else is the plain string it looks like.
+
         $trimmed = trim($notes);
         if ($trimmed === '' || $trimmed[0] !== '{') {
             return $notes;

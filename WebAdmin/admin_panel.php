@@ -7,7 +7,6 @@ require_superadmin();
 $success_msg = "";
 $error_msg = "";
 
-/** Answer as JSON and stop. The bulk path asks over fetch. */
 function am2_adm_json(array $payload): void
 {
     header('Content-Type: application/json');
@@ -50,9 +49,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_admin'])) {
     $admin_id = !empty($_POST['admin_id']) ? (int)$_POST['admin_id'] : null;
     $username = trim($_POST['username']);
 
-    // Whitelisted. The column takes whatever it is given, and a role nothing
-    // recognises is an account that can neither be used nor found by the
-    // filters that look for one of the two that exist.
     $role = in_array($_POST['role'] ?? '', ['admin', 'superadmin'], true)
         ? $_POST['role'] : 'admin';
 
@@ -125,16 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_delegation'])) 
     }
 }
 
-/** Page size. Twenty rows fill a screen without needing two scrolls. */
 const AM2_ADMIN_PAGE = 20;
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-/*
- * Chips are filters that mean something operationally. An expired account is
- * not a tidy-up job: every unit under that admin loses access with it, and
- * nothing on this page said which accounts were in that state.
- */
 $chip = in_array($_GET['chip'] ?? '', ['expired', 'permanent', 'branch'], true)
     ? (string) $_GET['chip'] : '';
 
@@ -187,13 +177,11 @@ $admins = $stmt_list->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($admins as &$adm) {
     $adm['channel_ids'] = json_decode($adm['channel_ids'] ?? '[]', true) ?: [];
-    // Never rendered into the page, not even inside the JSON the edit button
-    // carries: the dialogue asks for a new password, it never shows the old.
+
     unset($adm['password_hash']);
 }
 unset($adm);
 
-// Every id the filter matches, so "pilih semua yang cocok" can mean it.
 $stmt_all = $pdo->prepare("SELECT a.id {$fromWhere} ORDER BY a.id");
 $stmt_all->execute($params);
 $allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
@@ -204,7 +192,6 @@ $all_channels = $pdo->query("SELECT id, display_name FROM public.channels ORDER 
 $pageTitle = t('adm.heading');
 $pageLede  = t('adm.lede');
 
-/** The table frame reads these. See partials/table_open.php. */
 $tableId = 'am2-admin-table';
 $searchPlaceholder = 'adm.search';
 $countKey = 'adm.count';
@@ -236,7 +223,6 @@ $bulkActions = [
      'data' => ['hs-overlay' => '#am2-bulk-delete']],
 ];
 
-/** The switches on the form, in the order they appear. */
 $permFields = [
     ['can_manage_maps',  'adm.f_maps'],
     ['can_manage_p2p',   'adm.f_p2p'],
@@ -248,12 +234,7 @@ include 'partials/shell.php';
 ?>
 
 <?php
-/*
- * One sentence, one place. The shared partial renders it for a browser with no
- * script and the bundle turns it into a toast for everyone else; a failure is
- * the one that waits to be dismissed. An error outranks a success when both
- * are somehow set -- the thing that went wrong is the thing to read.
- */
+
 $noticeText = $error_msg !== '' ? $error_msg : $success_msg;
 $noticeOk   = $error_msg === '';
 include 'partials/notice.php';
@@ -473,8 +454,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
 
-<!-- The account form. One dialogue for adding and for editing; the heading and
-     whether the password is required are what tell the two apart. -->
 <div id="am2-admin-form" role="dialog" tabindex="-1" aria-labelledby="am2-form-label" class="<?= $ovl ?>">
     <div data-am2-panel class="am2-surface mx-auto my-[5vh] flex max-h-[90vh] w-[92%] max-w-lg
                                 flex-col overflow-hidden rounded-card">
@@ -528,9 +507,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                     </select>
                 </div>
 
-                <!-- Both of these describe limits, and a superadmin has none, so
-                     they are hidden rather than filled with a number that means
-                     nothing. -->
                 <div data-branch-only class="space-y-4">
                     <fieldset class="rounded-control border border-edge p-4">
                         <legend class="<?= $labelCls ?> px-1"><?= e('adm.features_legend') ?></legend>
@@ -591,7 +567,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Delegation: which channels a branch admin may manage. -->
 <div id="am2-delegate" role="dialog" tabindex="-1" aria-labelledby="am2-delegate-label" class="<?= $ovl ?>">
     <div data-am2-panel class="am2-surface mx-auto my-[6vh] flex max-h-[88vh] w-[92%] max-w-lg
                                 flex-col overflow-hidden rounded-card">
@@ -632,8 +607,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Delete, for a selection. The count has to be typed: every unit under an
-     admin loses its access with the account. -->
 <div id="am2-bulk-delete" role="dialog" tabindex="-1" aria-labelledby="am2-delete-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -658,7 +631,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- The account sheet: the row's own cells, moved in and moved back. -->
 <div id="am2-admin-sheet" role="dialog" tabindex="-1" aria-labelledby="am2-sheet-label"
      class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
             bg-slate-950/50 backdrop-blur-sm lg:hidden">
@@ -720,19 +692,15 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         'prompt'    => t('adm.bulk_delete_prompt'),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
-    /* ── the account form ─────────────────────────────────────────────── */
 
     const roleSel = $('f_role');
     const permanent = $('f_permanent');
 
-    /** Limits belong to a branch admin; a superadmin has none to state. */
     function paintRole() {
         const isSuper = roleSel.value === 'superadmin';
         document.querySelectorAll('[data-branch-only]').forEach((el) => { el.hidden = isSuper; });
     }
 
-    /** A permanent account has no date, so the field goes rather than sits
-     *  there holding a value the handler will throw away. */
     function paintExpiry() {
         const perm = permanent.checked;
         document.querySelector('[data-date-row]').hidden = perm;
@@ -763,8 +731,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         $('f_user_quota').value = adding ? '' : (data.user_quota ?? '');
         $('f_channel_quota').value = adding ? '' : (data.channel_quota ?? '');
 
-        // Postgres hands booleans back as true, 't' or 'true' depending on the
-        // driver's mood; all three mean the same thing here.
         const on = (v) => v === true || v === 't' || v === 'true';
         $('f_can_manage_maps').checked  = adding ? true  : on(data.can_manage_maps);
         $('f_can_manage_p2p').checked   = adding ? true  : on(data.can_manage_p2p);
@@ -802,7 +768,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    /* ── delegation ───────────────────────────────────────────────────── */
 
     document.querySelectorAll('[data-row-delegate]').forEach((btn) => {
         btn.setAttribute('data-hs-overlay', '#am2-delegate');
@@ -818,7 +783,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    /* ── bulk delete ──────────────────────────────────────────────────── */
 
     let scope = { ids: [] };
     const scopeLabel = (n) => (n === 1 ? T.one : T.many.replace(':n', String(n)));
@@ -877,7 +841,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         window.location.reload();
     });
 
-    /* ── the sheet ────────────────────────────────────────────────────── */
 
     const sheet = $('am2-admin-sheet');
     const SLOTS = ['features', 'quota', 'expiry', 'actions'];

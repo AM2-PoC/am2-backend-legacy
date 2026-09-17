@@ -8,9 +8,6 @@ am2_csrf_require();
 // retain both shared policy checks and conditional SQL backstops.
 $method = $_SERVER['REQUEST_METHOD'];
 
-// This file manages the admin table itself: who exists, what quota they
-// hold, and who is a superadmin. Nothing below is ever a branch admin's
-// job, so the whole file is gated rather than each action.
 if (am2_api_require_super('admin-panel')) {
     exit;
 }
@@ -114,8 +111,7 @@ elseif ($method == 'POST') {
                             echo json_encode(['success' => true, 'message' => 'Admin deleted']);
                         }
                     } catch (PDOException $e) {
-                        // 23503 is foreign_key_violation: a unit appeared after
-                        // the count. Name it rather than calling it a system error.
+
                         if (($e->getCode() ?? '') === '23503') {
                             [$why2, $why2p] = am2_admin_undeletable($pdo, $target, $me);
                             echo json_encode(['success' => false,

@@ -106,7 +106,6 @@ registerRoutes(app);
 
 const wss = attachProtocol(server, { commitLoginSession, LoginSessionError });
 
-// Allow active transmissions to drain during shutdown.
 installShutdown({
     server,
     wss,
@@ -116,7 +115,6 @@ installShutdown({
     log: (line) => console.log(line),
 });
 
-// Production binds loopback; containers may require an explicit interface.
 const BIND_ADDRESS = (process.env.AM2_BIND_ADDRESS || '').trim();
 
 if (API_KEY === '') {

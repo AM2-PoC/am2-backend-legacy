@@ -8,7 +8,7 @@ import sys
 
 def protected(path):
     info = path.lstat()
-    # Default ACLs can grant access when tar restores modes inside the wrapper.
+
     if any(name in os.listxattr(path, follow_symlinks=False) for name in
            ('system.posix_acl_access', 'system.posix_acl_default')):
         raise SystemExit(f'runtime path carries an ACL: {path}')

@@ -3,13 +3,11 @@ require_once 'auth.php';
 require_once 'config.php';
 
 
-
 $success_msg = "";
 $error_msg = "";
 $current_admin_id = $_SESSION['admin_id'];
 $role_user = $_SESSION['admin_role'];
 $is_super = $role_user === 'superadmin';
-
 
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'db_force_logout') {
@@ -146,23 +144,13 @@ if (!$is_super) {
 }
 $all_channels = $stmt_ch->fetchAll(PDO::FETCH_ASSOC);
 
-/** Page size. Twenty rows fill a screen without needing two scrolls. */
 const AM2_ACCESS_PAGE = 20;
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-/*
- * Chips are filters that mean something operationally, and on this page both
- * of the first two are the same fault seen from different sides: server.js
- * refuses app_login outright unless the unit has a default channel. A unit
- * with none, or with channels but no default among them, cannot sign in at
- * all -- and the old list said nothing about either.
- */
 $chip = in_array($_GET['chip'] ?? '', ['nochannel', 'nodefault', 'rx'], true)
     ? (string) $_GET['chip'] : '';
 
-// Whitelisted. Neither the column nor the direction is ever interpolated from
-// what arrived in the query string.
 $sortable = ['name' => 'u.name', 'id' => 'u.id', 'channels' => 'ch_count'];
 $sortCol  = $sortable[$_GET['sort'] ?? ''] ?? 'u.name';
 $sortDir  = ($_GET['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
@@ -200,13 +188,6 @@ $pages  = max(1, (int) ceil($total / AM2_ACCESS_PAGE));
 $page   = min(max(1, (int) ($_GET['p'] ?? 1)), $pages);
 $offset = ($page - 1) * AM2_ACCESS_PAGE;
 
-/*
- * The roster, then its memberships -- two queries rather than one grouped one.
- *
- * The aggregate this replaces could not be paged: LIMIT applies after GROUP BY,
- * so counting the rows meant counting groups in a subquery anyway, and every
- * page still aggregated every membership in the database.
- */
 $stmt_acc = $pdo->prepare(
     "SELECT u.id, u.name,
             (SELECT COUNT(*) FROM public.user_channels uc WHERE uc.user_id = u.id) AS ch_count
@@ -215,13 +196,10 @@ $stmt_acc = $pdo->prepare(
 $stmt_acc->execute($params);
 $access_list = $stmt_acc->fetchAll(PDO::FETCH_ASSOC);
 
-// Every id the filter matches, so "pilih semua yang cocok" can mean it rather
-// than quietly meaning the twenty on screen.
 $stmt_all = $pdo->prepare("SELECT u.id {$fromWhere} ORDER BY u.id");
 $stmt_all->execute($params);
 $allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
 
-// The memberships of the units on this page. One query, default first.
 $rowAccess = [];
 if ($access_list) {
     $ids = array_column($access_list, 'id');
@@ -238,13 +216,6 @@ if ($access_list) {
     }
 }
 
-/*
- * Export the access map for exactly the units that were selected, as CSV.
- *
- * One line per membership, because that is what an audit asks about: who may
- * speak where, and where they come up. The ids narrow the query, they never
- * widen it.
- */
 if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST['ids'])) {
     $xids = array_values(array_filter(array_map('strval', $_POST['ids'])));
     $xmarks = implode(',', array_fill(0, max(1, count($xids)), '?'));
@@ -282,7 +253,6 @@ if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST
 $pageTitle = t('acc.heading');
 $pageLede  = t('acc.lede');
 
-/** The table frame reads these. See partials/table_open.php. */
 $tableId = 'am2-access-table';
 $searchPlaceholder = 'acc.search';
 $countKey = 'acc.count';
@@ -301,8 +271,6 @@ $columns = [
     ['key' => 'usr.actions',  'align' => 'right'],
 ];
 
-// Both verbs are owned by this page: one has to ask whether you meant it, and
-// the other answers with a file, which fetch cannot hand to the browser.
 $bulkActions = [
     ['verb' => 'export', 'key' => 'acc.bulk_export', 'icon' => 'download', 'utility' => true],
     ['verb' => 'kick',   'key' => 'acc.bulk_kick',   'icon' => 'power', 'danger' => true,
@@ -314,12 +282,7 @@ include 'partials/shell.php';
 ?>
 
 <?php
-/*
- * One sentence, one place. The shared partial renders it for a browser with no
- * script and the bundle turns it into a toast for everyone else; a failure is
- * the one that waits to be dismissed. An error outranks a success when both
- * are somehow set -- the thing that went wrong is the thing to read.
- */
+
 $noticeText = $error_msg !== '' ? $error_msg : $success_msg;
 $noticeOk   = $error_msg === '';
 include 'partials/notice.php';
@@ -353,8 +316,7 @@ include 'partials/notice.php';
                     $mine = $rowAccess[$uid] ?? [];
                     $hasDefault = false;
                     foreach ($mine as $m) { if ($m['is_default']) { $hasDefault = true; break; } }
-                    // The state the modal opens in, carried on the button rather
-                    // than rebuilt from the chips it drew.
+
                     $state = [
                         'id' => $uid,
                         'name' => (string) $row['name'],
@@ -379,8 +341,7 @@ include 'partials/notice.php';
 
                         <td data-cell="unit" data-label="<?= e('usr.unit') ?>" class="px-4 py-2.5 align-middle">
                             <span class="flex items-start gap-2.5">
-                                <!-- Amber, not decoration: without a default channel
-                                     the relay refuses this unit's login outright. -->
+
                                 <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full <?= $hasDefault ? 'bg-ok' : 'bg-warn' ?>"
                                       aria-hidden="true"></span>
                                 <span class="min-w-0">
@@ -421,7 +382,7 @@ include 'partials/notice.php';
 
                         <td data-cell="access" data-label="<?= e('acc.channels') ?>" class="px-4 py-2.5 align-middle">
                             <?php if (!$mine): ?>
-                                <!-- Without a default channel server.js refuses app_login outright. -->
+
                                 <span class="inline-flex items-center gap-1.5 rounded-control border border-bad/40
                                              bg-bad/5 px-2 py-1 font-mono text-[11px] uppercase
                                              tracking-[0.1em] text-bad">
@@ -486,11 +447,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
 
-<!--
-    Access, for one unit. A form POST rather than fetch: this is the surface
-    that decides where a unit comes up and whether it may transmit, and the
-    reload that follows is what proves the row now says so.
--->
 <div id="am2-access-edit" role="dialog" tabindex="-1" aria-labelledby="am2-access-label" class="<?= $ovl ?>">
     <div data-am2-panel class="am2-surface mx-auto my-[6vh] flex max-h-[88vh] w-[92%] max-w-lg
                                 flex-col overflow-hidden rounded-card">
@@ -506,10 +462,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
             <p class="border-b border-edge px-5 py-2 text-xs text-ink-muted"><?= e('acc.modal_note') ?></p>
 
-            <!--
-                Search, because this list is every channel the account can see
-                and it is read by looking for one name in it.
-            -->
             <div class="border-b border-edge px-5 py-2.5">
                 <input type="search" data-channel-filter autocomplete="off"
                        aria-controls="am2-access-list"
@@ -539,8 +491,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                             <?= htmlspecialchars((string) $ch['display_name']) ?>
                         </label>
 
-                        <!-- Receive-only. The relay reads exactly one value here:
-                             anything that is not RX means the unit may transmit. -->
                         <label class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-subtle">
                             <input type="checkbox" id="rx_<?= $cid ?>" name="permissions[<?= $cid ?>]" value="RX"
                                    data-rx="<?= $cid ?>"
@@ -569,8 +519,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Force logout, for a selection. Reversible -- the unit signs in again -- so
-     it asks once rather than asking for the count to be typed. -->
 <div id="am2-bulk-kick" role="dialog" tabindex="-1" aria-labelledby="am2-kick-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -591,7 +539,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- The unit sheet: the row's own cells, moved in and moved back. -->
 <div id="am2-access-sheet" role="dialog" tabindex="-1" aria-labelledby="am2-sheet-label"
      class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
             bg-slate-950/50 backdrop-blur-sm lg:hidden">
@@ -651,14 +598,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     const items = [...document.querySelectorAll('[data-item]')];
 
-    /*
-     * Filtering the list.
-     *
-     * Hidden rather than removed: a channel that is ticked and then filtered
-     * out is still ticked, and its checkbox is still in the form, so what is
-     * saved is what was chosen rather than what happened to be on screen when
-     * Save was pressed.
-     */
     const filterBox = document.querySelector('[data-channel-filter]');
     const noMatch = document.querySelector('[data-filter-empty]');
 
@@ -706,15 +645,11 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
         $('m_default_channel').value = m.def;
 
-        // A unit with channels but no default cannot sign in: the relay refuses
-        // app_login outright. Saying so is worth more than letting it save.
         const missing = m.ids.size > 0 && !m.def;
         document.querySelector('[data-default-warning]').textContent = missing ? T.pick_default : '';
         document.querySelector('[data-access-save]').disabled = missing;
     }
 
-    // A dialogue opens showing everything; a filter left over from the last
-    // unit would hide channels this one holds.
     $('am2-access-edit')?.addEventListener('open.hs.overlay', () => {
         if (filterBox) filterBox.value = '';
         applyFilter();
@@ -726,13 +661,11 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             if (box.checked) {
                 m.ids.add(cid);
                 if (!m.perm[cid]) m.perm[cid] = 'FULL DUPLEX';
-                // The first channel granted is where the unit comes up, so it
-                // does not have to be told twice.
+
                 if (!m.def) m.def = cid;
             } else {
                 m.ids.delete(cid);
-                // Unticking the default leaves the unit unable to sign in, so
-                // clear it rather than submit a default that is not granted.
+
                 if (m.def === cid) m.def = '';
             }
             paintAccess();
@@ -763,7 +696,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    /* ── force logout ─────────────────────────────────────────────────── */
 
     let scope = { ids: [], label: '' };
     const scopeLabel = (n) => (n === 1 ? T.one : T.many.replace(':n', String(n)));
@@ -788,10 +720,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             askKick([btn.dataset.unit], btn.dataset.unit + ' · ' + btn.dataset.name));
     });
 
-    /**
-     * One request per unit, against the endpoint this page already has, so its
-     * ownership check comes along for free. Every row gets its own outcome.
-     */
     document.querySelector('[data-kick-apply]')?.addEventListener('click', async () => {
         const csrf = document.querySelector('input[name="_csrf"]').value;
         let ok = 0;
@@ -828,7 +756,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         window.location.reload();
     });
 
-    /** A native POST, because the answer to it is a file. */
     function exportSelection(ids) {
         const form = document.createElement('form');
         form.method = 'POST';
@@ -848,7 +775,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         form.remove();
     }
 
-    /* ── the sheet ────────────────────────────────────────────────────── */
 
     const sheet = $('am2-access-sheet');
     const SLOTS = ['access', 'actions'];

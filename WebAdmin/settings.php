@@ -31,7 +31,6 @@ function am2_page_require_super(bool $is_super, string $what): bool
     return true;
 }
 
-/** "2M" as a number of bytes. */
 function am2_ini_bytes(string $value): int
 {
     $value = trim($value);
@@ -44,7 +43,6 @@ function am2_ini_bytes(string $value): int
     };
 }
 
-/** Bytes as something a person reads. */
 function am2_bytes_human(int $bytes): string
 {
     if ($bytes >= 1024 ** 2) {
@@ -94,8 +92,6 @@ function am2_update_state(): array
     }
     usort($state['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
 
-    // The version Admin Native is told about, read from the same file
-    // api_settings.php?action=check_update serves.
     $state['version'] = null;
     $json = $dir . '/admin_version.json';
     if (is_file($json)) {
@@ -124,25 +120,6 @@ function am2_field_channel(): array
     }
     usort($out['files'], fn ($a, $b) => $b['time'] <=> $a['time']);
 
-    /*
-     * What the relay would actually advertise, asked rather than recomputed.
-     *
-     * This card read version.json for itself and reported whatever it found --
-     * on production, "1.0.0, build 1", for a manifest written in May naming an
-     * APK that has never been in the directory. The relay refuses that set, so
-     * no handset would ever be offered it, and the card announced it anyway.
-     *
-     * That is precisely the disagreement the admin card had with its own
-     * endpoint. The rule lives in the relay because that is where a handset's
-     * answer comes from; this shows the decision instead of forming a second
-     * opinion about the same file. Null means the relay could not be reached,
-     * which is a channel whose state is genuinely unknown.
-     */
-    // With the locale. The relay resolves release notes per language and
-    // defaults to Indonesian, so asking without one renders Indonesian notes on
-    // an English page -- the exact leak this channel was cleaned up for,
-    // reintroduced by the fix for a different one. Latent while every published
-    // manifest holds a plain string, which reads the same in every language.
     $advertised = am2_node_get('/api/check-update?lang=' . urlencode(am2_locale()));
     if (!is_array($advertised) || ($advertised['success'] ?? false) !== true) {
         return $out;
@@ -182,17 +159,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
     }
 }
 
-/**
- * A branch admin's own rows, as INSERT statements.
- *
- * pg_dump has no WHERE, so `-t public.users -t public.channels` handed a branch
- * admin every branch's rows -- the whole table, under a filename that said it
- * was theirs. Two tables bounded by the account's quota are small enough to
- * build here, which also takes a shell call and a PGPASSWORD out of this page.
- *
- * $table and $where are literals from the two call sites below; only the
- * parameters come from the request, and the values are quoted by PDO.
- */
 function am2_export_rows(PDO $pdo, string $table, string $where, array $args): string
 {
     $stmt = $pdo->prepare("SELECT * FROM {$table} WHERE {$where} ORDER BY 1");
@@ -225,8 +191,7 @@ if (isset($_POST['export_db'])) {
 
     if ($is_super) {
         putenv('PGPASSWORD=' . $password);
-        // -p was missing here and present in api_settings.php, so this dumped
-        // whatever cluster happened to answer on the default port.
+
         passthru('pg_dump -h ' . $host . ' -p ' . $port . ' -U ' . $user
                . ' -d ' . $dbname . ' -n public');
         exit;
@@ -274,10 +239,6 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
             $status = 1;
             exec($command, $output, $status);
 
-            // ptt_logs cannot hold this event: user_id is a foreign key to
-            // users(id) and channel_id to channels(id), and an admin is neither
-            // a device nor a channel. The server log can, and it already
-            // carries the refusals from am2_page_require_super().
             error_log(sprintf(
                 'AM2 settings RESTORE by=%s from=%s file=%s status=%d',
                 $admin_user,
@@ -289,8 +250,7 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
             if ($status === 0) {
                 $msg = t('set.msg_restore_ok');
             } else {
-                // The operator chose this file, so the reason it was refused is
-                // theirs to read. A refusal with no reason is a dead end.
+
                 $reason = '';
                 foreach ($output as $line) {
                     if (stripos($line, 'ERROR') !== false) { $reason = $line; break; }
@@ -329,11 +289,6 @@ try {
     die(htmlspecialchars(am2_safe_error($e, 'settings')));
 }
 
-/**
- * How much of a quota is spent, as a percentage, or null when there is no
- * ceiling. A superadmin has no quota: showing "100" beside "sisa UNLIMITED"
- * stated two contradictory things at once.
- */
 function am2_quota_pct($used, $quota): ?int
 {
     if (!is_numeric($quota) || (int) $quota <= 0) {
@@ -368,7 +323,6 @@ if ($is_super) {
 
 $shelf = $is_super ? am2_update_state() : ['exists' => false, 'files' => [], 'version' => null];
 
-// The file Admin Native is told to fetch, and whether it is actually there.
 $shelf_target = '';
 $shelf_present = true;
 // `update_url` is the published field; `download_url` was its name before the
@@ -382,7 +336,6 @@ if ($shelf_url !== '') {
     $shelf_present = in_array($shelf_target, array_column($shelf['files'], 'name'), true);
 }
 
-/** The file a channel points at, and whether it is actually there. */
 function am2_channel_target(string $url, array $files): array
 {
     if ($url === '') {
@@ -415,8 +368,7 @@ if ($is_super) {
         'files'     => $shelf['files'],
         'target'    => $shelf_target,
         'present'   => $shelf_present,
-        // The reason, not a generic emptiness. The reader here is a signed-in
-        // superadmin; the public endpoint still says only "no update".
+
         'empty'     => $shelf_valid
             ? t('set.no_version')
             : t('set.not_advertised', ['reason' => $advertisement['reason']]),
@@ -454,11 +406,6 @@ $noticeOk   = $error === '';
 include 'partials/notice.php';
 ?>
 
-<!--
-    Scope of the account, as three counts. Each one is a link, because each one
-    is a page in this panel; the arrow is the same affordance the dashboard
-    cards carry.
--->
 <section class="grid gap-4 sm:grid-cols-2 <?= $is_super ? 'md:grid-cols-3' : '' ?>">
     <?php foreach ($stats as $s): ?>
         <a href="<?= $s['href'] ?>" data-kpi
@@ -481,7 +428,6 @@ include 'partials/notice.php';
 
     <div class="flex flex-col gap-4">
 
-        <!-- Account. One thing an operator changes here, and it is their own key. -->
         <section id="am2-card-account" class="am2-surface rounded-card scroll-mt-28">
             <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
                 <span class="text-ink-subtle"><?= am2_icon('lock', 'h-4 w-4') ?></span>
@@ -500,18 +446,11 @@ include 'partials/notice.php';
                     </span>
                 </p>
 
-                <!-- method and field names are the contract: the handler above reads
-                     $_POST['update_password'], ['new_password'] and ['confirm_password']. -->
                 <form method="POST" class="mt-4" id="am2-password-form">
                     <?= am2_csrf_field() ?>
 
                     <?php
-                    /*
-                     * Preline toggle-password:
-                     * https://preline.co/docs/toggle-password.html
-                     * Replaces the hand-rolled Font Awesome eye, which swapped two
-                     * icon classes by hand and had no pressed state to announce.
-                     */
+
                     $fields = [
                         ['id' => 'new_password',     'name' => 'new_password',
                          'label' => 'set.new_password',     'hint' => 'set.new_password_hint'],
@@ -559,12 +498,6 @@ include 'partials/notice.php';
                         </div>
                     <?php endforeach; ?>
 
-                    <!--
-                        The rules, checked as they are met. The server said
-                        "minimal 8 karakter" only after a round trip, and said
-                        nothing at all about the two fields matching until the
-                        password had already been submitted.
-                    -->
                     <ul id="am2-pw-rules" class="mb-4 space-y-1.5" aria-live="polite">
                         <li data-rule="length" class="flex items-center gap-2 text-xs text-ink-subtle">
                             <span data-mark aria-hidden="true"
@@ -600,7 +533,6 @@ include 'partials/notice.php';
 
     </div>
 
-    <!-- Licence and quota. -->
     <section id="am2-card-licence" class="am2-surface rounded-card scroll-mt-28">
         <header class="flex items-center gap-2.5 border-b border-edge px-5 py-3.5">
             <span class="text-ink-subtle"><?= am2_icon('shield', 'h-4 w-4') ?></span>
@@ -621,9 +553,6 @@ include 'partials/notice.php';
                 </p>
             </div>
 
-            <!-- Usage against the ceiling, not two numbers side by side. The old
-                 card printed "100" next to "sisa UNLIMITED", and neither number
-                 said what happens when the ceiling is reached. -->
             <div class="mt-5 space-y-4">
                 <?php foreach ($quotas as $q): $pct = am2_quota_pct($q['used'], $q['quota']); ?>
                     <div>
@@ -642,9 +571,7 @@ include 'partials/notice.php';
                         </p>
                         <?php if ($pct !== null): ?>
                             <?php
-                            // Written out in full: Tailwind reads this file as
-                            // text, so a class name assembled from a variable
-                            // ships with no rule behind it.
+
                             $bar = $pct >= 90 ? 'bg-bad' : ($pct >= 70 ? 'bg-warn' : 'bg-brand');
                             $left = max(0, (int) $q['quota'] - (int) $q['used']);
                             ?>
@@ -703,16 +630,7 @@ include 'partials/notice.php';
 
         <div id="am2-shelf-version" class="grid gap-5 border-b border-edge p-5 lg:grid-cols-2">
             <?php foreach ($channels as $ch): ?>
-                <!--
-                    min-w-0, because a grid item's automatic minimum size is its
-                    min-content width, and the URL row below is a flex line whose
-                    min-content is the whole URL. Without this the card sizes
-                    itself to that URL and grows wider than the column it sits
-                    in -- 451px inside a 406px column, measured at a 480px
-                    viewport -- which is what pushed its contents over the card
-                    edge. With it the code element truncates, as it was written
-                    to.
-                -->
+
                 <section class="min-w-0 rounded-control border border-edge p-4">
                     <header class="flex items-baseline justify-between gap-3">
                         <h3 class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink">
@@ -728,17 +646,7 @@ include 'partials/notice.php';
                     <p class="mt-1 text-xs text-ink-muted"><?= htmlspecialchars($ch['note']) ?></p>
 
                     <?php if ($ch['version'] !== null && $ch['version'] !== ''): ?>
-                        <!--
-                            Version beside the code, until there is no room for
-                            beside. The QR is a fixed 104px square that cannot
-                            shrink, and the version name is one unbreakable
-                            token -- "1.2.0-staging+240.g783e817" is 26
-                            characters of 24px mono. Under about 485px those two
-                            demands add up to more than the card is wide, and
-                            the text ran under the code. Below that width they
-                            stack, and the token is allowed to break so it wraps
-                            instead of overflowing.
-                        -->
+
                         <div class="mt-4 flex flex-col gap-4
                                     min-[485px]:flex-row min-[485px]:items-start">
                             <div class="min-w-0 flex-1">
@@ -750,15 +658,7 @@ include 'partials/notice.php';
                                     <?= htmlspecialchars((string) $ch['version']) ?>
                                 </p>
                                 <?php if ($ch['build'] !== null): ?>
-                                    <!--
-                                        The build, beside the name and not instead of it.
 
-                                        version_name is written by a human and stays put for a
-                                        release or ten, so two different APKs render identically.
-                                        version_code is the CI run number and is the only thing
-                                        either end compares when deciding an update exists -- it is
-                                        what actually identifies what a handset is carrying.
-                                    -->
                                     <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.15em]
                                               text-ink-subtle">
                                         <?= e('set.build', ['code' => (string) $ch['build']]) ?>
@@ -772,9 +672,7 @@ include 'partials/notice.php';
                             </div>
 
                             <?php if ($ch['url'] !== ''): ?>
-                                <!-- The code is drawn client-side, and clicking it
-                                     opens the same code large enough to scan from
-                                     across a room. -->
+
                                 <figure class="shrink-0 text-center">
                                     <button type="button" data-hs-overlay="#am2-qr-zoom"
                                             data-qr="<?= htmlspecialchars($ch['url']) ?>"
@@ -853,11 +751,7 @@ include 'partials/notice.php';
         </div>
 
         <div class="grid gap-5 p-5 lg:grid-cols-2">
-            <!--
-                Releases are published by the release pipeline from bytes
-                signed on an isolated runner, so the panel has no part in
-                putting a file on the shelf. It shows what is published.
-            -->
+
             <div class="min-w-0 self-start rounded-control border border-edge px-4 py-3">
                 <p class="text-sm text-ink-muted"><?= e('set.publish_via_release') ?></p>
             </div>
@@ -911,7 +805,7 @@ include 'partials/notice.php';
             <div class="min-w-0">
                 <h3 class="text-sm font-semibold text-ink"><?= e('set.export') ?></h3>
                 <p class="mt-1 text-xs text-ink-muted"><?= e('set.export_note') ?></p>
-                <!-- What the file will hold, before it is asked for. -->
+
                 <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                     <?= $is_super
                         ? e('set.export_full_note')
@@ -921,9 +815,7 @@ include 'partials/notice.php';
                           ]) ?>
                 </p>
             </div>
-            <!-- A native submit, deliberately: the response to this POST is the
-                 dump itself, streamed by passthru(). Sending it through fetch()
-                 would download the file into memory and never hand it over. -->
+
             <form method="POST" class="shrink-0" data-export>
                 <?= am2_csrf_field() ?>
                 <button type="submit" name="export_db" value="1"
@@ -962,17 +854,7 @@ include 'partials/notice.php';
 </section>
 
 <?php if ($is_super): ?>
-    <!--
-        Restore, behind Preline's modal:
-        https://preline.co/docs/modal.html
-        Preline owns open, close, Escape and the focus trap. No transition on
-        the container: Preline waits for one to end before it re-adds `hidden`,
-        and a transition on a property that doesn't change never ends -- which
-        is how an invisible overlay ended up swallowing every click on this app.
 
-        The whole form lives in here so the file and the confirmation are one
-        submission. name="import_db" and name="sql_file" are the contract.
-    -->
     <div id="am2-restore" role="dialog" tabindex="-1" aria-labelledby="am2-restore-label"
          class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
                 bg-slate-950/50 backdrop-blur-sm">
@@ -994,8 +876,7 @@ include 'partials/notice.php';
                 </header>
 
                 <div class="p-5">
-                    <!-- Take a backup first. The one thing that makes this
-                         reversible, one click away, in the place it is needed. -->
+
                     <p class="mb-4 flex items-center gap-2 rounded-control border border-edge
                               bg-card-muted px-3 py-2.5 text-xs text-ink-muted">
                         <?= am2_icon('shield', 'h-4 w-4') ?>
@@ -1021,11 +902,6 @@ include 'partials/notice.php';
                                       focus:ring-2 focus:ring-brand/25">
                     </div>
 
-                    <!--
-                        Preflight. The file is read in the browser before anything
-                        is sent, so the operator sees what is about to replace
-                        what. Nothing here reaches the server.
-                    -->
                     <div id="am2-sql-preflight" hidden class="mt-3 rounded-control border border-edge
                                 bg-card-muted px-3 py-3" aria-live="polite">
                         <p class="flex items-baseline justify-between gap-3 text-sm">
@@ -1066,8 +942,7 @@ include 'partials/notice.php';
                            class="mt-5 block font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                         <?= e('set.restore_type', ['word' => t('set.restore_word')]) ?>
                     </label>
-                    <!-- The word is an attribute, not a string in the script, so
-                         the confirmation stays translated without i18n in JS. -->
+
                     <input id="am2-restore-word" type="text" autocomplete="off" spellcheck="false"
                            data-confirm-word="<?= htmlspecialchars(t('set.restore_word')) ?>"
                            class="mt-2 h-12 w-full rounded-control border border-edge bg-card px-3
@@ -1101,10 +976,7 @@ include 'partials/notice.php';
 <?php endif; ?>
 
 <?php if ($is_super): ?>
-    <!--
-        The code, large. A 104px square is enough to prove it is there and not
-        enough to scan across a control room, which is exactly when it is used.
-    -->
+
     <div id="am2-qr-zoom" role="dialog" tabindex="-1" aria-labelledby="am2-qr-zoom-label"
          class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
                 bg-slate-950/60 backdrop-blur-sm">
@@ -1171,18 +1043,11 @@ include 'partials/notice.php';
         window.AM2.enterOnce('[data-kpi]');
         window.AM2.revealOnScroll('[data-reveal]');
 
-        // One per channel, and each one opens itself larger on click.
         document.querySelectorAll('[data-qr]').forEach((btn) => {
             btn.appendChild(window.AM2.qr(btn.dataset.qr, 92));
         });
     });
 
-    /* ---- Drop zones ---------------------------------------------------
-     * The <input type="file"> is never replaced: it is what a keyboard and a
-     * screen reader operate, and the only path where drag events do not exist.
-     * The zone is a second way in for a pointer, and it delegates to the input
-     * so there is one source of truth for the chosen file.
-     */
     function dropzone(zoneId, onFile) {
         const zone = $(zoneId);
         if (!zone) return;
@@ -1203,8 +1068,7 @@ include 'partials/notice.php';
             off();
             const file = e.dataTransfer?.files?.[0];
             if (!file) return;
-            // Hand it to the input, so the form submits it and the input shows
-            // it -- the drop is an alternative gesture, not a parallel state.
+
             const dt = new DataTransfer();
             dt.items.add(file);
             input.files = dt.files;
@@ -1214,7 +1078,6 @@ include 'partials/notice.php';
         input.addEventListener('change', () => onFile(input.files[0] || null));
     }
 
-    /* ---- Release shelf ------------------------------------------------ */
     document.querySelectorAll('[data-copy-url]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             try {
@@ -1233,20 +1096,6 @@ include 'partials/notice.php';
         });
     });
 
-    /*
-     * Exporting says something, because the response is a file.
-     *
-     * A native submit whose response carries Content-Disposition never replaces
-     * the page, so nothing rendered, no banner appeared, and a dump of any size
-     * was several seconds of a console that looked like it had ignored the
-     * click -- which is answered by clicking again.
-     *
-     * What is claimed here is only what is known: the request went. The page is
-     * given no completion event for a download it did not fetch itself, so the
-     * button comes back on a timer rather than pretending to know the file
-     * arrived. Long enough that a second press is deliberate; short enough that
-     * the control is never stuck.
-     */
     document.querySelectorAll('[data-export]').forEach((form) => {
         form.addEventListener('submit', () => {
             const btn = form.querySelector('button[type="submit"]');
@@ -1257,7 +1106,6 @@ include 'partials/notice.php';
         });
     });
 
-    // The large code is drawn on open, not eight times on load.
     const zoom = $('am2-qr-zoom');
     document.querySelectorAll('[data-qr]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1270,7 +1118,6 @@ include 'partials/notice.php';
         });
     });
 
-    /* ---- Password rules, as they are met ------------------------------ */
     const pw = $('new_password');
     const pw2 = $('confirm_password');
     const rules = $('am2-pw-rules');
@@ -1293,14 +1140,12 @@ include 'partials/notice.php';
     }
     [pw, pw2].forEach((el) => el?.addEventListener('input', checkRules));
 
-    // A console operated at night, with a monospaced field that shows dots.
     [pw, pw2].forEach((el) => el?.addEventListener('keyup', (ev) => {
         if (typeof ev.getModifierState !== 'function') return;
         caps.hidden = !ev.getModifierState('CapsLock');
     }));
     checkRules();
 
-    /* ---- Restore preflight -------------------------------------------- */
     const restoreForm = $('am2-restore-form');
     const pre = $('am2-sql-preflight');
     const word = $('am2-restore-word');
@@ -1317,8 +1162,6 @@ include 'partials/notice.php';
         const warn = pre.querySelector('[data-sql-warn]');
         const notes = [];
 
-        // A dump can be large, and reading all of it would stall the dialog.
-        // The cap is the server's own limit: anything past it cannot be sent.
         const cap = 8 * 1024 * 1024;
         const slice = file.size > cap ? file.slice(0, cap) : file;
         const text = await slice.text();
@@ -1338,8 +1181,6 @@ include 'partials/notice.php';
         pre.querySelector('[data-file-devices]').textContent = copies ? '—' : String(devices);
         pre.querySelector('[data-file-channels]').textContent = copies ? '—' : String(channels);
 
-        // A backup with no DROP or TRUNCATE is added to what is already there,
-        // which is where duplicate keys come from.
         if (!/\b(DROP TABLE|TRUNCATE)\b/i.test(text)) notes.push(T.no_drop);
         if (!/\.sql$/i.test(file.name)) notes.push(T.not_sql);
 
@@ -1351,7 +1192,7 @@ include 'partials/notice.php';
         const expected = word.dataset.confirmWord.toUpperCase();
         const check = () => { submit.disabled = word.value.trim().toUpperCase() !== expected; };
         word.addEventListener('input', check);
-        // Reopening the dialog must not inherit the last attempt's state.
+
         $('am2-restore')?.addEventListener('close.hs.overlay', () => {
             word.value = '';
             if (pre) pre.hidden = true;

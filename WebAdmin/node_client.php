@@ -63,17 +63,6 @@ function am2_node_call(string $path, ?array $payload = null): bool
     return is_array($parsed) && ($parsed['success'] ?? false) === true;
 }
 
-/**
- * Ask the relay something and read the answer.
- *
- * Exists for a single reason: the relay decides what the field update channel
- * may advertise, and the panel has to show that decision rather than form a
- * second opinion about the same files. The admin card and its endpoint once
- * disagreed exactly that way.
- *
- * Null means the relay could not be reached or did not answer JSON, which is a
- * channel whose state is genuinely unknown rather than a channel that is empty.
- */
 function am2_node_get(string $path): ?array
 {
     $body = am2_node_transport(AM2_NODE_BASE . $path, am2_node_auth_header(), null);
@@ -90,13 +79,6 @@ function syncUserChannels($userId): bool
     return am2_node_call('/api/admin/sync-channels?userId=' . urlencode((string) $userId));
 }
 
-/**
- * Push a permission change to a live session.
- *
- * The fallback is HALF DUPLEX, matching the column default and the stricter of
- * the two values the old copies disagreed on. Both call sites pass an explicit
- * value, so the fallback is a guard rather than a behaviour.
- */
 function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'HALF DUPLEX'): void
 {
     am2_node_call('/api/admin/update-permissions', [
@@ -108,7 +90,6 @@ function notifyPermissionUpdate($userId, $maps, $p2p, $video, $duplex = 'HALF DU
     ]);
 }
 
-/** Disconnect a user from the relay. */
 function notifyForceLogout($userId): bool
 {
     return am2_node_call('/api/admin/force-logout', ['userId' => $userId]);

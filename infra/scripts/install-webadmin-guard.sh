@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
         --drain-sessions) drain=1; shift ;;
         --source)         [[ $# -ge 2 ]] || { usage; exit 64; }; source_dir=$2; shift 2 ;;
         -h|--help)        usage; exit 0 ;;
-        *)                usage; exit 64 ;;
+
     esac
 done
 
@@ -46,7 +46,6 @@ run() {
     fi
 }
 
-# 1. The prepend itself.
 if [[ -r $installed ]] && cmp -s "$prepend_source" "$installed"; then
     say "prepend at $installed is already current"
 else
@@ -54,19 +53,13 @@ else
     run sudo install -o root -g root -m 0644 -D "$prepend_source" "$installed"
 fi
 
-# 2. The directive, once, in PHP's configuration rather than in a vhost.
-#
-# Written to every SAPI directory that exists. apache2 is what serves the panel
-# today and fpm is what will; installing both now means the FPM cutover inherits
-# the guard instead of having to remember it.
 installed_into=0
 for sapi in apache2 fpm; do
     dir=/etc/php/$php_version/$sapi/conf.d
     [[ -d $dir ]] || continue
     installed_into=$((installed_into + 1))
     target=$dir/$ini_name
-    # The sealed ini, byte for byte. A hand-written copy here drifted from it
-    # (no realpath or opcache bounds) and would not match its bundle digest.
+
     if [[ -r $target ]] && cmp -s "$ini_source" "$target"; then
         say "sealed ini already installed for $sapi"
         continue
@@ -75,10 +68,6 @@ for sapi in apache2 fpm; do
     run sudo install -o root -g root -m 0644 "$ini_source" "$target"
 done
 
-# 3. Take the directive out of the vhosts, so there is one source for it.
-#
-# Left in both places the two would drift, and the vhost copy is the one that
-# points at the old file name after this runs.
 for vhost in /etc/apache2/sites-available/am2-webadmin-internal.conf \
              /etc/apache2/sites-enabled/am2-webadmin-staging.conf; do
     [[ -r $vhost ]] || continue

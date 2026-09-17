@@ -1,36 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Prove the net is actually catching, on a running host.
-#
-# Every other check in this change reads source text. This one asks the question
-# the source cannot answer: if somebody drops a PHP file into the panel's
-# document root and forgets every convention -- no config.php, no guard, no
-# session check -- does the request still get refused?
-#
-# That is the only property that makes this design safe for a maintainer who
-# forgets, so it is worth asking rather than assuming. It is asked of files that
-# are already there: seven of the panel's own files include no config.php, so
-# nothing has to be written into a release to find out. Releases are immutable
-# and owned by am2release under artifact-only delivery, and an earlier version
-# of this script created a probe file inside one -- briefly, with sudo, but
-# inside one all the same.
-#
-# Defaults to the staging lane. Production must be named explicitly.
 
 usage() { echo "usage: $0 [--lane staging|production] | --list-assets /path/to/WebAdmin" >&2; }
 
-# Local assets the pages load, one repo-relative path per line.
-#
-# The live map once rendered nothing on either lane while every server-side
-# gate passed: livetrack.php imported a module the artifact did not carry, and a
-# failed module import is visible only in a browser. So the lane sweep below
-# also asks the origin for every asset a page names -- through am2_asset(),
-# am2_asset_url() for module imports, or a plain src=/href= attribute.
-#
-# What pages reach only indirectly is not listed: files a stylesheet loads with
-# url() (most font weights, image/kawung.svg, Leaflet's marker PNGs), imports
-# inside a JavaScript file, and assets named through a variable.
 list_assets() {
     local dir=$1
     { grep -hoE "(am2_asset(_url)?\(\s*['\"]|(src|href)=['\"])\.?/?asset/[A-Za-z0-9._/-]+" \
@@ -47,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         --list-assets)
                 [[ $# -eq 2 && -d $2 ]] || { usage; exit 64; }
                 list_assets "$2"; exit 0 ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -56,7 +29,7 @@ case "$lane" in
                 host=staging-webadmin.am2-poc.com ;;
     production) docroot=/var/www/am2/current/WebAdmin;         origin=127.0.0.1:8080
                 host=webadmin.am2-poc.com ;;
-    *) echo "unknown lane: $lane" >&2; exit 64 ;;
+
 esac
 
 [[ -d $docroot ]] || { echo "no document root at $docroot" >&2; exit 1; }
@@ -124,13 +97,10 @@ for file in "$docroot"/*.php; do
         "http://$origin/$name" || echo 000)
 
     case "$name" in
-        # The one page that must answer, and the sign-in endpoint, which is
-        # POST-only and so refuses a GET on its own terms after the guard lets
-        # it through.
+
         login.php)     [[ $api == 200 && $nav == 200 ]] || { echo "FAIL: login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
         api_login.php) [[ $api == 405 && $nav == 405 ]] || { echo "FAIL: api_login.php answered api=$api nav=$nav" >&2; sweep_bad=1; }; continue ;;
-        # Libraries refuse direct execution themselves. A 404 leaks less than
-        # an auth-shaped response and is equivalent across callers.
+
         auth_guard.php|session_boot.php)
             [[ $api == 404 && $nav == 404 ]] || { echo "FAIL: $name answered api=$api nav=$nav, not 404" >&2; sweep_bad=1; }
             continue ;;

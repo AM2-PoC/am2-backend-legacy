@@ -1,18 +1,3 @@
-/**
- * The HTTP surface: what the panel and the admin app call over plain requests.
- *
- * Everything here is a request that arrives, does one thing and answers. The
- * WebSocket engine is the opposite shape — one connection that stays open and
- * carries many messages — which is the whole reason these two are no longer
- * in the same file.
- *
- * Every path is part of a contract: the field app polls /api/check-update, and
- * tests/contract pins each /api/admin/* route by name. Renaming one of them is
- * a release, not a refactor.
- *
- * Takes `app` because the express instance is wiring and belongs to server.js;
- * everything else it needs it requires for itself.
- */
 const path = require('node:path');
 const WebSocket = require('ws');
 
@@ -29,20 +14,6 @@ const {
 } = require('./broadcast');
 const { markCloseCause } = require('./disconnect-observability');
 
-/*
- * Where this environment serves its client APK from.
- *
- * The URL was assembled per request as `http://${req.headers.host}/...`. The
- * client accepts an update from exactly one URL and refuses everything else, so
- * that value could never match: the scheme was wrong before the host even
- * mattered, and the host was whatever the caller put in the header. Self-update
- * could not work in any environment, and from the device it looked like the app
- * rejecting its own server.
- *
- * Left unset, the endpoint still reports the version and simply offers no URL.
- * Advertising one the client is certain to refuse reads as a client bug; saying
- * nothing is honest and shows up in the log.
- */
 const UPDATE_BASE = (() => {
     const configured = (process.env.AM2_UPDATE_BASE_URL || '').trim().replace(/\/+$/, '');
     if (!configured) {
@@ -61,33 +32,9 @@ function registerRoutes(app) {
         res.status(200).send('<h1>PTT Server</h1><p>Status: Active (WIB) - Multimedia Pass-Through Engine Ready (Redis Enabled)</p>');
     });
 
-    // --- AUTO UPDATE ENDPOINTS ---
 
-    /*
-     * What a handset is offered, read from the file a handset actually fetches.
-     *
-     * This answered from public.app_versions, on the belief that the table was
-     * the channel and the manifest beside the APK was a deployment note. It was
-     * backwards. AboutActivity fetches UPDATE_MANIFEST_URL -- that manifest --
-     * and nothing in the client calls this endpoint at all: across every
-     * retained access log it has been asked for zero times, while the manifest
-     * has been fetched by real handsets.
-     *
-     * So the table was a second, hand-written copy of the channel, and it drifted
-     * exactly as a second copy does: it said build 3 while build 124 was
-     * published and being downloaded. Reading what the handset reads is the only
-     * arrangement in which this endpoint and the field cannot disagree.
-     *
-     * The shape of the reply is unchanged, because an older build somewhere may
-     * still call it and would break on a new one. `force_update` lived only in
-     * the table and has never had a caller, so it answers false rather than
-     * inventing a source for it.
-     */
     app.get('/api/check-update', (req, res) => {
-        // Refused sets answer exactly what an empty channel answers. A handset
-        // learns there is no update; it does not learn which check refused,
-        // because a stranger learning that is a stranger learning how to pass
-        // it. The reason is logged for whoever has to fix it.
+
         const verdict = fieldUpdate(path.join(__dirname, '..', 'update'));
         if (!verdict.valid) {
             console.warn(`[check-update] not advertising: ${verdict.reason}`);
@@ -100,16 +47,13 @@ function registerRoutes(app) {
             server_version_code: manifest.version_code,
             server_version_name: manifest.version_name,
             force_update: false,
-            // ?lang= if the caller states one; the field app does not, so it
-            // gets the default and sees what it always saw.
+
             release_notes: resolveReleaseNotes(manifest.changelog, String(req.query.lang || '')),
             update_url: manifest.update_url
                 || (UPDATE_BASE ? `${UPDATE_BASE}/update/update.apk` : null),
         });
     });
 
-
-    // --- ADMIN ENDPOINTS ---
 
     app.get('/api/admin/sync-channels', async (req, res) => {
         const { userId } = req.query;
@@ -188,9 +132,6 @@ function registerRoutes(app) {
             res.status(500).json({ error: err.message });
         }
     });
-
-
-
 
 
     app.post('/api/admin/update-permissions', async (req, res) => {

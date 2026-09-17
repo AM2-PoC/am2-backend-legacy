@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
         --apply) apply=1; shift ;;
         --allow-reload) allow_reload=1; shift ;;
         --supersede) supersede=1; shift ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -83,18 +83,12 @@ mkdir -p -- "$(dirname -- "$lock")"
 exec 9>"$lock"
 flock -x 9
 if (( supersede )); then
-    # Replacing a live activation. Rolling it back first would restore the files
-    # from before any activation -- dropping the PHP guard prepend -- and reload
-    # twice. Instead the backup below captures the configuration that is live
-    # now, so rolling this activation back returns to the one it replaces. That
-    # is only sound if the replaced activation is intact: its receipt verified
-    # and protected, and its own rollback anchor unchanged.
+
     [[ -f $activation_receipt && ! -L $activation_receipt ]] || {
         echo "--supersede needs an active host-security activation receipt to replace" >&2
         exit 1
     }
-    # Prints the digest of the exact receipt bytes it checked, so the archive
-    # written after installation can be refused if the receipt changed since.
+
     superseded_sha256=$(python3 - "$activation_receipt" "$root" "$unprivileged" <<'PY'
 import hashlib, json, os, pathlib, stat, sys
 path, root, unprivileged = sys.argv[1:]

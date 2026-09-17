@@ -1,8 +1,6 @@
 <?php
 require_once __DIR__ . '/session_boot.php';
 
-// Which env file to load. Staging overrides this via Apache SetEnv so it can
-// point at its own database and its own node instance.
 $envFile = getenv('AM2_ENV_FILE')
     ?: ($_SERVER['AM2_ENV_FILE'] ?? '/etc/am2/webadmin.env.production');
 
@@ -14,7 +12,7 @@ if (is_readable($envFile)) {
         }
         [$key, $value] = explode('=', $line, 2);
         $key = trim($key);
-        // First remove whitespace, then remove optional wrapping single/double quotes.
+
         $value = trim($value);
         $value = trim($value, "\"'");
         putenv($key . '=' . $value);
@@ -38,25 +36,14 @@ if ($password === '') {
     die('Konfigurasi database belum lengkap.');
 }
 
-// Base URL of the node relay. A constant, so the notify helpers defined inside
-// the panel pages can reach it without importing a global.
 define('AM2_NODE_BASE', rtrim(getenv('AM2_NODE_URL') ?: 'http://localhost:5000', '/'));
 define('AM2_ADMIN_UPDATE_BASE', rtrim(
     getenv('AM2_ADMIN_UPDATE_BASE_URL') ?: 'https://webadmin.am2-poc.com/update',
     '/'
 ));
 
-// Which application the published update is allowed to be. An update set that
-// names a different package is not this app's update, whatever else it says.
 define('AM2_ADMIN_UPDATE_PACKAGE', getenv('AM2_ADMIN_UPDATE_PACKAGE') ?: 'com.am2.admin');
 
-// Signer fingerprints that may never be advertised, lowercase hex, no colons.
-//
-// The Android debug signer is denied by default and not by configuration: an
-// APK built on a developer's machine is the single most likely thing to reach
-// this directory by accident, and a deployment that forgets to set the
-// variable should still refuse it. The environment adds to that floor rather
-// than replacing it.
 define('AM2_ADMIN_UPDATE_DENIED_SIGNERS', array_values(array_unique(array_filter(array_map(
     static fn (string $v): string => strtolower(str_replace(':', '', trim($v))),
     array_merge(
@@ -66,8 +53,7 @@ define('AM2_ADMIN_UPDATE_DENIED_SIGNERS', array_values(array_unique(array_filter
 ), static fn (string $v): bool => $v !== ''))));
 
 require_once __DIR__ . '/admin_update_validation.php';
-// Identity, the public entry list and the guard itself. Shared with the
-// auto_prepend copy so there is exactly one definition of who may get in.
+
 require_once __DIR__ . '/auth_guard.php';
 
 function am2_api_authz_denied(string $reason): bool
@@ -86,7 +72,6 @@ function am2_api_authz_denied(string $reason): bool
     return true;
 }
 
-/** The header line the panel adds when it calls the node relay. */
 function am2_node_auth_header(): string
 {
     $key = (string) (getenv('AM2_API_KEY') ?: '');
@@ -181,7 +166,6 @@ function am2_csrf_token(): string
     return $_SESSION['csrf_token'];
 }
 
-/** A hidden input carrying the token, for pasting into a form. */
 function am2_csrf_field(): string
 {
     return '<input type="hidden" name="_csrf" value="'
@@ -302,7 +286,7 @@ function am2_login_failed(string $client, int $window = 900): void
         }
     }
     @file_put_contents($file, ($count + 1) . '|' . $first, LOCK_EX);
-    // A dedicated line so fail2ban can pick this up later without parsing HTML.
+
     error_log('AM2 login failure from ' . $client);
 }
 
@@ -373,14 +357,11 @@ try {
     die('Koneksi database gagal.');
 }
 
-// i18n first, so a refusal can be phrased in the operator's language.
 require_once __DIR__ . '/i18n.php';
 
 am2_require_identity();
 am2_csrf_require();
 
-// The relay client. Loaded last: it needs AM2_NODE_BASE and the auth header
-// helper defined above.
 require_once __DIR__ . '/node_client.php';
 require_once __DIR__ . '/channel_access.php';
 require_once __DIR__ . '/activity_log.php';

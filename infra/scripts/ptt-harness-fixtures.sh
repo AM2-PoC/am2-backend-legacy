@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Give the contract-test units a real password and a channel, so the WebSocket
-# harness can complete an app_login. Staging database only.
-#
-# CT_A1 and CT_A2 share ct_channel_a; CT_A3 sits in ct_channel_a2 instead. That
-# third unit is not decoration -- app_login refuses a user with no default
-# channel, so without it there was no way to have an authenticated caller who is
-# *outside* the channel under test, and "the attacker received the audio" could
-# not be told apart from "the attacker received the channel broadcast like any
-# other member".
+
 set -euo pipefail
 DB=am2_staging
 [ "$DB" = "am2_staging" ] || { echo "REFUSING"; exit 1; }

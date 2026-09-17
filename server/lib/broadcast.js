@@ -24,8 +24,7 @@ const broadcastChannelUpdate = async (userId) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return true;
 
     return serializeChannelState(ws, async () => {
-        // Invalidate in-flight decisions only after earlier room work has
-        // drained. That makes join and sync one ordered state machine.
+
         const previousRxOnly = ws.is_rx_only;
         ws.channelJoinGeneration += 1;
         ws.transmitAuthGeneration += 1;
@@ -92,8 +91,7 @@ const broadcastChannelUpdate = async (userId) => {
         }
         return true;
     }).catch(async (error) => {
-        // Unknown membership is no membership: stop routing immediately. The
-        // handset can reconnect and re-read durable access after recovery.
+
         const room = ws.currentRoom;
         const entry = ws.sessionUser ? `${ws.sessionUser.id}:${ws.sessionUser.name}` : null;
         if (room) {
@@ -179,8 +177,6 @@ const stopChannelVideo = async (ws, channelSlug) => {
         });
     }
 
-    // Unconditionally, because the mirror can outlive memory. Live authority
-    // is already revoked and viewers already know before Redis can fail.
     await redisClient.sRem(`video:${channelSlug}`, entry);
     return wasStreaming;
 };

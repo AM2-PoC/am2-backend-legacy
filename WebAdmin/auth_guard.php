@@ -23,7 +23,7 @@ if (!defined('AM2_PUBLIC_ENTRY')) {
 }
 
 if (!function_exists('am2_entry_point')) {
-    /** Resolve only a plain, real script directly below the document root. */
+
     function am2_entry_point(): string
     {
         if (($_SERVER['PATH_INFO'] ?? '') !== '') {
@@ -79,14 +79,7 @@ if (!function_exists('am2_answers_json_only')) {
 }
 
 if (!function_exists('am2_require_identity')) {
-    /**
-     * Refuse anyone who is not signed in.
-     *
-     * This is the half of the design that survives a forgetful maintainer: a
-     * new endpoint is protected the moment its file exists, because nothing has
-     * to be added to it. Forgetting makes something safe rather than open,
-     * which is the only polarity worth shipping.
-     */
+
     function am2_require_identity(): void
     {
         // Maintenance scripts and the test suite run these files outside a
@@ -112,8 +105,7 @@ if (!function_exists('am2_require_identity')) {
             'AM2 auth REJECT %s %s from %s ua=%s',
             $_SERVER['REQUEST_METHOD'] ?? '?',
             $_SERVER['REQUEST_URI'] ?? '?',
-            // config.php is not loaded yet on the prepend path, so resolve the
-            // trusted X-Real-IP value here and otherwise fall back safely.
+
             (static function (): string {
                 $real = $_SERVER['HTTP_X_REAL_IP'] ?? '';
                 return (is_string($real) && filter_var($real, FILTER_VALIDATE_IP))
@@ -122,29 +114,6 @@ if (!function_exists('am2_require_identity')) {
             substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? '-'), 0, 120)
         ));
 
-        /*
-         * Three kinds of caller, three right answers.
-         *
-         * A redirect answers a fetch() with 200 and a page of HTML, which the
-         * caller then tries to parse as JSON -- that is precisely the shape of
-         * the original complaint, where a handset on an expired session was
-         * handed a login page and every screen reported its own feature as
-         * broken because nothing could see a status. So a fetch() gets 401,
-         * which Admin Native's interceptor acts on (and 403, which it
-         * deliberately does not).
-         *
-         * A browser navigating still gets the redirect. The two are told apart
-         * by Sec-Fetch-Dest, which every current browser sends and which says
-         * what the response is *for*: `document` for a navigation, `empty` for
-         * a fetch(). Accept cannot make that distinction -- fetch() defaults to
-         * `*\/*`, which looks like nothing in particular.
-         *
-         * A caller that sends neither header -- curl, the contract suite -- is
-         * treated as a document. Not because that is safer in the abstract, but
-         * because it is the behaviour that was here before and the behaviour
-         * those tests encode; changing it would be an unrelated change riding
-         * along with a security fix.
-         */
         $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
         $dest = (string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '');
         $timedOut = function_exists('am2_session_timed_out') && am2_session_timed_out();

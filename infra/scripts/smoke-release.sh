@@ -114,9 +114,6 @@ if (carried.length === 0) {
     process.exit(0);
 }
 
-// After the early exit, not before: a release that carries no migrations has
-// nothing to ask the database, and the restart-safety fixture is exactly such
-// a release -- a bare entrypoint with no node_modules to require pg from.
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -145,8 +142,7 @@ pool.query('SELECT filename FROM public.schema_migrations')
         process.exit(0);
     })
     .catch((err) => {
-        // A missing schema_migrations table is itself the answer: nothing has
-        // ever been applied here.
+
         console.error(`cannot read the applied migrations from ${process.env.DB_NAME}: ${err.message}`);
         console.error('  run: infra/scripts/apply-migrations.sh --db ' + process.env.DB_NAME);
         process.exit(1);

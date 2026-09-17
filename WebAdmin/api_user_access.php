@@ -10,9 +10,8 @@ am2_csrf_require();
 $method = $_SERVER['REQUEST_METHOD'];
 
 
-
 if ($method == 'GET') {
-    // Identity is resolved by the server; see am2_api_identity().
+
     [$admin_id, $admin_role] = am2_api_identity();
     $is_superadmin = ($admin_role === 'superadmin');
     $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -61,7 +60,7 @@ if ($method == 'GET') {
 }
 elseif ($method == 'POST') {
     $action = $_POST['action'] ?? '';
-    // Identity is resolved by the server; see am2_api_identity().
+
     [$current_admin_id, $current_admin_role] = am2_api_identity();
 
     if ($action == 'force_logout') {

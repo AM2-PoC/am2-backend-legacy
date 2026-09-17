@@ -2,7 +2,6 @@
 
 const crypto = require('node:crypto');
 
-/** Enough that guessing is not a strategy; the only defence a bearer has. */
 const TOKEN_BYTES = 32;
 
 function newToken() {

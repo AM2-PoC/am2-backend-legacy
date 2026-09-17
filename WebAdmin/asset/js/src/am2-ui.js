@@ -13,16 +13,7 @@
  * Every animate() below runs on an element Preline has already made visible,
  * so a thrown animation leaves a usable page rather than a blank one.
  */
-/* Only the plugins this panel uses. The barrel export pulls in the datatable,
- * the datepicker, the carousel and the range slider as well, which is 449kB of
- * behaviour for a console that has none of those. */
-/*
- * One import per plugin the markup actually uses, and no others. collapse,
- * tabs, tooltip and combobox were imported for pages that have not been built
- * yet, and every page paid for them on first load. ui-runtime.test.mjs reads
- * the hs-* attributes out of the markup and fails if an import is missing, so
- * adding one back is a line and forgetting one is a red test.
- */
+
 import 'preline/plugins/overlay';          /* modal, and the mobile drawer  */
 import 'preline/plugins/dropdown';         /* header menus, row actions     */
 import 'preline/plugins/accordion';        /* foldable navigation groups    */
@@ -32,9 +23,6 @@ import qrcode from 'qrcode-generator';
 import { initTables } from './am2-table.js';
 import { playExit, watchOverlays } from './am2-exit.js';
 
-/* Durations, in seconds because that is what Motion takes. Graded by how far
- * a thing travels: a colour change is over before it is noticed, a drawer
- * crossing the viewport has earned the time. */
 const T = {
     micro: 0.14,
     pop: 0.16,
@@ -44,8 +32,6 @@ const T = {
     exit: 0.12,
 };
 
-/* Entering decelerates hard, so a panel arrives rather than slides. Leaving
- * accelerates away, because waiting for something to go is waiting. */
 const EASE = {
     enter: [0.16, 1, 0.3, 1],
     exit: [0.4, 0, 1, 1],
@@ -59,11 +45,6 @@ reduceQuery.addEventListener('change', (e) => { reduced = e.matches; });
 
 export const prefersReducedMotion = () => reduced;
 
-/**
- * animate(), except that under reduced motion it applies the final frame and
- * returns. Not "a shorter animation" -- no transform, no stagger, no loop, and
- * the element is at its end state on the next paint.
- */
 function move(el, keyframes, options = {}) {
     if (!el) return null;
     if (reduced) {
@@ -71,7 +52,7 @@ function move(el, keyframes, options = {}) {
         for (const [prop, frames] of Object.entries(keyframes)) {
             final[prop] = Array.isArray(frames) ? frames[frames.length - 1] : frames;
         }
-        // Colour and opacity still land; only travel is dropped.
+
         delete final.transform;
         if (final.y !== undefined) delete final.y;
         if (final.x !== undefined) delete final.x;
@@ -82,8 +63,7 @@ function move(el, keyframes, options = {}) {
     try {
         return animate(el, keyframes, options);
     } catch {
-        // A missing element or an unsupported property must not take the page
-        // down with it -- the component is already open either way.
+
         return null;
     }
 }
@@ -94,31 +74,13 @@ function styleable(obj) {
     return out;
 }
 
-/* ------------------------------------------------------------------ *
- * Overlays: modal, offcanvas drawer.
- *
- * Preline decides open and closed. We colour in the transition either side of
- * its decision: the scrim only fades, because a backdrop that travels pulls
- * the eye off the thing it exists to isolate, and the panel travels because
- * that small movement is what says it came from somewhere.
- * ------------------------------------------------------------------ */
 
-
-/* Dropdowns and the search popover: opacity and a little travel, no bounce. */
 document.addEventListener('open.hs.dropdown', (e) => {
     const menu = e.detail?.menu;
     move(menu, { opacity: [0, 1], y: [-4, 0] }, { duration: T.pop, ease: EASE.enter });
 });
 
-/* ------------------------------------------------------------------ *
- * Things the pages call.
- * ------------------------------------------------------------------ */
 
-/**
- * Card entrance, once. Polling re-renders the numbers inside these cards
- * several times a minute; replaying the entrance each time would make the
- * dashboard flicker on a timer.
- */
 function enterOnce(selector, container = document) {
     const els = [...container.querySelectorAll(selector)].filter(
         (el) => !el.dataset.am2Entered
@@ -134,11 +96,6 @@ function enterOnce(selector, container = document) {
         { duration: T.entrance, ease: EASE.enter, delay: stagger(STAGGER) });
 }
 
-/**
- * Count a metric up to its value. Only on the first meaningful render or when
- * the number actually changes -- a figure that re-counts on every poll reads
- * as activity that is not happening.
- */
 function countTo(el, value) {
     if (!el) return;
     const target = Number(value);
@@ -161,17 +118,6 @@ function countTo(el, value) {
     });
 }
 
-/**
- * A QR code, as an SVG element.
- *
- * The console hands a phone to an officer in the field; the officer scans and
- * installs. Type 0 lets the encoder choose the smallest version that fits, and
- * correction level M survives a photograph of a screen at an angle.
- *
- * Built as DOM rather than a markup string: the only thing interpolated is a
- * path of numbers, but the rule in this codebase is that markup is not
- * assembled from data, and an exception is how the rule stops holding.
- */
 function qr(text, size = 120) {
     const code = qrcode(0, 'M');
     code.addData(String(text));
@@ -202,22 +148,8 @@ function qr(text, size = 120) {
     return svg;
 }
 
-/**
- * Reveal below the fold, once, for the long lower half of the dashboard.
- *
- * The hidden starting state belongs to CSS -- `.am2-js [data-reveal]` -- and
- * not to this function. Setting it here ran after first paint, because the
- * bundle is deferred: the section painted, went invisible, and faded back in.
- * That one-frame drop, on every load, is what the page change looked like.
- * All this does now is bring an already-hidden element back.
- */
 function revealOnScroll(selector) {
-    /*
-     * The bundle is here, so the head's expiry timer is no longer needed. It
-     * exists because `am2-js` says JavaScript runs, not that this file arrived:
-     * without the timer, a bundle that 404s or throws leaves every section it
-     * was meant to reveal hidden permanently.
-     */
+
     clearTimeout(window.__am2RevealFallback);
 
     if (reduced) {
@@ -232,24 +164,17 @@ function revealOnScroll(selector) {
     });
 }
 
-/**
- * A filtered table says the set changed without redrawing every row: the body
- * dips and comes back. Row-level animation is deliberately not done here --
- * animating each row on every refresh is what makes a live table unreadable.
- */
 function filtered(tbody) {
     move(tbody, { opacity: [0.45, 1] }, { duration: T.micro, ease: EASE.enter });
 }
 
-/** Toast in from the edge, out faster. */
 
 function toastRoot() {
     let root = document.getElementById('am2-toasts');
     if (root) return root;
     root = document.createElement('div');
     root.id = 'am2-toasts';
-    // Above the bulk bar, clear of the safe area, and never in the way of a
-    // thumb: bottom centre on a phone, bottom right on a desk.
+
     root.className = 'pointer-events-none fixed inset-x-0 bottom-20 z-90 flex flex-col '
         + 'items-center gap-2 px-4 sm:inset-x-auto sm:end-6 sm:bottom-6 sm:items-end';
     root.setAttribute('aria-live', 'polite');
@@ -268,7 +193,7 @@ function toast(what, ok = true) {
 
     const el = document.createElement('div');
     el.setAttribute('role', ok ? 'status' : 'alert');
-    // Theme comes from the tokens, so light and dark need no second rule.
+
     el.className = 'pointer-events-auto flex max-w-[min(92vw,26rem)] items-start gap-2.5 '
         + 'rounded-control border bg-card px-3.5 py-2.5 text-sm text-ink shadow-panel '
         + (ok ? 'border-ok/40 border-s-2 border-s-ok' : 'border-bad/40 border-s-2 border-s-bad');
@@ -280,7 +205,7 @@ function toast(what, ok = true) {
 
     const body = document.createElement('span');
     body.className = 'min-w-0 flex-1';
-    // textContent: the message can carry a database error, which is text.
+
     body.textContent = text;
 
     el.append(mark, body);
@@ -307,7 +232,6 @@ function toast(what, ok = true) {
     if (ok) dismissAfter(el, 4000);
 }
 
-/** Fade a toast out and take it off the page. */
 function dismiss(el) {
     if (el.dataset.leaving) return;
     el.dataset.leaving = '1';
@@ -338,21 +262,10 @@ function handoff(text, ok = true) {
     try {
         sessionStorage.setItem(HANDOFF, JSON.stringify({ text: String(text ?? ''), ok: !!ok }));
     } catch {
-        // A private window can refuse storage. The write is a convenience, and
-        // losing it must not stop the action that raised it.
+
     }
 }
 
-/**
- * Everything a page has to say, said once, on arrival.
- *
- * Two sources reach the same place: a message the server rendered into the
- * page, and one the previous page stashed on its way out. The server's is in
- * the markup rather than in a script so that a browser which never runs this
- * bundle still shows it -- `.am2-js .am2-notice` hides it only while script is
- * known to be working, and the head's expiry timer hands it back if this file
- * never arrives.
- */
 function drainNotices() {
     try {
         const held = sessionStorage.getItem(HANDOFF);
@@ -362,8 +275,7 @@ function drainNotices() {
             if (text) toast(text, ok);
         }
     } catch {
-        // Unreadable or malformed: there is nothing to say, which is the same
-        // as having nothing to say.
+
     }
 
     document.querySelectorAll('[data-notice]').forEach((el) => {
@@ -373,19 +285,10 @@ function drainNotices() {
     });
 }
 
-/**
- * The rings leaving the login mark. Motion owns this outright rather than
- * sharing it with a CSS keyframe, so reduced motion is a branch here instead
- * of a media query trying to cancel an animation mid-flight.
- *
- * It is the one looping animation on that page, and it depicts the product:
- * a signal leaving a transmitter.
- */
 function emit(selector) {
     const rings = [...document.querySelectorAll(selector)];
     if (!rings.length || reduced) {
-        // Under reduced motion the rings simply are not there. A static ring
-        // would read as a border nobody asked for.
+
         rings.forEach((el) => { el.style.display = 'none'; });
         return;
     }
@@ -396,11 +299,6 @@ function emit(selector) {
     });
 }
 
-/*
- * Tables wire themselves. A page supplies markup and data attributes and
- * writes no JavaScript at all, so the three roster pages cannot drift apart
- * by each growing its own copy of selection or of a toggle.
- */
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => initTables(), { once: true });
 } else {
@@ -423,7 +321,7 @@ if (document.readyState === 'loading') {
  * transitions never fire either event, so they simply navigate -- which is what
  * they did before any of this existed.
  */
-// Every overlay plays its exit animation before Preline hides it.
+
 watchOverlays();
 
 const NAVIGATING = 'am2-navigating';
@@ -432,16 +330,13 @@ window.addEventListener('pageswap', () => {
 });
 window.addEventListener('pagereveal', (e) => {
     document.documentElement.classList.add(NAVIGATING);
-    // Held until the animation has finished, then dropped, so a dialogue opened
-    // on the new page is never trapped under the backdrop. `finished` rejects
-    // if the transition is skipped, which is a reason to clear it, not to log.
+
     const done = e.viewTransition?.finished ?? Promise.resolve();
     done.catch(() => {}).finally(() => {
         document.documentElement.classList.remove(NAVIGATING);
     });
 });
-// A page restored from the back/forward cache never fires pagereveal, so the
-// class would survive into a page nobody is navigating.
+
 window.addEventListener('pageshow', () => {
     document.documentElement.classList.remove(NAVIGATING);
 });

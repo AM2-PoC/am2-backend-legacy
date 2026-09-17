@@ -1,10 +1,5 @@
 <?php
-/**
- * Stores structured audit events and renders localized text at read time.
- * Legacy rows without `event_code` continue to use `keterangan`.
- */
 
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
@@ -27,12 +22,6 @@ am2_refuse_direct_request(__FILE__);
  */
 $GLOBALS['am2_audit_owed'] = [];
 
-/**
- * Declare that this mutation owes an audit event.
- *
- * Called by the helper doing the changing, so a caller added later inherits the
- * obligation instead of having to know about it.
- */
 function am2_audit_expect(string $mutation): void
 {
     $GLOBALS['am2_audit_owed'][] = $mutation;
@@ -42,8 +31,7 @@ function am2_audit_expect(string $mutation): void
 function am2_audit_complete(): void
 {
     $owed = $GLOBALS['am2_audit_owed'];
-    // Cleared before throwing, so one failed request cannot make the next one
-    // fail for a debt it never incurred.
+
     $GLOBALS['am2_audit_owed'] = [];
 
     if ($owed !== []) {
@@ -59,10 +47,6 @@ function am2_audit_abandon(): void
     $GLOBALS['am2_audit_owed'] = [];
 }
 
-/**
- * Record an event while preserving the legacy action category used by the
- * Admin app. Catalog-key parameters begin with `@`.
- */
 function am2_log(
     PDO $pdo,
     $admin_id,
@@ -72,28 +56,13 @@ function am2_log(
     ?string $table = null,
     ?string $dataId = null
 ): void {
-    /*
-     * Settle one debt, and refuse an event nothing asked for.
-     *
-     * Popped before the write rather than after it: am2_log() swallows its own
-     * database failures on purpose, and a caller that did its part must not be
-     * rolled back because the log table was unreachable. The debt is about
-     * whether the call was made, not whether the row landed.
-     *
-     * The empty case is the duplicate: a second event for a mutation that was
-     * already recorded says the action happened twice.
-     */
+
     if ($GLOBALS['am2_audit_owed'] === []) {
         throw new LogicException("unexpected audit event '{$code}': no mutation is waiting for one");
     }
-    // Oldest first, so what a failure names is the mutation still owing a
-    // record rather than whichever happened to be declared last.
+
     array_shift($GLOBALS['am2_audit_owed']);
 
-    // A log write must never be the reason an action fails. The action has
-    // already happened by the time we are called; losing the record of it is
-    // bad, and rolling back a completed change because the record could not be
-    // written is worse.
     try {
         $pdo->prepare(
             'INSERT INTO public.admin_activity_logs
@@ -112,7 +81,6 @@ function am2_log(
     }
 }
 
-/** A parameter that names a catalog key, resolved; anything else, as it is. */
 function am2_log_value($value): string
 {
     if (is_string($value) && $value !== '' && $value[0] === '@') {
@@ -149,13 +117,6 @@ function am2_log_channels(array $channels): string
     return implode(', ', $out);
 }
 
-/**
- * The sentence for one row.
- *
- * $params arrives as it came out of the database: a JSON string, or already
- * decoded. Returns the free-text fallback when there is no code, which is
- * every row written before migration 002.
- */
 function am2_log_text(?string $code, $params, ?string $fallback = null): string
 {
     if ($code === null || $code === '') {
@@ -184,10 +145,6 @@ function am2_log_text(?string $code, $params, ?string $fallback = null): string
     $key  = 'log.' . $code;
     $text = t($key, $replace);
 
-    // t() answers with the key itself when it is missing, which would put
-    // "log.user.create" on the screen. The free text is a better answer, and
-    // an unrecognised code is worth a line in the error log rather than a
-    // silent gap on the page.
     if ($text === $key) {
         error_log('AM2 activity-log unknown event code: ' . $code);
         return (string) ($fallback ?? $key);

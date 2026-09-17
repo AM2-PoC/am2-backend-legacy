@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
         --unprivileged-root) unprivileged_root=1; shift ;;
         --lifecycle) [[ $# -ge 2 ]] || { usage; exit 64; }; lifecycle=$2; shift 2 ;;
         --expected-manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; expected_manifest=$2; shift 2 ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -67,9 +67,6 @@ fi
 [[ -f $lifecycle && ! -L $lifecycle ]] || { echo "Cloudflare real-IP lifecycle contract is missing: $lifecycle" >&2; exit 1; }
 
 
-# The trusted manifest is the one thing here obtained independently of the host,
-# so on a real host it is required: without it the check reduces to asking an
-# unsigned file on that host whether that host is fine.
 if [[ -z $expected_manifest && $unprivileged_root -eq 0 ]]; then
     echo "checking a real host requires --expected-manifest; a receipt alone is the host vouching for itself" >&2
     exit 64
@@ -96,16 +93,11 @@ def report(message):
     findings.append(message)
 
 
-# A receipt from an unprivileged materialization describes a fixture, and a
-# non-/ root is a fixture root. Either one may be checked deliberately, but
-# neither may be passed off as a statement about the real host.
 if not receipt.get('privileged') and not unprivileged_root:
     raise SystemExit(
         'receipt records an unprivileged materialization; it is not evidence about this host. '
         'Pass --unprivileged-root to check it as a fixture.')
-# Resolved before it is judged. `//`, `/tmp/../` and `/.` all reach the real
-# host through the kernel while a string compare reads them as a fixture, which
-# would skip every check that exists because the host is real.
+
 resolved_root = os.path.realpath(str(root))
 if resolved_root != '/' and not unprivileged_root:
     raise SystemExit('a root other than / is a fixture; pass --unprivileged-root to check it')
@@ -115,11 +107,6 @@ if resolved_root == '/' and unprivileged_root:
 if receipt.get('application') != 'am2-host-security-materialization':
     raise SystemExit('receipt is not a host-security materialization receipt')
 
-# A receipt is an unsigned file on the host it describes. `privileged`,
-# `materialized_by_uid` and every digest in it are self-declared, so rewriting
-# them to match tampered bytes would otherwise produce a clean bill of health.
-# Bind them to the independently obtained manifest instead of taking the
-# receipt's word.
 if expected_manifest_path:
     expected = json.load(open(expected_manifest_path, encoding='utf-8'))
     for field in ('source_sha', 'payload_sha256', 'archive_sha256'):
@@ -167,29 +154,11 @@ require_protected(lifecycle_path, 'the real-IP lifecycle contract')
 if expected_manifest_path:
     require_protected(expected_manifest_path, 'the trusted expected manifest')
 
-# The receipt is held to the tighter rule everywhere: it is generated at 0644 by
-# the materializer, so a group-writable one is always wrong.
 info = pathlib.Path(receipt_path).lstat()
 if stat.S_IMODE(info.st_mode) & 0o022:
     raise SystemExit(f'receipt is writable beyond its owner (mode {stat.S_IMODE(info.st_mode):04o})')
 
 
-# Where each file belongs, and how tight it must be, come from the contract --
-# never from the receipt. Those two fields decide which file is examined at all,
-# so a receipt that repointed one entry at a decoy would send this check to read
-# pristine bytes and report health while the live file stayed edited. Digests
-# alone cannot catch that: the digest of a file nobody looked at is never wrong.
-#
-# The contract is read from the materialization store rather than accepted as an
-# argument. An argument would just move the same problem one file over -- it
-# would live in the same trust domain as the files this audit polices, and a
-# supplied contract could retarget an entry or relax a mode just as a receipt
-# could.
-#
-# The store is bound by hashing to the payload digest the trusted manifest names.
-# That manifest does not list the contract among its files, but payload_sha256
-# spans every byte of the payload, so it covers the contract too. store_path
-# needs no separate trust: whatever it points at must reproduce that digest.
 store_base = pathlib.Path(receipt['store_path'])
 store_payload = store_base / 'payload'
 trusted_payload = (expected if expected_manifest_path else receipt)['payload_sha256']
@@ -283,8 +252,7 @@ def resolve_targets(entry):
     if 'target' in entry:
         return [entry['target']]
     if entry.get('target_kind') == 'php-sapi-conf.d':
-        # Which PHP versions exist is host state, so it is discovered here
-        # rather than frozen into the receipt.
+
         targets = []
         php_root = root / 'etc/php'
         if php_root.is_dir():
@@ -332,9 +300,7 @@ for entry in receipt['files']:
                 report(f'{target}: owned by {info.st_uid}:{info.st_gid}, expected 0:0')
             with os.fdopen(os.dup(handle), 'rb') as stream:
                 body = stream.read()
-            # Detect a replace that occurred while the descriptor was being
-            # hashed. The report describes the exact object opened above; a
-            # different object at the pathname cannot inherit that clean bill.
+
             current = os.stat(path, follow_symlinks=False)
             if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino) or not stat.S_ISREG(current.st_mode):
                 report(f'{target}: changed while being verified')
@@ -384,8 +350,7 @@ if len(lane_paths) == 2:
     def identity(lane, store):
         path = root / store.lstrip('/')
         try:
-            # lstat first: a symlinked session root is an alias that can change
-            # after configuration review, so it is not an acceptable lane store.
+
             listed = path.lstat()
         except OSError:
             report(f'{lane} session store is missing: {store}')
@@ -441,10 +406,6 @@ if text is not None:
         if not any(line.strip() == directive for line in active):
             report(f'cloudflare real-IP: missing required directive {directive!r}')
 
-    # Skipping byte equality must not become "anything goes". These bytes are
-    # included into nginx server context, so an unrelated directive here -- an
-    # `allow all`, an `auth_basic off`, a `proxy_pass` -- is live configuration
-    # that the exemption would otherwise wave through.
     allowed = [re.compile(pattern) for pattern in validation['allowed_line_patterns']]
     for number, line in enumerate(text.splitlines(), start=1):
         if not any(pattern.match(line) for pattern in allowed):

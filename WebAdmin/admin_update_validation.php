@@ -2,13 +2,7 @@
 
 declare(strict_types=1);
 
-/**
- * Resolve a published administrator APK to the exact regular file it names.
- * Returns null unless both URLs are simple HTTPS origins and the candidate is
- * directly below the configured update path.
- */
 
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 function am2_admin_update_file(string $baseUrl, string $downloadUrl, string $updateDir): ?string
@@ -98,9 +92,6 @@ function am2_validate_signed_update_set(
         return $reject('manifest key set is not exact');
     }
 
-    // Strict types throughout: a version code that arrives as the string "2"
-    // compares equal to 2 under PHP's loose rules and would let a downgrade
-    // through on a manifest that was never machine-generated.
     if (!is_int($manifest['version_code']) || !is_int($manifest['rollout'])) {
         return $reject('version_code and rollout must be integers');
     }
@@ -153,25 +144,6 @@ function am2_validate_signed_update_set(
     return ['valid' => true, 'reason' => ''];
 }
 
-/**
- * The one decision about what may be advertised, for everything that asks.
- *
- * There were two. api_settings.php validated the published set before serving
- * it; the settings card read the same file itself and printed whatever
- * version_name it found. They disagreed in the direction that hides a failure:
- * the card announced a version while every handset asking the endpoint got a
- * 404 and a null, and the number on screen was the reason to believe the
- * channel worked.
- *
- * Returns the verdict, the validated set, and the manifest's changelog. The
- * changelog is carried out separately and never validated -- it is free text
- * that no decision depends on, and it is the only field here allowed to be
- * absent, empty, or written in a language nobody asked for.
- *
- * `reason` is for an operator reading the panel, not for the public endpoint:
- * a handset is told nothing beyond "no update", because a stranger learning
- * exactly which check refused is a stranger learning how to pass it.
- */
 function am2_admin_update_advertisement(
     string $updateDir,
     string $baseUrl,
@@ -206,10 +178,6 @@ function am2_admin_update_advertisement(
         return $refused('download path does not resolve', $changelog);
     }
 
-    // Zero, not the caller's word for it: the server does not know what any
-    // handset has installed, and a version code that arrives in the request is
-    // a version code the requester chose. The client enforces monotonicity
-    // against its own installed build, where the answer is actually known.
     $verdict = am2_validate_signed_update_set(
         $advertised,
         $file,

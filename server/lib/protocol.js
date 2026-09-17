@@ -53,35 +53,8 @@ function shouldSamplePttFrame(frameSequence) {
     return frameSequence <= 3 || frameSequence % PTT_TRACE_SAMPLE_EVERY_FRAMES === 0;
 }
 
-/*
- * How much may already be waiting for one client before video is withheld.
- *
- * ws.send() is asynchronous and buffers whatever the socket cannot yet write,
- * so a listener on a weak downlink accumulates frames inside this process with
- * no limit. Audio and video reach that listener through the same socket in
- * arrival order, so a ~20 KB video frame buffered ahead of a ~45-byte Opus
- * frame delays the speech by however long the video takes to push.
- *
- * About one frame, so at most one video frame is ever ahead of audio for a
- * given client. Anything larger is a queue by another name.
- */
 const DOWNLINK_VIDEO_BUDGET_BYTES = 24_000;
 
-/*
- * Link measurement, from the relay's own vantage point.
- *
- * Two numbers were already there to be had and were being thrown away. The
- * keepalive pings every client and gets a pong back, but the send time was
- * discarded, so a round trip the relay observes on every interval never became
- * a number. And audio arrives at a known rate — one frame per 20 ms — so the
- * spread of arrival spacing at this end IS the jitter the uplink added.
- *
- * Neither needs anything from the device. Until now every claim about the
- * network came from a handset that had to be held, instrumented and read back;
- * these come from a server that is already running.
- *
- * Off by default because this sits on a 50 Hz path.
- */
 const linkStatsEnabled = process.env.AM2_LINK_STATS === '1';
 const FRAME_INTERVAL_MS = 20;
 const LINK_REPORT_INTERVAL_MS = 15000;
@@ -97,26 +70,10 @@ const LINK_REPORT_INTERVAL_MS = 15000;
  */
 const UPLINK_STALL_MS = 60;
 
-/**
- * Forget the arrival clock at a transmission boundary.
- *
- * Audio arrives every 20 ms *while a key is held*. Between one press and the
- * next there is silence, and measuring that silence against a 20 ms expectation
- * turned ordinary radio use into enormous fabricated jitter -- a reported
- * `uplink_worst_ms` of 174 seconds inside a 15 second window, which was read as
- * a network problem and was nothing of the kind.
- */
 function resetAudioArrival(ws) {
     ws.lastAudioArrivalNs = null;
 }
 
-/**
- * Smoothed inter-arrival jitter, the RFC 3550 estimator.
- *
- * A single late frame is not jitter, so the deviation is smoothed by a
- * sixteenth. That makes the value readable at any moment rather than only
- * meaningful in aggregate.
- */
 function observeAudioArrival(ws) {
     if (!linkStatsEnabled) return;
     const nowNs = process.hrtime.bigint();
@@ -132,15 +89,11 @@ function observeAudioArrival(ws) {
     if (spacingMs >= UPLINK_STALL_MS) ws.uplinkStalls = (ws.uplinkStalls || 0) + 1;
 }
 
-/** One line per client that has been heard from, on an interval. */
 function reportLinkQuality(clients) {
     if (!linkStatsEnabled) return;
     clients.forEach((ws) => {
         if (!ws.sessionUser) return;
-        // The window is cleared for every client, including one that sent
-        // nothing. Clearing it only for clients that reported meant an idle
-        // handset carried its worst sample forward indefinitely, and the next
-        // line it appeared on described a moment minutes in the past.
+
         const frames = ws.uplinkFrames || 0;
         const worstMs = ws.uplinkWorstMs || 0;
         const stalls = ws.uplinkStalls || 0;
@@ -168,13 +121,6 @@ function reportLinkQuality(clients) {
 
 let videoDropped = 0;
 
-/**
- * Whether this client should be given this frame right now.
- *
- * Audio is always forwarded: it is the product, it is small, and it is what the
- * delay is measured against. Video yields as soon as the client is behind,
- * because a late frame carries a picture that is already history.
- */
 function shouldForwardBinary(client, binaryType) {
     if (binaryType === 1) return true;
     if ((client.bufferedAmount || 0) < DOWNLINK_VIDEO_BUDGET_BYTES) return true;
@@ -182,22 +128,6 @@ function shouldForwardBinary(client, binaryType) {
     return false;
 }
 
-/**
- * A client-supplied tally, as a number or as zero.
- *
- * The handset is not a trusted input. Interpolating whatever arrives into a
- * log line lets a crafted frame write arbitrary text into the operator's
- * journal, where it reads as though the relay said it.
- */
-/**
- * A version name that cannot pretend to be a log field.
- *
- * This is client-controlled free text and it is interpolated raw into three
- * journal lines, one of which is event=vox_level itself. A name like
- * "1 event=vox_level peak=32767 threshold=100 talking=true" makes every login
- * and every link-quality line parse as a genuine VOX sample. Whitespace and
- * '=' are what a reader splits on, so neither may appear.
- */
 function versionLabel(value) {
     if (typeof value !== 'string') { return null; }
     const trimmed = value.trim();
@@ -205,16 +135,6 @@ function versionLabel(value) {
     return /^[A-Za-z0-9._+-]+$/.test(trimmed) ? trimmed : null;
 }
 
-/**
- * The tallies a handset actually sent, and no others.
- *
- * count(undefined) is 0, so printing these unconditionally would make a build
- * that predates them indistinguishable from one reporting a genuine zero.
- * Everything downstream reads absence by whether the key is there, so an
- * unconditional field turns "never measured" into "measured and found
- * innocent" -- and that is the sentence that would justify moving the VOX
- * threshold.
- */
 function tallies(data, keys) {
     return keys
         .filter((key) => Object.prototype.hasOwnProperty.call(data, key))
@@ -245,10 +165,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
     const interval = setInterval(() => {
         wss.clients.forEach((ws) => {
             if (ws.isAlive === false) {
-                // Recorded before the socket is destroyed, because afterwards
-                // nothing can tell this apart from a handset that hung up. Both
-                // arrive at 'close' with code 1006, and they have different
-                // causes and different fixes.
+
                 markCloseCause(ws, 'ping_timeout');
                 return ws.terminate();
             }
@@ -294,7 +211,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
         ws.on('pong', () => {
             ws.isAlive = true;
-            // The round trip the keepalive was already paying for.
+
             if (ws.pingSentAt) {
                 ws.rttMs = Number(process.hrtime.bigint() - ws.pingSentAt) / 1e6;
                 ws.pingSentAt = null;
@@ -363,12 +280,10 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                 } else if (ws.currentRoom) {
                     if (binaryType === 1 && ws.is_rx_only) return;
 
-                    // --- DOUBLE VALIDASI AUDIO (BINARY LEVEL) ---
                     if (binaryType === 1) {
                         const speakerEntry = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                         const currentSpeakers = activeSpeakers.get(ws.currentRoom);
 
-                        // Jika user tidak ada di daftar speaker aktif, abaikan data audionya
                         if (!currentSpeakers || !currentSpeakers.has(speakerEntry)) {
                             return;
                         }
@@ -439,22 +354,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             const user = res.rows[0];
                             const uid = String(user.id);
 
-                            /*
-                             * A token, if the handset has one; the password
-                             * only until it does.
-                             *
-                             * The field app stored the operator's password so
-                             * it could sign in again after a restart. That is
-                             * the same password they use everywhere else, it
-                             * works from any device, and it cannot be taken
-                             * back -- a lost handset meant changing it for the
-                             * person rather than for the phone.
-                             *
-                             * A refused token is a refusal, not a fall-through
-                             * to the password: a handset whose token was
-                             * revoked has to be told, and has nothing else to
-                             * offer by then anyway.
-                             */
                             const presentedToken = typeof data.token === 'string' ? data.token.trim() : '';
                             let authenticatedToken = null;
                             if (presentedToken) {
@@ -496,13 +395,10 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }));
                             }
 
-                            // --- DOUBLE LOGIN PREVENTION ---
                             if (activeConnections.has(uid)) {
-                                // Cek jika sedang dalam Grace Period (reconnect)
+
                                 const isGracePeriod = pendingDisconnects.has(uid);
 
-                                // Jika TIDAK dalam grace period (berarti benar-benar sedang online)
-                                // DAN device ID berbeda, maka TOLAK login baru.
                                 if (!isGracePeriod && user.current_device_id && user.current_device_id !== providedDeviceId) {
                                     return ws.send(JSON.stringify({
                                         type: 'login_error',
@@ -510,11 +406,9 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                     }));
                                 }
 
-                                // Jika dalam grace period atau device ID sama (reconnect), matikan koneksi lama yang menggantung
                                 const existingWs = activeConnections.get(uid);
                                 if (existingWs !== ws) {
-                                    // Tear down private state while the old socket still has
-                                    // its identity, otherwise its peer remains paired forever.
+
                                     clearPtpSession(existingWs);
                                     // Mencegah cleanup event 'close' menghapus session baru
                                     markCloseCause(existingWs, 'session_replaced');
@@ -523,7 +417,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }
                             }
 
-                            // BATALKAN PEMBERSIHAN (RECONNECT HANDLER)
                             if (pendingDisconnects.has(uid)) {
                                 clearTimeout(pendingDisconnects.get(uid));
                                 pendingDisconnects.delete(uid);
@@ -565,21 +458,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                  * resumed session from a retyped password.
                                  */
                                 + ` auth=${presentedToken ? 'token' : 'password'}`
-                                /*
-                                 * Which Android, and which handset.
-                                 *
-                                 * The acceptance plan asks for evidence on API
-                                 * 16, 19, 25, 26 and 34 from one APK digest,
-                                 * and nothing on this line could say which API
-                                 * had signed in. "It passed on KitKat" was a
-                                 * sentence somebody had to be believed about,
-                                 * which is not what an acceptance record is for.
-                                 *
-                                 * tallies() so a build that predates this shows
-                                 * nothing rather than a zero it never sent, and
-                                 * versionLabel() on the name because it is free
-                                 * text a handset chooses.
-                                 */
+
                                 + tallies(data, ['client_sdk_int'])
                                 + (typeof data.client_device === 'string'
                                     ? ` device=${versionLabel(data.client_device.trim().replace(/\s+/g, '_')) || 'unnamed'}`
@@ -725,7 +604,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     if (oldRoom && channelRooms.has(oldRoom)) {
                         channelRooms.get(oldRoom).delete(ws);
 
-                        // --- SYNC REDIS ---
                         const speakerKey = `speakers:${oldRoom}`;
                         const speakerVal = `${ws.sessionUser.id}:${ws.sessionUser.name}`;
                         if (activeSpeakers.has(oldRoom)) activeSpeakers.get(oldRoom).delete(speakerVal);
@@ -750,7 +628,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             if (!channelRooms.has(data.new_channel_slug)) channelRooms.set(data.new_channel_slug, new Set());
                             if (!activeSpeakers.has(data.new_channel_slug)) {
                                 activeSpeakers.set(data.new_channel_slug, new Set());
-                                // Ambil dari Redis jika ada (mencegah data hilang saat restart)
+
                                 const savedSpeakers = await redisClient.sMembers(`speakers:${data.new_channel_slug}`);
                                 if (ws.channelJoinGeneration !== joinGeneration) return;
                                 savedSpeakers.forEach(s => activeSpeakers.get(data.new_channel_slug).add(s));
@@ -768,15 +646,10 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             ws.currentRoom = data.new_channel_slug;
                             ws.currentChannelId = channelData.id;
                             ws.is_rx_only = (channelData.permission === 'RX');
-                            // Invalidate any start authorized while this join was
-                            // waiting on I/O; its decision belongs to oldRoom.
+
                             ws.transmitAuthGeneration += 1;
                             ws.channelVideoAuthorized = false;
 
-                            // Joining an operational room does not rewrite the
-                            // operator-selected durable default. The relay owns
-                            // current socket state; WebAdmin owns membership and
-                            // last_channel_id.
                             await pool.query(
                                 "UPDATE public.users SET current_channel = $1, is_speaking = false WHERE id = $2",
                                 [data.new_channel_slug, String(ws.sessionUser.id)],
@@ -790,29 +663,13 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 return;
                             }
 
-                            // The socket is now authoritative for the new room.
                             ws.channelTransitioning = false;
 
                             ws.send(JSON.stringify({
                                 type: 'join_channel_success',
                                 data: { channel_name: channelData.display_name, channel_slug: data.new_channel_slug, is_rx_only: ws.is_rx_only, speakers: Array.from(activeSpeakers.get(data.new_channel_slug)).map(s => s.split(':')[1]) }
                             }));
-                            /*
-                             * And who is on camera right now.
-                             *
-                             * join_channel_success carries the speaker list, so
-                             * a transmission already under way is visible at
-                             * once. Video had no equivalent: the relay restores
-                             * activeVideoRooms from Redis a few lines above, so
-                             * it knows, and simply never said. A unit joining
-                             * while somebody streamed stayed blind until the
-                             * next ptt_video_start -- which on a radio may be
-                             * minutes away, or may never come, because the
-                             * stream it missed is the one already running.
-                             *
-                             * Sent to this socket alone; the rest of the channel
-                             * already has this.
-                             */
+
                             ws.send(JSON.stringify({
                                 type: 'video_stream_status',
                                 data: {
@@ -826,14 +683,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             if (oldRoom) broadcastUsersInChannel(oldRoom);
                         } else {
                             ws.channelTransitioning = false;
-                            /*
-                             * Say so. This branch did not exist: a unit asking
-                             * for a channel it has no row for got no reply at
-                             * all, and the handset sat waiting on a
-                             * join_channel_success that was never coming. A
-                             * refusal the client can see is the difference
-                             * between "denied" and "the relay is down".
-                             */
+
                             ws.send(JSON.stringify({
                                 type: 'join_error',
                                 data: { channel_slug: data.new_channel_slug, message: MSG.NOT_A_CHANNEL_MEMBER },
@@ -896,7 +746,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     tracePtt('start_received', { traceId: ws.pttTraceId });
                     resetAudioArrival(ws);
 
-                    // --- PENANGANAN HALF DUPLEX (SERVER VALIDATION) ---
                     const speakers = activeSpeakers.get(ws.currentRoom);
                     if (ws.duplex_mode === 'HALF DUPLEX' && speakers && speakers.size > 0) {
                         return ws.send(JSON.stringify({
@@ -978,10 +827,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     break;
 
                 case 'ptt_video_end':
-                    // The one caller that always did every step. It is worth
-                    // routing through the shared one anyway: this is the copy
-                    // the others were meant to be, and leaving it separate is
-                    // what let them drift.
+
                     await stopChannelVideo(ws, ws.currentRoom);
                     break;
 
@@ -1166,26 +1012,11 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
             const user = ws.sessionUser;
             const room = ws.currentRoom;
 
-            /*
-             * Why a socket ended, and how long it lasted.
-             *
-             * The relay recorded every login and nothing about the endings, so
-             * a handset reconnecting all day looked like a handset signing in
-             * all day, and the record could not say whether the relay killed it
-             * for a missing pong, the handset went away, or something between
-             * cut it. Those live in three different places.
-             *
-             * The close code is a number or it is not reported; `reason` is free
-             * text from the peer and is deliberately absent, because a crafted
-             * value would write its own journal line -- the same reason the
-             * login record does not interpolate the device name raw.
-             */
             const record = disconnectRecord(ws, code);
             if (record) console.log(record);
             if (user) {
                 const uid = String(user.id);
 
-                // 1. Hentikan status bicara seketika (mencegah audio nyangkut)
                 const exitEntry = `${user.id}:${user.name}`;
                 if (room && activeSpeakers.has(room)) {
                     activeSpeakers.get(room).delete(exitEntry);
@@ -1195,7 +1026,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
                 await stopChannelVideo(ws, room);
 
-                // 2. Tunda pembersihan koneksi & status online (Debounce)
                 const timeoutIdx = setTimeout(async () => {
                     if (activeConnections.get(uid) === ws) {
                         activeConnections.delete(uid);

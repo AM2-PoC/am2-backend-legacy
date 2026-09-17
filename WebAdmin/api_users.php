@@ -5,8 +5,6 @@ am2_api_auth();
 am2_csrf_require();
 
 
-
-// Identity is resolved by the server; see am2_api_identity().
 [$admin_id, $admin_role] = am2_api_identity();
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -102,17 +100,14 @@ elseif ($method == 'POST') {
             } elseif ($action === 'add') {
                 $entity_type = 'user';
             } else {
-                // Older Admin Native clients do not send entity_type. Preserve
-                // the classification instead of silently converting trackers.
+
                 $stmtType = $pdo->prepare('SELECT entity_type FROM public.users WHERE id = ?');
                 $stmtType->execute([$id]);
                 $entity_type = am2_entity_type($stmtType->fetchColumn() ?: 'user');
             }
             $pdo->beginTransaction();
             if ($action == 'add') {
-                // The same call the panel makes. This copy never wrote
-                // created_by, so a unit registered from the app was attributed
-                // to nobody at all.
+
                 am2_create_user($pdo, $id, $name, $password, $admin_id, $entity_type);
             } else {
                 am2_update_user($pdo, $id, $name, (string) $password, $admin_id, $entity_type);
@@ -181,12 +176,6 @@ elseif ($method == 'POST') {
             // permission and moved where the unit comes up.
             $result = am2_set_user_channels($pdo, (string) $u_id, $channels);
 
-            /*
-             * The same event the panel writes. This path recorded nothing at
-             * all, so a membership rewritten from the app left the log saying
-             * the unit's access had not changed since whenever it was last
-             * edited on the web.
-             */
             if ($channels) {
                 $stmtCh = $pdo->prepare('SELECT display_name FROM public.channels WHERE id = ?');
                 $logChannels = [];
@@ -227,22 +216,13 @@ elseif ($method == 'POST') {
         $feature = $_POST['feature'] ?? '';
 
         try {
-            // The asking admin's own rights, which this path never read. An
-            // admin told they may not manage video could enable it from the
-            // app, because only the panel was checking.
+
             $stmtAuth = $pdo->prepare(
                 "SELECT can_manage_maps, can_manage_p2p, can_manage_video
                  FROM public.admin WHERE id = ?");
             $stmtAuth->execute([$admin_id]);
             $auth = $stmtAuth->fetch(PDO::FETCH_ASSOC) ?: [];
-            /*
-             * No row for the id this request was made under.
-             *
-             * Downstream that is indistinguishable from an administrator who
-             * simply lacks the right, and both refuse the change with the same
-             * sentence. Naming the id here is the only way to tell afterwards
-             * whether a refusal was a decision or a lookup that failed.
-             */
+
             if ($auth === [] && $admin_role !== 'superadmin') {
                 error_log('AM2 admin identity unresolved: no admin row for id='
                     . var_export($admin_id, true) . ' role=' . var_export($admin_role, true));
@@ -273,8 +253,7 @@ elseif ($method == 'POST') {
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_feature_reason($e)]);
         } catch (Throwable $e) {
-            // Throwable so the audit guard's LogicException lands here too,
-            // rather than escaping as HTML to a caller parsing JSON.
+
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }
@@ -300,8 +279,7 @@ elseif ($method == 'POST') {
             $pdo->commit();
             echo json_encode(['success' => true]);
         } catch (Throwable $e) {
-            // Throwable so the audit guard's LogicException lands here too,
-            // rather than escaping as HTML to a caller parsing JSON.
+
             if ($pdo->inTransaction()) $pdo->rollBack(); am2_audit_abandon();
             echo json_encode(['success' => false, 'message' => am2_safe_error($e, 'api_users')]);
         }

@@ -1,17 +1,6 @@
-/**
- * Everything the relay knows only because it is this process.
- *
- * Five maps and one operation on them. They are the reason a second relay
- * process cannot simply be started beside this one: two processes would each
- * hold half the room and neither would know it. Moving them behind a module
- * does not fix that — it makes the boundary visible, so the day they move to
- * Redis there is one file to change rather than a grep.
- */
 
-/** userId (string) -> ws */
 const activeConnections = new Map();
 
-/** channelSlug -> Set of ws */
 const channelRooms = new Map();
 
 /** userId -> timeout handle, so a reconnect inside the grace period is not a leave */
@@ -19,10 +8,8 @@ const pendingDisconnects = new Map();
 
 const DISCONNECT_GRACE_PERIOD = 10000; // 10 detik toleransi reconnect
 
-/** channelSlug -> Set of "userId:userName" */
 const activeSpeakers = new Map();
 
-/** channelSlug -> Set of "userId:userName" */
 const activeVideoRooms = new Map();
 
 const channelStateQueues = new WeakMap();
@@ -37,12 +24,6 @@ const serializeChannelState = (ws, task) => {
     return settled;
 };
 
-/**
- * How long an unanswered private-call invitation stays acceptable.
- *
- * Long enough for a handset to be picked up, short enough that an invitation
- * cannot be banked and redeemed much later against a socket that has moved on.
- */
 const PTP_INVITE_TTL = 60000; // 60 detik
 
 /*
@@ -173,7 +154,6 @@ function clearPtpState(ws, notify = true) {
     }
 }
 
-/** Pair two sockets only when both halves of the same unexpired invite exist. */
 const consumePtpInvite = (target, callerId, kind, now = Date.now()) => {
     const caller = peerFor(target, callerId);
     const incoming = target.ptpInviteIncoming;

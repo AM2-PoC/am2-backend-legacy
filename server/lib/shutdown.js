@@ -66,8 +66,7 @@ async function drain({
     wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     log = console.log,
 }) {
-    // First, and before anything is closed: a connection accepted after the
-    // decision to stop is a connection that will be closed a moment later.
+
     server.close();
     log('shutdown: no longer accepting connections');
 
@@ -84,8 +83,6 @@ async function drain({
             : 'shutdown: transmissions finished');
     }
 
-    // close(), never terminate(): the difference is a close frame the handset
-    // acts on immediately against a socket that simply stops answering.
     let closed = 0;
     for (const client of wss.clients) {
         markCloseCause(client, 'server_shutdown');
@@ -95,12 +92,6 @@ async function drain({
     log(`shutdown: closed ${closed} connection(s)`);
 }
 
-/**
- * Wire the drain to the signals the unit actually sends.
- *
- * SIGINT because that is this service's KillSignal, SIGTERM because it is what
- * everything else sends and a relay that ignores it dies the old way.
- */
 function installShutdown(options) {
     const {
         exit = (code) => process.exit(code),

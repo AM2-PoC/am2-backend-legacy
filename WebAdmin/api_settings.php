@@ -28,9 +28,7 @@ if (($_GET['action'] ?? '') === 'check_update') {
     $changelog = am2_release_notes($advertisement['changelog']);
 
     if ($advertisement['valid'] !== true) {
-        // The reason is deliberately not sent: a stranger learning which check
-        // refused is a stranger learning how to pass it. It reaches the panel,
-        // where the reader is a signed-in superadmin.
+
         http_response_code(404);
         echo json_encode([
             'latest_version' => null,
@@ -40,12 +38,6 @@ if (($_GET['action'] ?? '') === 'check_update') {
         exit;
     }
 
-    /*
-     * Two names for the same two values. `latest_version` and `download_url`
-     * are what the panel and any build already in the field read; the rest is
-     * what UpdateInfo.kt declares non-null and cannot construct
-     * UpdateMetadata without. Dropping either half breaks a real caller.
-     */
     echo json_encode([
         'latest_version' => $advertised['version_name'],
         'download_url' => $advertised['update_url'],
@@ -84,7 +76,6 @@ if (empty($_SESSION['admin_logged_in'])) {
 $session_role = strtolower((string) ($_SESSION['admin_role'] ?? ''));
 $is_superadmin = $session_role === 'superadmin';
 
-/** Refuse anything but a signed-in superadmin, in one place. */
 function am2_settings_require_superadmin(bool $ok): void
 {
     if ($ok) {
@@ -215,31 +206,21 @@ elseif ($method == 'POST') {
         }
     }
     elseif ($action == 'import_db') {
-        // Restoring a database over the live one is the most destructive thing
-        // this panel can do, and it had no role check whatsoever.
+
         am2_settings_require_superadmin($is_superadmin);
 
         if (!isset($_FILES['sql_file'])) {
             echo json_encode(['success' => false, 'message' => 'File .sql tidak ditemukan']);
             exit;
         }
-        // A real upload, not a path the request chose: without this check an
-        // is_uploaded_file()-less handler can be pointed at any readable file.
+
         if (!is_uploaded_file($_FILES['sql_file']['tmp_name'] ?? '')) {
             http_response_code(400);
             exit(json_encode(['success' => false, 'message' => 'Unggahan tidak valid']));
         }
         $file = $_FILES['sql_file']['tmp_name'];
         try {
-            /*
-             * proc_open with an argument array rather than a shell string.
-             * The old form pasted host, port, user and database name straight
-             * into a command line, and passed the password through putenv --
-             * which puts it in the process table, where `ps` on this host shows
-             * it to anyone. The password now goes to psql's own stdin channel
-             * via the environment of the child alone, and the .sql arrives on
-             * stdin instead of through a shell redirect.
-             */
+
             $descriptors = [0 => ['file', $file, 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
             $proc = proc_open(
                 ['psql', '-h', $host, '-p', (string) $port, '-U', $user, '-d', $dbname,

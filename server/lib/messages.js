@@ -24,13 +24,10 @@ module.exports = Object.freeze({
      */
     AUTH_STATE_CHANGED: 'Status login berubah. Silakan masuk lagi.',
 
-    /** The unit holds no row for the channel it asked to join. */
     NOT_A_CHANNEL_MEMBER: 'Bukan anggota channel ini',
 
-    /** No socket for the target, or the socket has closed. */
     PEER_OFFLINE: 'Personel sedang offline',
 
-    /** The target is already in a private call with somebody else. */
     PEER_BUSY: 'Personel sedang dalam panggilan lain',
 
     /*
@@ -41,10 +38,8 @@ module.exports = Object.freeze({
     PRIVATE_CALL_UNAVAILABLE_FOR_PEER: 'Panggilan privat tidak tersedia untuk personel ini',
     VIDEO_CALL_UNAVAILABLE_FOR_PEER: 'Panggilan video privat tidak tersedia untuk personel ini',
 
-    /** The invitation could not be created, for a reason that is not busy. */
     PRIVATE_CALL_UNAVAILABLE: 'Panggilan privat tidak tersedia',
     VIDEO_CALL_UNAVAILABLE: 'Panggilan video privat tidak tersedia',
 
-    /** An answer arrived for a call that was never placed, or has expired. */
     NO_PENDING_INVITATION: 'Tidak ada undangan panggilan yang menunggu',
 });

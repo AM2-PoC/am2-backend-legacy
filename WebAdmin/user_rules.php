@@ -45,12 +45,6 @@ function am2_create_user(PDO $pdo, string $id, string $name, string $password, $
     )->execute([$id]);
 }
 
-/**
- * Rename a unit, and set its password if one was given.
- *
- * An empty password means "leave it alone" — the two callers spelled that the
- * same way already, and it is the one part of this they agreed on.
- */
 function am2_update_user(PDO $pdo, string $id, string $name, string $password, $adminId, string $entityType): void
 {
     am2_require_transaction($pdo, __FUNCTION__);
@@ -64,15 +58,6 @@ function am2_update_user(PDO $pdo, string $id, string $name, string $password, $
               WHERE id = ?"
         )->execute([$name, password_hash($password, PASSWORD_BCRYPT), $adminId, $entityType, $id]);
 
-        /*
-         * A new password ends the old sessions.
-         *
-         * The handset keeps a device token rather than the operator's password,
-         * and the whole reason that is an improvement is revocation. Leaving
-         * the tokens in place would mean a changed password stopped nothing:
-         * every handset that already had one would keep signing in with it,
-         * which is the property being fixed rather than reproduced.
-         */
         $pdo->prepare('DELETE FROM public.device_tokens WHERE user_id = ?')->execute([$id]);
         return;
     }
@@ -82,14 +67,6 @@ function am2_update_user(PDO $pdo, string $id, string $name, string $password, $
     )->execute([$name, $adminId, $entityType, $id]);
 }
 
-/**
- * Remove a unit, and return the name it had.
- *
- * created_by is set to the admin doing the removing before the row goes,
- * because the trigger on public.users reads it to decide whose activity this
- * was. Without that line the log says the unit was deleted by whoever created
- * it, which is a sentence about the wrong person.
- */
 function am2_delete_user(PDO $pdo, string $id, $adminId): string
 {
     am2_require_transaction($pdo, __FUNCTION__);
@@ -100,8 +77,7 @@ function am2_delete_user(PDO $pdo, string $id, $adminId): string
     $name = (string) ($stmt->fetchColumn() ?: $id);
 
     $pdo->prepare('UPDATE public.users SET created_by = ? WHERE id = ?')->execute([$adminId, $id]);
-    // Before the row it names, so a failure here cannot leave tokens behind
-    // that point at a unit which no longer exists.
+
     $pdo->prepare('DELETE FROM public.device_tokens WHERE user_id = ?')->execute([$id]);
     $pdo->prepare("DELETE FROM public.users WHERE id = ? AND role = 'user'")->execute([$id]);
 

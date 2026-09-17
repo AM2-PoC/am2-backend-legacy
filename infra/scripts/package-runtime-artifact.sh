@@ -78,10 +78,6 @@ if [[ ! -d $source_root/server/node_modules ]]; then
     exit 1
 fi
 
-# `npm ci` necessarily creates ignored server/node_modules after the checkout is
-# clean. Check the source tree again while excluding that one CI-produced tree;
-# every other ignored or untracked file would make the allowlist depend on local
-# workstation residue and is refused.
 extra_source_files=$(git -C "$source_root" ls-files --others --ignored --exclude-standard \
     | grep -v '^server/node_modules/' || true)
 if [[ -n $extra_source_files ]]; then
@@ -143,23 +139,18 @@ copy_tree() {
     cp -a -- "$source" "$destination"
 }
 
-# Explicit runtime allowlist. Never archive the checkout wholesale and rely on
-# edge denies to hide repository residue later.
 copy_file server/server.js
 copy_file server/package.json
 copy_file server/package-lock.json
 copy_tree server/lib
 copy_tree server/node_modules
-# npm creates command shims and dependency packages retain their own source
-# metadata/tests/docs. The relay executes neither, so strip them after copying:
-# the sealed runtime must not contain a second repository-shaped attack surface.
+
 find "$payload/server/node_modules" -type d \
     \( -name .bin -o -name .github -o -name .hermes -o -name .git -o -name test -o -name tests -o -name docs \) \
     -prune -exec rm -rf -- {} +
 find "$payload/server/node_modules" -type f -name '.env*' -delete
 if [[ -d $source_root/server/public ]]; then copy_tree server/public; fi
 
-# PHP source, translations, and browser-consumed assets. Build inputs remain out.
 while IFS= read -r -d '' source; do
     relative=${source#"$source_root/"}
     copy_file "$relative"
@@ -171,8 +162,6 @@ done < <(find "$source_root/WebAdmin/asset" -type f \
     ! -path "$source_root/WebAdmin/asset/css/tailwind.src.css" \
     ! -path "$source_root/WebAdmin/asset/js/src/*" -print0 | sort -z)
 
-# Required runtime operational data/scripts. Host configuration and systemd units
-# stay outside the artifact; migrations are data required by release smoke.
 copy_tree infra/migrations
 for script in \
     apply-migrations.sh \

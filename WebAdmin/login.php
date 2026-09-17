@@ -13,13 +13,12 @@ $error = "";
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
-    // Per account and per source, not per source alone.
+
     $client = am2_client_ip() . '|' . $username;
 
     try {
         if (am2_login_blocked($client)) {
-            // bcrypt is deliberately slow, so an unthrottled login form is both
-            // a guessing oracle and a cheap way to load the server.
+
             $error = t('login.error_throttled');
             throw new RuntimeException('throttled');
         }
@@ -53,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $error = t('login.error_credentials');
         }
     } catch (RuntimeException $e) {
-        // Throttled: $error is already set, nothing else to do.
+
     } catch (PDOException $e) {
         $error = am2_safe_error($e, 'login');
     }
@@ -75,12 +74,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 <div class="min-h-dvh lg:grid lg:grid-cols-[2fr_3fr]">
 
-    <!--
-        Brand side, desktop only. On a phone the form has to come first: half a
-        screen of atmosphere would push the thing the page exists for below the
-        fold. Two fifths rather than half — the smaller claim on the screen,
-        because it is the smaller part of the job.
-    -->
     <aside class="am2-brand-panel relative hidden overflow-hidden lg:flex lg:flex-col
                   lg:justify-between lg:p-10">
         <div class="am2-brand-geometry" aria-hidden="true">
@@ -90,18 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <span class="am2-brand-sweep"></span>
         </div>
 
-        <!-- The mark already draws two orbital arcs. Rings travelling outward
-             turn the logo into what it depicts: a signal leaving a
-             transmitter. Motion drives them rather than CSS keyframes, so
-             there is one owner and reduced motion is a branch instead of a
-             media query fighting an animation. -->
         <p class="relative font-mono text-[11px] uppercase tracking-[0.25em] text-ink-subtle">
             AM<sup>2</sup> — <?= e('login.subtitle') ?>
         </p>
 
         <div class="relative grid place-items-center gap-6 py-8">
-            <!-- The rings belong to the mark, so they are anchored to it. Centred
-                 on the panel instead, they ran straight through the wordmark. -->
+
             <div class="am2-signal-core relative grid place-items-center">
                 <div class="pointer-events-none absolute inset-0 grid place-items-center"
                      aria-hidden="true">
@@ -116,8 +103,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
         </div>
 
-        <!-- What the product does, in the operator's words. Three facts, not a
-             pitch: whoever reads this page already bought it. -->
         <div class="am2-brand-copy relative">
             <p class="text-2xl font-semibold tracking-tight text-ink">AM²</p>
             <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-subtle">
@@ -143,9 +128,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     </aside>
 
-    <!-- Form side. The geometry belongs to the room around the card, not to the
-         surface users have to read. Its low-contrast shapes frame the action
-         without competing with it. -->
     <main class="am2-login-stage relative isolate flex min-h-dvh flex-col items-center
                  justify-center overflow-hidden px-5 py-10 sm:px-8">
         <div class="am2-login-geometry" aria-hidden="true">
@@ -159,8 +141,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         <div class="relative z-10 w-full max-w-[420px]">
 
-            <!-- The mark repeats above the card on small screens, where the
-                 brand panel does not exist at all. -->
             <div class="mb-6 flex items-center gap-3 lg:hidden">
                 <img src="<?= am2_asset('asset/image/logo.jpeg') ?>" alt=""
                      width="44" height="44"
@@ -173,12 +153,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
             </div>
 
-            <!--
-                Preline card: https://preline.co/docs/card.html
-                The form sat on the bare background before, which read as a
-                page that had not finished rendering rather than a deliberate
-                one.
-            -->
             <div id="am2-login-card"
                  class="am2-surface am2-surface-accent rounded-card p-6 sm:p-8">
 
@@ -191,10 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
 
                 <?php if ($error !== ""): ?>
-                    <!-- Preline alert: https://preline.co/docs/alerts.html
-                         role=alert so a screen reader is told without being
-                         moved, and the left border carries the meaning as well
-                         as the colour does. -->
+
                     <div id="am2-login-error" role="alert"
                          class="mt-5 flex items-start gap-2.5 rounded-control border border-bad/40
                                 border-l-2 border-l-bad bg-bad/5 px-3 py-3 text-sm">
@@ -208,9 +179,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </div>
                 <?php endif; ?>
 
-                <!-- method, field names and ids are the contract: the handler
-                     above reads $_POST['username'] and $_POST['password'], and
-                     the form posts to this same URL. None of it changes. -->
                 <form id="am2-login-form" method="POST" autocomplete="off" class="mt-6 space-y-4">
 
                     <div data-am2-field>
@@ -232,15 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                class="block font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                             <?= e('login.password') ?>
                         </label>
-                        <!--
-                            Preline toggle-password:
-                            https://preline.co/docs/toggle-password.html
-                            Replaces the hand-rolled reveal. Preline owns the
-                            input's type and the pressed state; the two icons
-                            swap on hs-password-active, so nothing here has to
-                            be rendered twice to survive a script that never
-                            loaded.
-                        -->
+
                         <div class="relative mt-2">
                             <input id="password" name="password" type="password" required
                                    class="h-12 w-full rounded-control border border-edge bg-card pe-12 ps-3
@@ -296,17 +256,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </div>
                 </form>
 
-                <!--
-                    Operator controls, inside the card. They were floating
-                    underneath it, which left the card looking unfinished and
-                    the page with three separate things to look at instead of
-                    one. Same 44px targets as the shell behind this page.
-                -->
                 <div class="mt-7 flex items-center justify-between border-t border-edge pt-4">
                 <div class="flex gap-1.5">
                     <?php foreach (AM2_LOCALES as $loc): $on = am2_locale() === $loc; ?>
-                        <!-- important suffix: am2-ui.css styles bare anchors with
-                             !important and would otherwise win the cascade. -->
+
                         <a href="?lang=<?= $loc ?>"
                            <?= $on ? 'aria-current="true"' : '' ?>
                            class="grid h-11 w-11 place-items-center rounded-control border no-underline!
@@ -354,8 +307,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 (() => {
     'use strict';
 
-    /* Theme lives in partials/theme_toggle.php, included above -- it was a
-     * second copy here and drifted from the shell's. */
 
     /* Caps Lock. */
     const caps = document.getElementById('am2-caps');
@@ -364,9 +315,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         caps.hidden = !e.getModifierState('CapsLock');
     });
 
-    /* Submit state. The button is disabled once the browser has accepted the
-     * form, never on click: disabling earlier swallows the submit when a
-     * required field is still empty. */
     const form = document.getElementById('am2-login-form');
     const submit = document.getElementById('am2-login-submit');
     form?.addEventListener('submit', () => {
@@ -375,9 +323,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         submit.querySelector('[data-submit-arrow]').textContent = '…';
     });
 
-    /* Motion. All of this is decoration in the strict sense — the page works
-     * without it — so it waits for the bundle and does nothing if the bundle
-     * never comes. */
     window.addEventListener('load', () => {
         const AM2 = window.AM2;
         if (!AM2) return;
