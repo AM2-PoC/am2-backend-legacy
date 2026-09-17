@@ -32,6 +32,7 @@ while [[ $# -gt 0 ]]; do
         --receipt) [[ $# -ge 2 ]] || { usage; exit 64; }; receipt=$2; shift 2 ;;
         --unprivileged-store) unprivileged=1; shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

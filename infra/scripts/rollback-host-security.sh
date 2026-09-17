@@ -34,6 +34,7 @@ while [[ $# -gt 0 ]]; do
         --apply) apply=1; shift ;;
         --allow-reload) allow_reload=1; shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 for value in "$activation_receipt" "$root" "$apache_configtest" "$nginx_configtest" "$reload_command" "$lock"; do

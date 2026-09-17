@@ -14,6 +14,7 @@ while [[ $# -gt 0 ]]; do
         --sha) [[ $# -ge 2 ]] || { usage; exit 64; }; source_sha=$2; shift 2 ;;
         --output-dir) [[ $# -ge 2 ]] || { usage; exit 64; }; output_dir=$2; shift 2 ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

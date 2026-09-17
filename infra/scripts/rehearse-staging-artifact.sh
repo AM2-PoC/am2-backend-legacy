@@ -13,6 +13,7 @@ while [[ $# -gt 0 ]]; do
         --manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; manifest=$2; shift 2 ;;
         --allow-relay-restart) allow_restart=1; shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 [[ $release == /* && -d $release && $manifest == /* && -f $manifest ]] || { usage; exit 64; }
