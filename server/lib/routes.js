@@ -184,7 +184,7 @@ function registerRoutes(app) {
             }
             res.json({ success: true, message: `Updated ${updateCount} users in branch.` });
         } catch (err) {
-            console.error("❌ Refresh Branch Error:", err.message);
+            console.error("Refresh Branch Error:", err.message);
             res.status(500).json({ error: err.message });
         }
     });
@@ -273,7 +273,7 @@ function registerRoutes(app) {
             }
             res.json({ success: true, message: "User was already offline; database status was reset." });
         } catch (err) {
-            console.error("❌ Force Logout API Error:", err.message);
+            console.error("Force Logout API Error:", err.message);
             res.status(500).json({ success: false, error: err.message });
         }
     });

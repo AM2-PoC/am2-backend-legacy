@@ -22,40 +22,40 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-    console.error('❌ Database Pool Error:', err.message);
+    console.error('Database Pool Error:', err.message);
 });
 
 pool.on('connect', () => {
-    console.log('🐘 New DB Client connected to pool');
+    console.log('New DB Client connected to pool');
 });
 
 const redisClient = createClient({
     url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
 
-redisClient.on('error', (err) => console.error('❌ Redis Client Error', err));
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
 const connectRedis = async () => {
     try {
         await redisClient.connect();
-        console.log('🚀 Redis Connected');
+        console.log('Redis Connected');
     } catch (err) {
-        console.error('❌ Redis Connection Failed:', err.message);
+        console.error('Redis Connection Failed:', err.message);
     }
 };
 
 /** Logs older than 30 days. The activity log's free-text rows age out here. */
 const runCleanup = async () => {
-    console.log('🧹 Running automatic log cleanup (30 days)...');
+    console.log('Running automatic log cleanup (30 days)...');
     try {
         // Hapus log aktivitas PTT (Push/Release/Login)
         const pttRes = await pool.query("DELETE FROM public.ptt_logs WHERE event_time < NOW() - INTERVAL '30 days'");
         // Hapus log aktivitas Admin
         const adminRes = await pool.query("DELETE FROM public.admin_activity_logs WHERE waktu < NOW() - INTERVAL '30 days'");
 
-        console.log(`✅ Cleanup complete: removed ${pttRes.rowCount} PTT logs & ${adminRes.rowCount} admin logs.`);
+        console.log(`Cleanup complete: removed ${pttRes.rowCount} PTT logs & ${adminRes.rowCount} admin logs.`);
     } catch (err) {
-        console.error('❌ Cleanup Error:', err.message);
+        console.error('Cleanup Error:', err.message);
     }
 };
 
@@ -241,7 +241,7 @@ const createLog = async (userId, channelId, eventType) => {
             VALUES ($1::text, $2::integer, $3::text, CURRENT_TIMESTAMP)
         `, [uid, validChannelId, String(eventType)]);
     } catch (err) {
-        console.error(`❌ LOG ERROR [${eventType}]:`, err.message);
+        console.error(`LOG ERROR [${eventType}]:`, err.message);
     }
 };
 

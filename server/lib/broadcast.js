@@ -117,7 +117,7 @@ const broadcastChannelUpdate = async (userId) => {
             ]);
             for (const result of cleanup) {
                 if (result.status === 'rejected') {
-                    console.error("❌ Failed channel-state cleanup:", result.reason?.message || result.reason);
+                    console.error("Failed channel-state cleanup:", result.reason?.message || result.reason);
                 }
             }
         }
@@ -221,7 +221,7 @@ const broadcastUsersInChannel = async (channelSlug) => {
             });
         }
     } catch (err) {
-        console.error("❌ Broadcast User Error:", err.message);
+        console.error("Broadcast User Error:", err.message);
     }
 };
 
@@ -237,7 +237,7 @@ const updateUserLocation = async (userId, lat, lng, acc, address = "") => {
             WHERE id = $5
         `, [lat, lng, acc || 0, address, uid]);
     } catch (err) {
-        console.error("❌ Update Location Error:", err.message);
+        console.error("Update Location Error:", err.message);
     }
 };
 
@@ -250,7 +250,7 @@ const broadcastChannelNameChange = async (channelId) => {
         const failed = updates.find((result) => result.status === 'rejected');
         if (failed) throw failed.reason;
     } catch (err) {
-        console.error("❌ Global Channel Sync Error:", err.message);
+        console.error("Global Channel Sync Error:", err.message);
     }
 };
 

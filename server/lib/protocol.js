@@ -635,7 +635,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                          * that erases its token over a timeout has to be
                          * reached physically to log in again.
                          */
-                        console.error("❌ Login Error:", err.message);
+                        console.error("Login Error:", err.message);
                         ws.send(JSON.stringify({ type: 'login_error', data: { message: "Database Timeout / Connection Error", code: 'server_unavailable' } }));
                     }
                     break;
@@ -737,7 +737,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         ]);
                         for (const result of cleanup) {
                             if (result.status === 'rejected') {
-                                console.error("❌ Failed old-room cleanup:", result.reason?.message || result.reason);
+                                console.error("Failed old-room cleanup:", result.reason?.message || result.reason);
                             }
                         }
                     }
@@ -840,7 +840,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             }));
                         }
                     } catch (err) {
-                        console.error("❌ Join Error:", err.message);
+                        console.error("Join Error:", err.message);
                     } finally {
                         if (ws.channelJoinGeneration === joinGeneration) {
                             ws.channelTransitioning = false;
@@ -880,7 +880,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         const authorization = await authorizeChannelTransmit(ws, channelPermission);
                         if (!authorization.ok) {
                             if (authorization.error) {
-                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                                console.error('Transmit Authorization Error:', authorization.error.message);
                             }
                             return ws.send(JSON.stringify({
                                 type: 'ptt_error',
@@ -916,7 +916,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         await pool.query("UPDATE public.users SET is_speaking = true WHERE id = $1", [String(ws.sessionUser.id)]);
                         await createLog(ws.sessionUser.id, ws.currentChannelId, 'PUSH');
                     } catch (err) {
-                        console.error("❌ PTT Start DB Error:", err.message);
+                        console.error("PTT Start DB Error:", err.message);
                     }
 
                     broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom)).map(s => s.split(':')[1]), channel: ws.currentRoom, trace_id: ws.pttTraceId } });
@@ -943,7 +943,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             await pool.query("UPDATE public.users SET is_speaking = false WHERE id = $1", [String(ws.sessionUser.id)]);
                             await createLog(ws.sessionUser.id, ws.currentChannelId, 'RELEASE');
                         } catch (err) {
-                            console.error("❌ PTT End DB Error:", err.message);
+                            console.error("PTT End DB Error:", err.message);
                         }
 
                         broadcastToChannel(ws.currentRoom, { type: 'ptt_active_status', data: { speakers: Array.from(activeSpeakers.get(ws.currentRoom) || []).map(s => s.split(':')[1]) , channel: ws.currentRoom, trace_id: ws.pttTraceId } });
@@ -961,7 +961,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         const authorization = await authorizeChannelTransmit(ws, channelPermission, 'video');
                         if (!authorization.ok) {
                             if (authorization.error) {
-                                console.error('❌ Transmit Authorization Error:', authorization.error.message);
+                                console.error('Transmit Authorization Error:', authorization.error.message);
                             }
                             return ws.send(JSON.stringify({
                                 type: 'ptt_error',
@@ -1001,7 +1001,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         await pool.query("UPDATE public.users SET is_speaking = true WHERE id = $1", [String(ws.sessionUser.id)]);
                         await createLog(ws.sessionUser.id, ws.currentChannelId, 'PUSH_PRIVATE');
                     } catch (err) {
-                        console.error("❌ Private PTT Start DB Error:", err.message);
+                        console.error("Private PTT Start DB Error:", err.message);
                     }
 
                     ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [ws.sessionUser.name], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
@@ -1018,7 +1018,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         await pool.query("UPDATE public.users SET is_speaking = false WHERE id = $1", [String(ws.sessionUser.id)]);
                         await createLog(ws.sessionUser.id, ws.currentChannelId, 'RELEASE_PRIVATE');
                     } catch (err) {
-                        console.error("❌ Private PTT End DB Error:", err.message);
+                        console.error("Private PTT End DB Error:", err.message);
                     }
                     ptpPeerFor(ws, 'audio')?.send(JSON.stringify({ type: 'ptt_active_status', data: { speakers: [], channel: 'private', is_private: true, trace_id: ws.pttTraceId } }));
                     tracePtt('end_forwarded', { traceId: ws.pttTraceId });
@@ -1208,7 +1208,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 channelRooms.get(room)?.delete(ws);
                                 broadcastUsersInChannel(room);
                             }
-                        } catch (err) { console.error("❌ Cleanup Error:", err.message); }
+                        } catch (err) { console.error("Cleanup Error:", err.message); }
                     }
                 }, DISCONNECT_GRACE_PERIOD);
 
@@ -1217,7 +1217,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         });
 
         ws.on('error', (err) => {
-            console.error(`🔴 WebSocket Error:`, err.message);
+            console.error(`WebSocket Error:`, err.message);
         });
     });
 

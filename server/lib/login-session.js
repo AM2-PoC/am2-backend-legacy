@@ -82,7 +82,7 @@ async function commitLoginSession(pool, {
         try {
             await client.query('ROLLBACK');
         } catch (rollbackError) {
-            console.error('❌ Login session rollback error:', rollbackError.message);
+            console.error('Login session rollback error:', rollbackError.message);
         }
         throw error;
     } finally {
