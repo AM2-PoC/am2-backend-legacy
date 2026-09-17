@@ -12,6 +12,7 @@ while [[ $# -gt 0 ]]; do
         --release) [[ $# -ge 2 ]] || { usage; exit 64; }; release=$2; shift 2 ;;
         --manifest) [[ $# -ge 2 ]] || { usage; exit 64; }; manifest=$2; shift 2 ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 [[ $release == /* && -d $release && ! -L $release ]] || { echo "release must be an absolute non-symlink directory" >&2; exit 64; }

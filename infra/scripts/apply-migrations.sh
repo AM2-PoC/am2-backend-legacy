@@ -13,6 +13,7 @@ while [ $# -gt 0 ]; do
             sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
 
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 

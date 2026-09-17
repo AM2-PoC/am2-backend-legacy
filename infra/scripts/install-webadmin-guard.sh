@@ -25,6 +25,7 @@ while [[ $# -gt 0 ]]; do
         --source)         [[ $# -ge 2 ]] || { usage; exit 64; }; source_dir=$2; shift 2 ;;
         -h|--help)        usage; exit 0 ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

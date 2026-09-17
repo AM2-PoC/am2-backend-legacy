@@ -18,6 +18,7 @@ while [[ $# -gt 0 ]]; do
         --reader)      [[ $# -ge 2 ]] || { usage; exit 64; }; reader=$2; shift 2 ;;
         --verify-only) verify_only=1; shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

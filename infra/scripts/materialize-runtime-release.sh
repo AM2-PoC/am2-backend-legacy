@@ -26,6 +26,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

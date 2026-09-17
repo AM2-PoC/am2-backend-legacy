@@ -21,6 +21,7 @@ while [[ $# -gt 0 ]]; do
                 [[ $# -eq 2 && -d $2 ]] || { usage; exit 64; }
                 list_assets "$2"; exit 0 ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 
@@ -29,7 +30,7 @@ case "$lane" in
                 host=staging-webadmin.am2-poc.com ;;
     production) docroot=/var/www/am2/current/WebAdmin;         origin=127.0.0.1:8080
                 host=webadmin.am2-poc.com ;;
-
+    *) echo "unknown lane: $lane" >&2; exit 64 ;;
 esac
 
 [[ -d $docroot ]] || { echo "no document root at $docroot" >&2; exit 1; }
