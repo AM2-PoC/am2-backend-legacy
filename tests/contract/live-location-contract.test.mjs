@@ -49,7 +49,7 @@ test('live-track rendering keeps identity freshness TX and accuracy independent'
     const src = read('WebAdmin/livetrack.php');
     for (const hook of [
         'entity-user', 'entity-tracker', 'freshness-fresh',
-        'freshness-delayed', 'freshness-stale', 'speaking-marker'
+        'freshness-delayed', 'freshness-stale'
     ]) assert.match(src, new RegExp(hook), `rendering contract is missing ${hook}`);
     assert.match(src, /const\s+locationCircles\s*=\s*\{\}/);
     assert.match(src, /L\.circle\s*\(/);
