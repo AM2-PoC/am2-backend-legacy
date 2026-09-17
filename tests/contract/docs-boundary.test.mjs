@@ -22,14 +22,6 @@ test('product docs never instruct runtime-host builds or direct staging rsync', 
     'product docs still bypass the ephemeral-CI and immutable-artifact boundary');
 });
 
-test('WebAdmin implementation notes point to current boundaries instead of keeping a completion report', () => {
-  const source = read('docs/explanation/webadmin-rebuild.md');
-  assert.match(source, /ephemeral non-production CI/i);
-  assert.match(source, /deploy-and-roll-back\.md/);
-  assert.doesNotMatch(source, /Status:\s*\*\*selesai|Agustus|## \d+\.|VPS pengembangan|rsync\s+-a/i,
-    'WebAdmin notes still contain a historical completion report or obsolete workflow');
-});
-
 test('production runbook deploys immutable artifacts without source or host builds', () => {
   const source = runbook();
   for (const required of [

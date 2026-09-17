@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run) dry_run=1; shift ;;
         --allow-relay-restart) allow_restart=1; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 [[ -n $release && $release == /* && -d $release ]] || { usage; exit 64; }
@@ -52,7 +52,7 @@ if (( EUID == 0 )); then
     PRODUCTION_WEBADMIN_UPDATE=/var/www/am2/shared/webadmin-update
     PRODUCTION_SERVER_UPDATE=/var/www/am2/shared/server-update
 else
-    # Fixture overrides are non-privileged and cannot mutate production.
+
     PRODUCTION_RELEASES_ROOT=${AM2_PRODUCTION_RELEASES_ROOT:-/var/www/am2/releases}
     PRODUCTION_WEBADMIN_UPDATE=${AM2_PRODUCTION_WEBADMIN_UPDATE:-/var/www/am2/shared/webadmin-update}
     PRODUCTION_SERVER_UPDATE=${AM2_PRODUCTION_SERVER_UPDATE:-/var/www/am2/shared/server-update}

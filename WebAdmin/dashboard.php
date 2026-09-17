@@ -3,7 +3,6 @@ require_once 'auth.php';
 require_once 'config.php';
 
 
-
 $current_admin_id = $_SESSION['admin_id'];
 $admin_role = $_SESSION['admin_role'];
 
@@ -48,18 +47,6 @@ try {
 
     $ptt_activity = $stmt_ptt->fetchAll(PDO::FETCH_ASSOC);
 
-    /**
-     * Seven days of growth for the two counts that have a creation date.
-     *
-     * Cumulative rather than per-day, because the card shows a total: the line
-     * has to end where the number is. Both are correlated subqueries over a
-     * generated date series -- 1.9ms and 0.3ms measured on the production copy,
-     * against the 16 seconds a LEFT JOIN over ptt_logs used to cost here.
-     *
-     * Online has no series and gets none. Nothing records how many units were
-     * connected an hour ago, and drawing something that looks like history
-     * where there is none is worse than an empty space.
-     */
     $days = "SELECT generate_series(CURRENT_DATE - 6, CURRENT_DATE, '1 day')::date AS day";
 
     if ($admin_role === 'superadmin') {  // $isSuper is not assigned until later
@@ -113,18 +100,10 @@ if (empty($ptt_activity)) {
 }
 
 
-/*
- * Everything below is scoped to the signed-in admin unless they are a
- * superadmin. Both joins have to be scoped, not just the obvious one: a channel
- * is shared, so counting its ptt_logs without restricting whose logs they are
- * shows one branch another branch's traffic. That is the same mistake the
- * dashboard chart was shipping.
- */
 $isSuper = $admin_role === 'superadmin';
 
 try {
-    // PUSH is a transmission starting and RELEASE is the same one ending, so
-    // counting both would double every call.
+
     if ($isSuper) {
         $stmt = $pdo->query("
             SELECT COUNT(*) FROM public.ptt_logs
@@ -141,13 +120,6 @@ try {
     }
     $calls_24h = (int) $stmt->fetchColumn();
 
-    // Where the traffic actually is: units on each channel now, and the calls
-    // that channel carried today.
-    //
-    // Correlated subqueries rather than joins. Joining ptt_logs and counting
-    // DISTINCT over the result took 16 seconds against 55k rows, because the
-    // time filter could not be applied until after the join. Here it narrows
-    // first, and idx_ptt_logs_channel_time makes it an index scan.
     if ($isSuper) {
         $stmt = $pdo->query("
             SELECT c.id, c.display_name,
@@ -179,10 +151,6 @@ try {
     }
     $channel_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Units that cannot sign in at all. server.js refuses app_login unless the
-    // user has a last_channel_id AND a matching user_channels row, answering
-    // "Admin belum menentukan Channel Default". Nothing in the panel showed
-    // which users are in that state, so it surfaced only as a support call.
     if ($isSuper) {
         $stmt = $pdo->query("
             SELECT u.id, u.name FROM public.users u
@@ -203,8 +171,6 @@ try {
     }
     $stranded = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Branch admins whose access is about to lapse. When it does, server.js
-    // force-logs-out every one of their units.
     $expiring = [];
     if ($isSuper) {
         $expiring = $pdo->query("
@@ -216,7 +182,6 @@ try {
             ORDER BY expired_at ASC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // Quota applies to branch admins only; a superadmin has none.
     $quota = null;
     if (!$isSuper) {
         $stmt = $pdo->prepare("SELECT user_quota, channel_quota FROM public.admin WHERE id = ?");
@@ -234,7 +199,7 @@ try {
         ];
     }
 } catch (PDOException $e) {
-    // A broken extra must not take the whole dashboard down with it.
+
     $calls_24h = 0;
     $channel_rows = [];
     $quota = null;
@@ -252,18 +217,9 @@ include 'partials/head.php';
 include 'partials/shell.php';
 ?>
 <?php
-/**
- * Priority order, top to bottom: what is broken, then what is happening, then
- * what it looked like. The chart moved below the attention queue -- a chart is
- * context, and eight units that cannot sign in is a job.
- *
- * A sparkline is drawn only where a real series already exists. Calls have one
- * ($chart_values); total units and channels do not, and inventing a query to
- * manufacture one would be backend work this release does not do.
- */
+
 $freshness = date('H.i');
 
-/** A polyline over whatever series a card actually has. */
 function am2_sparkline(array $values, string $class = 'text-brand'): string
 {
     $values = array_map('intval', $values);
@@ -283,16 +239,6 @@ function am2_sparkline(array $values, string $class = 'text-brand'): string
          . ' points="' . implode(' ', $points) . '"/></svg>';
 }
 
-/**
- * The change across a series, as a signed count and a percentage.
- *
- * Arithmetic on the seven cumulative daily counts each card already carries --
- * no second query, and nothing new to keep in step with the number above it.
- *
- * Returns null rather than a zero when there is nothing to say: a card
- * reporting "0%" every day is noise, and a single data point has no direction
- * at all. A card without a series simply does not get one.
- */
 function am2_delta(?array $series): ?array
 {
     if (!$series || count($series) < 2) {
@@ -305,14 +251,9 @@ function am2_delta(?array $series): ?array
     if ($change === 0) {
         return null;
     }
-    // Against a starting zero any growth is infinite, so the percentage is
-    // withheld and the count speaks for itself.
+
     $percent = $first > 0 ? (int) round($change / $first * 100) : null;
 
-    // A single unit added to a fleet of 219 rounds to 0%, and "↑ 0%" is a
-    // contradiction on the face of the card. Below a whole percent the count is
-    // the honest figure -- it is also the smaller number, which is the one that
-    // fits.
     if ($percent === 0) {
         $percent = null;
     }
@@ -340,17 +281,6 @@ $cards = [
 ];
 ?>
 
-<!--
-    Metric cards. Preline card composition:
-    https://preline.co/docs/card.html
-    Every one of these links somewhere, so every one carries the affordance --
-    the arrow and the border change. A card that did not link would get neither.
-
-    Four columns from lg, not xl. The band between 1024 and 1279px was the one
-    place these stayed two-up, and with a 272px rail the content budget there is
-    already wide enough for four -- so half the row was empty card while the
-    reader scrolled to find the fourth metric.
--->
 <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     <?php foreach ($cards as $c): ?>
         <a href="<?= $c['href'] ?>" data-kpi
@@ -376,15 +306,7 @@ $cards = [
                 <?php endif; ?>
 
                 <?php
-                /*
-                 * Which way the number has moved over the week the sparkline
-                 * draws. Absent when the series is flat or missing, rather than
-                 * printing a "0%" that says nothing on a card read every day.
-                 *
-                 * Growth is not good news here and a fall is not bad -- more
-                 * units is a bigger fleet, fewer is decommissioning -- so the
-                 * colour stays neutral and only the arrow states direction.
-                 */
+
                 $delta = am2_delta($c['series'] ?? null);
                 if ($delta): ?>
                     <span class="ms-auto inline-flex items-baseline gap-1 self-center rounded-control
@@ -408,8 +330,6 @@ $cards = [
                 <?= am2_sparkline($c['series']) ?>
             <?php endif; ?>
 
-            <!-- Freshness. A number with no time on it is a number you have to
-                 trust blindly; this one says when it was true. -->
             <p class="mt-auto pt-3 font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle">
                 <span data-kpi-stale hidden class="text-warn">⚠ <?= e('state.stale_title') ?> · </span>
                 <span data-kpi-time><?= $freshness ?></span> WIB
@@ -420,7 +340,6 @@ $cards = [
 
 <div class="mt-4 grid gap-4 lg:grid-cols-2" data-reveal>
 
-    <!-- What is happening right now. -->
     <section class="am2-surface flex flex-col rounded-card">
         <header class="border-b border-edge px-5 py-4">
             <h2 class="text-sm font-semibold tracking-tight"><?= e('dash.channel_activity') ?></h2>
@@ -447,7 +366,6 @@ $cards = [
         <?php endif; ?>
     </section>
 
-    <!-- What needs doing. Above the chart on purpose. -->
     <section class="am2-surface flex flex-col rounded-card">
         <header class="flex items-center justify-between border-b border-edge px-5 py-4">
             <div>
@@ -480,7 +398,6 @@ $cards = [
     </section>
 </div>
 
-<!-- Context, not a task, so it sits last. -->
 <section class="am2-surface mt-4 rounded-card" data-reveal>
     <header class="flex flex-wrap items-center justify-between gap-3 border-b border-edge px-5 py-4">
         <div>
@@ -507,7 +424,7 @@ $cards = [
     </header>
 
     <div class="relative px-5 py-4">
-        <!-- The canvas id is the Chart.js contract and does not change. -->
+
         <div id="chartWrap" class="h-64 sm:h-72"><canvas id="activityChart"></canvas></div>
 
         <div id="chartError" hidden class="absolute inset-0 grid place-items-center bg-card/80">
@@ -550,8 +467,6 @@ $cards = [
     const errBox = document.getElementById('chartError');
     const sync = document.getElementById('chartSyncIcon');
 
-    // Chart.js reads its colours from the document, so a theme change has to be
-    // handed to it rather than inherited.
     const css = (n, f) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f;
 
     const chart = new Chart(document.getElementById('activityChart'), {
@@ -581,7 +496,7 @@ $cards = [
     async function loadChart(r) {
         sync.style.display = '';
         try {
-            // The endpoint, its parameters and its response keys are unchanged.
+
             const res = await fetch(
                 `api_dashboard_chart.php?admin_id=${<?= json_encode((string) $current_admin_id) ?>}` +
                 `&role=${<?= json_encode((string) $admin_role) ?>}&range=${r}`);
@@ -599,8 +514,7 @@ $cards = [
                     { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' })
                     .replace(':', '.');
         } catch {
-            // Say it failed. Leaving the last good line on screen with no sign
-            // that it stopped being true is the thing this replaces.
+
             errBox.hidden = false;
             document.querySelectorAll('[data-kpi-stale]').forEach((el) => { el.hidden = false; });
         } finally {
@@ -620,7 +534,7 @@ $cards = [
                 b.classList.toggle('border-edge', !on);
                 b.classList.toggle('text-ink-subtle', !on);
             });
-            // The set changed; the container says so without redrawing the page.
+
             window.AM2?.filtered(wrap);
             loadChart(range);
         });
@@ -629,14 +543,13 @@ $cards = [
     document.getElementById('chartRetry')?.addEventListener('click', () => loadChart(range));
 
     loadChart('24h');
-    // Ten seconds, and only while looking at the live range.
+
     setInterval(() => { if (range === '24h') loadChart('24h'); }, 10000);
 
     window.addEventListener('load', () => {
         const AM2 = window.AM2;
         if (!AM2) return;
-        // Once. Polling rewrites these numbers several times a minute and
-        // replaying the entrance would make the page flicker on a timer.
+
         AM2.enterOnce('[data-kpi]');
         AM2.revealOnScroll('[data-reveal]');
     });

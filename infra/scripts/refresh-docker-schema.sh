@@ -1,15 +1,5 @@
 #!/bin/bash
-#
-# Regenerate infra/docker/seed/01-schema.sql from staging.
-#
-# This dumps structure only -- zero rows, `pg_dump --schema-only` -- so it is
-# not the sensitive part of staging. The two things it strips afterward are
-# what a fresh database complains about: \restrict/\unrestrict, psql
-# meta-commands some builds do not know, and CREATE SCHEMA public, which
-# every Postgres image already has.
-#
-# Run this on the host that can reach am2_staging (the VPS, over the admin
-# SSH connection) -- not from a laptop, which has no route to it.
+
 set -euo pipefail
 
 DB=am2_staging

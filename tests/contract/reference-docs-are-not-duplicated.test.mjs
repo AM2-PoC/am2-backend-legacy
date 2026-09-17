@@ -1,13 +1,4 @@
-// A reference that says the same thing twice will eventually say it differently.
-//
-// backend-contract.md carried sections 1.3 through 1.8 twice -- 125 lines, five
-// of them byte-identical and the sixth already drifted, because an earlier edit
-// corrected one copy and left the other describing a hardcoded "1.0.0" fallback
-// that had been removed long before.
-//
-// Nobody reads 1000 lines top to bottom. They search, land on whichever copy
-// comes first, and trust it. A duplicate heading is not untidiness; it is two
-// answers to one question with no way to tell which is current.
+// Documentation reference integrity checks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

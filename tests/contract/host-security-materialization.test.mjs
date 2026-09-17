@@ -654,11 +654,6 @@ test('the committed Cloudflare real-IP data has not gone stale', () => {
 
 
 test('a published materialization is verified whichever path produced it', () => {
-  // The loser of a publish race used to accept whatever won it on the strength
-  // of the directory existing. The comparison is now unconditional, so there is
-  // no branch that reaches a receipt without it -- including the branch a race
-  // is needed to reach, which is why this asserts the structure rather than
-  // trying to win a race reliably.
   const script = readFileSync(materializerPath, 'utf8');
   const call = 'compare_against_staged "$destination/payload"';
   assert.equal(script.split(call).length - 1, 1,

@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Put the field app's APK and its manifest in place, together, or not at all.
-#
-# The channel is one file and one APK: server/update/version.json is what a
-# handset fetches, and the APK it names is what a handset downloads. Publishing
-# them as two separate copies is the one remaining way to end up with a manifest
-# that describes bytes other than the ones beside it -- the handset verifies the
-# digest and would refuse the install, reporting nothing an operator could act
-# on.
-#
-# So this does both, from one artifact, after checking that the manifest
-# actually describes the APK it shipped with. The table public.app_versions is
-# not touched: nothing reads it any more, and it was a second hand-written copy
-# of this channel that drifted three builds behind the published one.
 
 usage() {
     echo "Usage: $0 --artifact /absolute/ci-artifact-dir [--update-dir /absolute/server/update]" >&2
@@ -30,7 +17,7 @@ while [[ $# -gt 0 ]]; do
         --update-dir)  [[ $# -ge 2 ]] || { usage; exit 64; }; update_dir=$2; shift 2 ;;
         --reader)      [[ $# -ge 2 ]] || { usage; exit 64; }; reader=$2; shift 2 ;;
         --verify-only) verify_only=1; shift ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -40,15 +27,6 @@ if [[ -z $verify_only ]]; then
     [[ -n $artifact && $artifact == /* ]] || { usage; exit 64; }
 fi
 
-# Writing the files is not publishing them. The relay is a different process
-# and often a different user, and the one time that mattered -- a publish run
-# under sudo into a directory owned by the service account -- every check here
-# passed, the script said "published", and the endpoint answered "No version
-# info found" for a day. So the last thing this does is read the channel back
-# as the process that serves it.
-#
-# The reader defaults to whoever owns the update directory, which is the
-# account the relay runs as on every host this deploys to.
 verify_channel() {
     local dir=$1 who=$2
     python3 - "$dir" "$who" <<'PYTHON'
@@ -155,13 +133,9 @@ printf '%s' "$declared_sha" | grep -Eq '^[0-9a-f]{64}$' \
 printf '%s' "$signer" | grep -Eq '^[0-9a-f]{64}$' \
     || { echo "signer_sha256 is not a digest" >&2; exit 1; }
 
-# The name the manifest itself publishes, so the file that lands is the file the
-# URL promises rather than whatever the artifact happened to call it.
 target_name=${update_url##*/}
 [[ $target_name == *.apk ]] || { echo "update_url does not name an APK: $update_url" >&2; exit 1; }
 
-# Exactly one APK in the artifact. Two would make this a choice, and a choice
-# made here is a choice nobody reviewed.
 mapfile -t candidates < <(find "$artifact" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*' -print)
 [[ ${#candidates[@]} -eq 1 ]] \
     || { echo "expected one APK in $artifact, found ${#candidates[@]}" >&2; exit 1; }
@@ -173,9 +147,6 @@ actual_sha=$(sha256sum "$apk" | cut -d' ' -f1)
     exit 1
 }
 
-# Never sideways or backwards. A handset compares version codes, so republishing
-# an older build makes the channel permanently answer "already current" for
-# everyone who took the newer one.
 current=$update_dir/version.json
 if [[ -r $current ]]; then
     published=$(python3 -c "
@@ -225,14 +196,6 @@ publish_file() {
     mv -f "$temporary" "$final"
 }
 
-# Keep whatever is published now, manifest AND the APK it names. If the new
-# pair turns out not to be readable, the field must be left on the build that
-# was working -- a channel answering nothing at all is worse than a channel
-# answering something older.
-#
-# Both, not just the manifest: they land under the same name, so restoring the
-# old manifest beside the new APK leaves a pair that does not agree, and a
-# handset refuses that install on the digest without saying why.
 rollback_manifest=
 rollback_apk=
 rollback_apk_name=
@@ -252,18 +215,12 @@ except Exception:
     fi
 fi
 
-# The APK first and the manifest second, both through a temporary name so a
-# reader never sees a half-written file. In the instant between them the
-# manifest still describes the previous build, which is the safe direction: a
-# handset is offered something older, never something whose digest will not
-# match.
 publish_file "$apk" "$update_dir/.$target_name.incoming" "$update_dir/$target_name"
 publish_file "$manifest" "$update_dir/.version.json.incoming" "$update_dir/version.json"
 
 if ! verify_channel "$update_dir" "$reader"; then
     if [[ -n $rollback_manifest ]]; then
-        # The APK first and the manifest second, the same order as publishing,
-        # so no reader ever sees a manifest describing bytes that are not there.
+
         if [[ -n $rollback_apk ]]; then
             publish_file "$rollback_apk" "$update_dir/.$rollback_apk_name.incoming" "$update_dir/$rollback_apk_name"
         fi

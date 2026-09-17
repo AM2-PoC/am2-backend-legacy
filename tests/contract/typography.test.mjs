@@ -1,10 +1,3 @@
-// Typography contract: the canonical font stack and its delivery.
-//
-// This test is source-only — it reads the tree, not a running server — so it
-// runs locally without a staging fixture. It asserts that the body family is
-// IBM Plex Sans (without !important, which used to defeat the Tailwind token),
-// that the Tailwind tokens are Plex families, and that exactly the six official
-// IBM WOFF2 files are declared — no more, no less, and no Inter/JetBrains left.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

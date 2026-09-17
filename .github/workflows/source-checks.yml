@@ -1,16 +1,4 @@
-# The checks that need nothing but the checkout.
-#
-# There was no CI at all. Everything here already passed on someone's machine
-# before a release -- which is the problem: it passed when somebody remembered
-# to run it, and the failure mode of a forgotten check is indistinguishable from
-# a passing one.
-#
-# Deliberately no secrets and no services. Most of the contract suite needs a
-# staging host and a protected env file, and wiring those into CI would mean
-# putting production-shaped credentials into GitHub. That suite stays on the
-# VPS, run before a release. What runs here is the part that only needs source,
-# which is also the part that catches the mistakes made most often: a syntax
-# error, a built asset that no longer matches what built it.
+# Source-only checks: no deployment credentials or persistent services.
 
 name: source checks
 
@@ -88,10 +76,8 @@ jobs:
       - run: npm --prefix WebAdmin run build
       - name: The committed CSS and JS must be what the source builds
         run: |
-          # The bundle is committed because deploys copy an archive rather than
-          # building on the host. That only works while the two agree, and the
-          # way they stop agreeing is an edit to a src/ file that nobody
-          # rebuilt -- invisible in review, because the diff looks complete.
+          # Runtime packages include generated assets; source and committed
+          # output must remain synchronized.
           if ! git diff --exit-code -- WebAdmin/asset; then
               echo "::error::Built assets differ from their source. Run 'npm --prefix WebAdmin run build' and commit the result."
               exit 1
@@ -117,9 +103,8 @@ jobs:
           NPM_CONFIG_AUDIT: 'false'
           NPM_CONFIG_FUND: 'false'
         run: |
-          # The set is computed, not listed: a hand-maintained list goes stale
-          # the first time somebody adds a test and forgets, and a test that
-          # never runs looks exactly like a test that passes.
+          # Discover offline suites dynamically so new contracts cannot be
+          # omitted from CI by a stale file list.
           mapfile -t files < <(./tests/offline-tests.sh)
           if [ ${#files[@]} -eq 0 ]; then
               echo "::error::No offline tests were selected; the selector is broken."
@@ -199,12 +184,8 @@ jobs:
           docker compose config > /dev/null
 
   protocol:
-    # The suite that drives the real wire -- login, join, key the mic, relay a
-    # frame, release -- could only ever run by hand against staging, because the
-    # units it signs in as existed only there. So the one test layer that
-    # exercises the protocol never ran here, and a protocol test that was broken
-    # could reach main and stay there. That happened, and this is the answer:
-    # the same suite, against a relay built from this commit.
+    # Exercise login, join, PTT, media relay, and release against the relay
+    # built from this commit.
     name: protocol suite (containerised relay)
     runs-on: ubuntu-latest
     timeout-minutes: 20

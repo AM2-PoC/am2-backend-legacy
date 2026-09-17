@@ -5,7 +5,6 @@ am2_api_auth();
 am2_csrf_require();
 
 
-// Identity is resolved by the server; see am2_api_identity().
 [$admin_id, $admin_role] = am2_api_identity();
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -136,16 +135,10 @@ elseif ($method == 'POST') {
             $stmtOld->execute([$ch_id]);
             $oldMembers = $stmtOld->fetchAll(PDO::FETCH_COLUMN);
 
-            // The same call the panel makes. What it replaces wrote
-            // is_default='false' and 'FULL DUPLEX' for every member, so editing
-            // a channel from the app stripped the default off every unit on it
-            // and handed transmit rights to receive-only ones.
             am2_set_channel_members($pdo, (string) $ch_id, $selected_users, $scope);
 
             $pdo->commit();
 
-            // Everyone whose membership could have moved, not just the ones
-            // that stayed: a unit dropped from the channel needs the news too.
             foreach (array_unique(array_merge($oldMembers, $selected_users)) as $uid) {
                 syncUserChannels($uid);
             }

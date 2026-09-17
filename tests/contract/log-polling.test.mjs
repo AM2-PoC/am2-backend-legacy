@@ -57,16 +57,6 @@ test('the watermark is bound as a parameter, not pasted into the SQL', () => {
         'nothing binds a :since or :before placeholder');
 });
 
-/*
- * The 204 path, the malformed-watermark fallback and the microsecond
- * resolution used to be asserted here by looking for a call, a token, or three
- * tokens appearing in order somewhere in the file. All three would have passed
- * with the behaviour absent -- a 204 in an unreachable branch, a parse outside
- * the try it was supposed to be inside. They now live in
- * log-polling-integrity.test.mjs, which runs the endpoint and reads what came
- * back.
- */
-
 test('the endpoint can be asked for older rows, so the log is not capped at 200', () => {
     assert.match(endpoint, /\$_GET\[['"]before/,
         'fetch_logs.php takes no `before` parameter, so nothing beyond the newest 100 per '

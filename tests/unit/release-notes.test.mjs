@@ -1,20 +1,3 @@
-// Release notes are the one string on the panel that is not in the catalogue.
-//
-// Everything else a reader sees comes from lang/id.php or lang/en.php, keyed.
-// Notes cannot: they are written per release, not per key. So the manifest and
-// app_versions.release_notes each held one free-text field, and an English page
-// rendered "Sesi native persisten, CSRF pada semua mutasi, logout server-side."
-// -- the only Indonesian surviving anywhere on the English render.
-//
-// The field may now carry both languages at once. Two things read it: the panel
-// in PHP, and the relay in JavaScript, which hands the notes to every field
-// handset. Putting an object in that column without teaching the relay to read
-// it would send handsets a JSON blob where a sentence belongs.
-//
-// Two implementations of one rule is what this codebase otherwise refuses. They
-// are in different runtimes with no way to share, so instead every case below
-// is asserted against BOTH -- which is the only thing that can stop them
-// drifting apart later.
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

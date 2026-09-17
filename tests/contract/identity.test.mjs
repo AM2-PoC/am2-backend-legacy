@@ -1,10 +1,3 @@
-// Who the server thinks the caller is.
-//
-// Every api_*.php file used to take `admin_id` and `role` off the request.
-// That is the Admin Native contract, but it also meant a branch admin holding
-// a perfectly ordinary panel session could append `&role=superadmin` and act
-// as one. These tests pin the rule that closed it: a session states nothing
-// about itself, only a key-bearing caller may.
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
 import { BASE, HOST, asSuper, asBranchA, get, postForm, json, sql,
@@ -48,11 +41,6 @@ describe('identity is the server\'s to decide', () => {
     });
 
     test('a branch session cannot reset another admin\'s password', async () => {
-        // The target is resolved from the fixture, never hardcoded. This probe
-        // used to send admin_id=1, which on staging is the real superadmin --
-        // and when it was run against a build without the guard, it changed
-        // that account's password. The assertion could not prevent it: by then
-        // the request had already been served.
         const target = ctAdminId('ct_super');
         const before = adminPasswordHash('ct_super');
         const cookie = await asBranchA();

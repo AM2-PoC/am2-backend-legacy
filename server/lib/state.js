@@ -1,17 +1,6 @@
-/**
- * Everything the relay knows only because it is this process.
- *
- * Five maps and one operation on them. They are the reason a second relay
- * process cannot simply be started beside this one: two processes would each
- * hold half the room and neither would know it. Moving them behind a module
- * does not fix that — it makes the boundary visible, so the day they move to
- * Redis there is one file to change rather than a grep.
- */
 
-/** userId (string) -> ws */
 const activeConnections = new Map();
 
-/** channelSlug -> Set of ws */
 const channelRooms = new Map();
 
 /** userId -> timeout handle, so a reconnect inside the grace period is not a leave */
@@ -19,10 +8,8 @@ const pendingDisconnects = new Map();
 
 const DISCONNECT_GRACE_PERIOD = 10000; // 10 detik toleransi reconnect
 
-/** channelSlug -> Set of "userId:userName" */
 const activeSpeakers = new Map();
 
-/** channelSlug -> Set of "userId:userName" */
 const activeVideoRooms = new Map();
 
 const channelStateQueues = new WeakMap();
@@ -37,12 +24,6 @@ const serializeChannelState = (ws, task) => {
     return settled;
 };
 
-/**
- * How long an unanswered private-call invitation stays acceptable.
- *
- * Long enough for a handset to be picked up, short enough that an invitation
- * cannot be banked and redeemed much later against a socket that has moved on.
- */
 const PTP_INVITE_TTL = 60000; // 60 detik
 
 /*
@@ -56,19 +37,6 @@ const PTP_INVITE_TTL = 60000; // 60 detik
  */
 const SOCKET_OPEN = 1;
 
-/**
- * The socket for `targetId`, but only if it belongs to the same tenant as `ws`.
- *
- * Every private-call handler used to reach straight into activeConnections,
- * which is a flat global uid -> ws map. Login enforces admin_id, and then the
- * whole P2P family threw that away: any authenticated unit could ring, answer,
- * or push audio at any other online unit in any branch.
- *
- * Returns null when either side is unauthenticated, when the target is absent,
- * or when the two belong to different admins. A missing admin_id on either side
- * is refused rather than treated as a match -- two NULLs are not the same
- * tenant, they are two unknowns.
- */
 const peerFor = (ws, targetId) => {
     const target = activeConnections.get(String(targetId));
     if (!target || !ws.sessionUser || !target.sessionUser) return null;
@@ -81,22 +49,6 @@ const peerFor = (ws, targetId) => {
     return target;
 };
 
-/**
- * Why a target cannot be called, separated from whether it can.
- *
- * peerFor answers null for two unrelated conditions -- no socket at all, and a
- * socket belonging to another tenant -- and both used to surface as "Personel
- * sedang offline". That sent operators after a network fault when the unit was
- * plainly connected: on production one unit sat under `superadmin` while the
- * three it shared a channel with sat under `ODIE COMM`, so every private call
- * between them was refused and blamed on the network.
- *
- * `offline` is a true statement about an absent or closed socket and is kept.
- * `unavailable` covers a peer that exists but is not callable, and says nothing
- * about why -- the caller has no business learning another tenant's shape.
- *
- * @returns {{peer: object|null, reason: 'ok'|'offline'|'unavailable'}}
- */
 const resolvePeer = (ws, targetId) => {
     const target = activeConnections.get(String(targetId));
     if (!target || target.readyState !== SOCKET_OPEN) {
@@ -107,44 +59,7 @@ const resolvePeer = (ws, targetId) => {
     return { peer: allowed, reason: 'ok' };
 };
 
-/**
- * Whether `ws` could open a private call to `targetId` right now.
- *
- * Asked per roster entry so the handset can stop offering a call that the
- * relay will refuse. A button that always fails is worse than no button: the
- * operator reads the failure as a fault in the radio.
- *
- * Deliberately not a promise about the next moment -- the peer may be invited
- * by someone else before the tap lands, and request_ptp checks again.
- */
-const canPrivateCall = (ws, targetId) => {
-    if (String(targetId) === String(ws?.sessionUser?.id ?? '')) return false;
-    const { peer, reason } = resolvePeer(ws, targetId);
-    if (reason !== 'ok' || !peer) return false;
-    return Boolean(ws.enable_p2p && peer.enable_p2p);
-};
 
-/**
- * One channel roster, as one recipient should see it.
- *
- * Channel access is granted per unit, so two tenants can legitimately share a
- * channel and hear each other. Private calling is scoped to a tenant. Both
- * rules are deliberate; the interface was the only place they disagreed, and it
- * disagreed silently -- the roster offered a call button for a peer the relay
- * would refuse, and the refusal claimed the peer was offline.
- *
- * Filtering the roster by tenant was the tempting repair and the wrong one.
- * Those units really are in the channel and really are audible; dropping them
- * would make the member list disagree with what the operator can hear, and
- * would take the name off inbound audio. So the list keeps everyone and marks
- * what is actually possible.
- *
- * `admin_id` is read here and never forwarded: which tenant a unit belongs to
- * is not something another unit needs to learn.
- *
- * Lives beside the other tenant rules rather than in broadcast.js, which pulls
- * in `ws` and the database pool -- neither of which the unit suite installs.
- */
 const rosterFor = (rows, recipient) => {
     const mine = recipient?.sessionUser?.admin_id;
     const myId = String(recipient?.sessionUser?.id ?? '');
@@ -239,7 +154,6 @@ function clearPtpState(ws, notify = true) {
     }
 }
 
-/** Pair two sockets only when both halves of the same unexpired invite exist. */
 const consumePtpInvite = (target, callerId, kind, now = Date.now()) => {
     const caller = peerFor(target, callerId);
     const incoming = target.ptpInviteIncoming;
@@ -280,7 +194,6 @@ module.exports = {
     activeConnections,
     peerFor,
     resolvePeer,
-    canPrivateCall,
     rosterFor,
     ptpPeerFor,
     createPtpInvite,

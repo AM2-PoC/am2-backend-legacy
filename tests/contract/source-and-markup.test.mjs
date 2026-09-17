@@ -1,9 +1,3 @@
-// The parts of the source and the rendered markup that are load-bearing.
-//
-// Dispatch in this codebase is by form field name, not by route: a page runs a
-// branch because a POST field is present. Renaming a submit button therefore
-// disables a feature silently, with no error and no visible change. These
-// assertions make that loud.
 import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { asSuper, get, readSrc, SRC, serverSrc, SERVER_JS } from './helpers.mjs';
@@ -187,18 +181,6 @@ describe('the node relay contract', () => {
     });
 
     test('every operator-facing message is one we chose', () => {
-        /*
-         * This half used to demand English on the wire, and the wire never
-         * complied: `data.message` is displayed verbatim by the handset, whose
-         * own fallback for a missing one is "Permintaan Gagal". Two strings
-         * were English and six Indonesian, from the same handlers, under a test
-         * that had been red for weeks.
-         *
-         * The strings now live in server/lib/messages.js, so this pins an
-         * object rather than scanning for a language -- a scan is exactly how
-         * six of them sat there unnoticed. A new message fails here, which is
-         * the moment to decide what it says.
-         */
         const catalogue = fs.readFileSync(
             path.join(path.dirname(SERVER_JS), 'lib', 'messages.js'), 'utf8');
         const strings = [...catalogue.matchAll(/^\s{4}[A-Z_]+:\s*'([^']+)'/gm)].map((m) => m[1]);

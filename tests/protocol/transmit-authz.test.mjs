@@ -26,11 +26,6 @@ const WS_URL = (process.env.CT_NODE_URL || NODE_URL).replace(/^http/, 'ws');
 const TIMEOUT = 8000;
 const CHANNEL = 'ct_channel_a';
 
-/**
- * The database the relay under test is using -- not, as this used to be, the
- * staging one regardless. A permission change has to land where the relay will
- * read it.
- */
 const psql = (query) => {
     const [command, ...prefix] = psqlInvocation();
     return execFileSync(command, [...prefix, '-tA', '-c', query], { encoding: 'utf8' }).trim();

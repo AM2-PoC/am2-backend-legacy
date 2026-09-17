@@ -3,10 +3,8 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-// Identity is resolved by the server; see am2_api_identity().
 [$current_admin_id, $admin_role] = am2_api_identity();
-// 24h buckets by hour, 7d buckets by day. Anything else falls back to 24h
-// rather than erroring, so a stale bookmark still renders.
+
 $range = ($_GET['range'] ?? '24h') === '7d' ? '7d' : '24h';
 $bucket   = $range === '7d' ? "TO_CHAR(series.jam, 'DD/MM')" : "TO_CHAR(series.jam, 'HH24:00')";
 $stepExpr = $range === '7d'
@@ -21,8 +19,7 @@ try {
     $pdo->exec("SET TIME ZONE 'Asia/Jakarta'");
 
     if ($admin_role !== 'superadmin' && $current_admin_id === null) {
-        // Without an admin_id there is no branch to scope to. Answering with
-        // the global figure is what made this leak in the first place.
+
         echo json_encode(['error' => 'admin_id is required']);
         exit;
     }

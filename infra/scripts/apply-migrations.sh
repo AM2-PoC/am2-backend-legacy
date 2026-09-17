@@ -1,28 +1,5 @@
 #!/bin/bash
-#
-# Apply the SQL in infra/migrations/ that has not been applied yet.
-#
-# There was no runner. The two migration files were written, committed, and
-# referenced by nothing at all -- a repo-wide grep for their names returned only
-# the files themselves. The deploy runbook went archive -> npm ci -> php -l ->
-# symlink swap, with no step in between that touched the schema, so whether a
-# database had the columns depended entirely on whether somebody had remembered
-# to paste the SQL in by hand. Production had not: checked against
-# information_schema, neither migration was present.
-#
-# That was survivable only because main did not yet carry the code that needs
-# them. It stops being survivable the moment it does: fetch_logs.php selects
-# event_code, so a deploy onto an unmigrated database takes the Activity Log
-# page down outright, and am2_log() -- which deliberately swallows its own
-# failures so a logging outage cannot roll back a real change -- writes nothing
-# and says nothing.
-#
-# Usage:
-#   infra/scripts/apply-migrations.sh --db am2_staging
-#   infra/scripts/apply-migrations.sh --db am2 --dry-run
-#
-# Runs as postgres over the local socket, like every other script here, so no
-# password is read or passed. Applying nothing is the normal result.
+
 set -euo pipefail
 
 DB=""
@@ -35,12 +12,10 @@ while [ $# -gt 0 ]; do
         -h|--help)
             sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
-        *) echo "unknown argument: $1" >&2; exit 2 ;;
+
     esac
 done
 
-# Named explicitly, never defaulted. A runner that guesses which database it is
-# changing is one keystroke from changing the wrong one.
 [ -n "$DB" ] || { echo "REFUSING: --db is required (e.g. --db am2_staging)" >&2; exit 2; }
 
 MIG_DIR="$(cd "$(dirname "$0")/../migrations" && pwd)"
@@ -50,19 +25,10 @@ MIG_DIR="$(cd "$(dirname "$0")/../migrations" && pwd)"
 # Reading the file stays with the user who owns it.
 psql_db() { sudo -u postgres psql -v ON_ERROR_STOP=1 -q -d "$DB" "$@"; }
 
-# Reachable, and the right kind of thing, before anything is written.
 psql_db -tAc 'SELECT 1' >/dev/null
 
 psql_db <<'SQL'
-/*
- * What has already run. `filename` is the key rather than a version number
- * because the files are already named in the order they must apply, and a
- * separate number is a second thing to keep in step.
- *
- * The checksum is not decoration: an applied migration that has since been
- * edited means the database and the repository disagree about what was run,
- * and that is worth stopping for rather than discovering later.
- */
+
 SET client_min_messages = warning;
 
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
@@ -118,7 +84,7 @@ for path in "$MIG_DIR"/*.sql; do
              VALUES ('${file//\'/\'\'}', '$sum')"
     else
         echo "applying $file"
-        # The migration and the record of it commit together or not at all.
+
         { cat "$path"
           printf "\nINSERT INTO public.schema_migrations (filename, checksum) VALUES ('%s', '%s');\n" \
               "${file//\'/\'\'}" "$sum"

@@ -1,22 +1,24 @@
 ## Summary
 
-<!-- Describe the change. -->
+<!-- What changed and why? -->
 
-## Confidentiality and scope
+## Scope
 
-- [ ] No company-confidential source, customer/personal data, credentials, signing material, or unapproved artifact is exposed
-- Affected surfaces:
-- Explicit non-goals:
-- Security/data/release impact: none / describe
+- [ ] No confidential source, credentials, personal/production data, signing material, or unapproved artifact is exposed
+- Affected components:
+- Compatibility or contract impact:
+- Security, data, or release impact:
+- Follow-up work:
 
 ## Verification
 
 - [ ] Focused tests added or updated
 - [ ] Relevant local checks pass
-- [ ] No secrets, generated dependencies, APKs, keystores, dumps, or local workspace files added
-- [ ] Documentation updated when operator behavior or contracts changed
+- [ ] Required CI checks pass
+- [ ] Documentation updated when contracts or operator procedures changed
+- [ ] No credentials, personal/production data, generated dependencies, build artifacts, or local workspace files added
 
 ## Delivery
 
-- [ ] No deployment required
-- [ ] Deployment/restart requires separate approval and rollback evidence
+- [ ] No deployment or restart required
+- [ ] Deployment, restart, or publication has a separate approval and rollback plan

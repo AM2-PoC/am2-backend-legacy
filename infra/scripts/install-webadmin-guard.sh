@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install the panel's second-layer guard into PHP's own configuration.
-#
-# The guard that matters lives in the code: WebAdmin/config.php requires
-# WebAdmin/auth_guard.php, every endpoint requires config.php, and nothing on
-# the host has to be right for that to work. This script installs the *net* --
-# the copy that runs via auto_prepend_file, so a file which forgets to require
-# config.php is still refused.
-#
-# It is installed into PHP's configuration directory, not into an Apache vhost,
-# and that is the whole point of the script existing. The directive lives in two
-# vhosts today; the migration plan retires Apache in favour of nginx and PHP-FPM
-# (.hermes/plans/2026-08-19_004858, Task 12A), and a guard written into a vhost
-# disappears during that cutover with nothing to show for it -- silently, and in
-# the direction of open. A conf.d file is carried by the SAPI instead, so the
-# same one line covers mod_php today and an FPM pool tomorrow.
-#
-# Applying host-wide is safe by construction: the prepend resolves the panel
-# through DOCUMENT_ROOT and does nothing at all when the document root holds no
-# auth_guard.php, so a vhost that is not the panel is unaffected.
-#
-# Read-only unless --apply is given.
 
 usage() {
     cat >&2 <<'USAGE'
@@ -45,7 +24,7 @@ while [[ $# -gt 0 ]]; do
         --drain-sessions) drain=1; shift ;;
         --source)         [[ $# -ge 2 ]] || { usage; exit 64; }; source_dir=$2; shift 2 ;;
         -h|--help)        usage; exit 0 ;;
-        *)                usage; exit 64 ;;
+
     esac
 done
 
@@ -67,7 +46,6 @@ run() {
     fi
 }
 
-# 1. The prepend itself.
 if [[ -r $installed ]] && cmp -s "$prepend_source" "$installed"; then
     say "prepend at $installed is already current"
 else
@@ -75,19 +53,13 @@ else
     run sudo install -o root -g root -m 0644 -D "$prepend_source" "$installed"
 fi
 
-# 2. The directive, once, in PHP's configuration rather than in a vhost.
-#
-# Written to every SAPI directory that exists. apache2 is what serves the panel
-# today and fpm is what will; installing both now means the FPM cutover inherits
-# the guard instead of having to remember it.
 installed_into=0
 for sapi in apache2 fpm; do
     dir=/etc/php/$php_version/$sapi/conf.d
     [[ -d $dir ]] || continue
     installed_into=$((installed_into + 1))
     target=$dir/$ini_name
-    # The sealed ini, byte for byte. A hand-written copy here drifted from it
-    # (no realpath or opcache bounds) and would not match its bundle digest.
+
     if [[ -r $target ]] && cmp -s "$ini_source" "$target"; then
         say "sealed ini already installed for $sapi"
         continue
@@ -96,10 +68,6 @@ for sapi in apache2 fpm; do
     run sudo install -o root -g root -m 0644 "$ini_source" "$target"
 done
 
-# 3. Take the directive out of the vhosts, so there is one source for it.
-#
-# Left in both places the two would drift, and the vhost copy is the one that
-# points at the old file name after this runs.
 for vhost in /etc/apache2/sites-available/am2-webadmin-internal.conf \
              /etc/apache2/sites-enabled/am2-webadmin-staging.conf; do
     [[ -r $vhost ]] || continue

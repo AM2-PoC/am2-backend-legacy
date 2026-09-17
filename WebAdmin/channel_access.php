@@ -1,40 +1,7 @@
 <?php
-/**
- * The one place user-to-channel membership is written.
- *
- * Three pages used to write `user_channels`, and all three disagreed:
- *
- *   user_access.php  kept the permission the form sent, kept the default, and
- *                    updated users.last_channel_id.
- *   users.php        deleted every row and recreated them all as FULL DUPLEX,
- *                    made whichever channel happened to be first in the JSON
- *                    array the default, and never touched last_channel_id.
- *   channels.php     deleted every membership of the channel it was editing
- *                    and recreated them all with is_default = 'false'.
- *
- * So editing a unit from the Units page silently granted transmit rights to a
- * receive-only unit, and editing a channel's roster stripped the default
- * channel from everyone on it while users.last_channel_id went on pointing at
- * it. A unit whose last_channel_id names a channel it no longer holds, or
- * holds without a default, cannot sign in at all -- which is what the eight
- * units found stranded in production have in common.
- *
- * Both functions below must be called inside a transaction, and neither talks
- * to the relay: they return the user ids they touched so the caller can sync
- * after the commit, and see it fail.
- */
-
-// Not an endpoint. See am2_refuse_direct_request().
 require_once __DIR__ . '/session_boot.php';
 am2_refuse_direct_request(__FILE__);
 
-/**
- * What user_channels.permission accepts. The check constraint on the column
- * still allows 'TX' and the old column default 'rxtx', so those are passed
- * through untouched rather than quietly rewritten -- a membership edit is not
- * the place to migrate historical values. Only RX means receive-only; the
- * relay lets everything else transmit.
- */
 const AM2_PERMISSIONS = ['RX', 'TX', 'FULL DUPLEX', 'rxtx'];
 
 function am2_normalise_permission($value): string
@@ -127,8 +94,6 @@ function am2_set_user_channels(
         }
     }
 
-    // Default: the stated one if it is actually granted, else the surviving
-    // one, else the first channel. A user with channels always has exactly one.
     $default = null;
     if ($defaultId !== null && $defaultId !== '' && in_array((string) $defaultId, $wanted, true)) {
         $default = (string) $defaultId;
@@ -153,8 +118,6 @@ function am2_set_user_channels(
             ->execute(array_merge([$userId], $revoked));
     }
 
-    // Upsert rather than delete-then-insert: the rows that survive keep their
-    // identity, and nothing observes a moment where the user holds nothing.
     $ins = $pdo->prepare(
         'INSERT INTO public.user_channels (user_id, channel_id, is_default, permission)
          VALUES (?, ?, ?, ?)'
@@ -225,8 +188,7 @@ function am2_set_channel_members(
     $resettled = [];
 
     foreach ($added as $uid) {
-        // A first channel is that unit's default, otherwise the existing one
-        // stands: joining a channel must not move where a unit comes up.
+
         $held = am2_user_channels($pdo, $uid);
         $hasDefault = false;
         foreach ($held as $row) {
@@ -257,8 +219,7 @@ function am2_set_channel_members(
         if (!$wasDefault) {
             continue;
         }
-        // Promote something they still hold, rather than leave last_channel_id
-        // pointing at a channel they have just been removed from.
+
         unset($held[$channelId]);
         $next = array_key_first($held);
         if ($next !== null) {
@@ -274,11 +235,6 @@ function am2_set_channel_members(
     return ['added' => $added, 'removed' => $removed, 'resettled' => $resettled];
 }
 
-/**
- * The same, for channels. `channels` has no admin_id: an admin may act on a
- * channel it created, or one delegated to it through admin_managed_channels,
- * which is exactly the pair of conditions channels.php lists the page with.
- */
 function am2_first_foreign_channel(PDO $pdo, $adminId, $adminRole, array $channelIds): ?string
 {
     if ($adminRole === 'superadmin') {

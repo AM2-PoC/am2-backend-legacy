@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
         --lock) [[ $# -ge 2 ]] || { usage; exit 64; }; lock=$2; shift 2 ;;
         --apply) apply=1; shift ;;
         --allow-reload) allow_reload=1; shift ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 for value in "$activation_receipt" "$root" "$apache_configtest" "$nginx_configtest" "$reload_command" "$lock"; do
@@ -90,10 +90,6 @@ if unprivileged != '1':
             raise SystemExit(f'{label} is not root-protected')
 PY
 
-# A superseding activation archived the receipt it replaced. Check that archive
-# now, while nothing has changed: finding it wrong after the files are restored
-# and services reloaded would leave the host on the replaced activation's bytes
-# with the superseding receipt still active, and every retry stuck there.
 if [[ -n $superseded_sha256 ]]; then
     python3 - "$backup/superseded-activation.json" "$superseded_sha256" "$root" "$unprivileged" <<'PY'
 import hashlib, json, os, pathlib, stat, sys

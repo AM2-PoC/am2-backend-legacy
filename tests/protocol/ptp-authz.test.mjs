@@ -1,18 +1,3 @@
-// Who is allowed to ring, answer, and push audio at whom.
-//
-// The private-call family used to take its target straight from the frame.
-// `accept_ptp` was the sharpest: it set ptpTargetId on whichever socket the
-// caller named, with no check that the named socket had ever invited anyone. So
-// one frame from any authenticated unit would reroute a stranger's live audio to
-// the sender and drop that stranger out of the channel broadcast — across
-// tenants, since activeConnections is a flat global map.
-//
-// These tests assert the consequence rather than the guard: after a forged
-// accept, the victim's audio must still reach the channel and must not reach the
-// attacker. A test that only checked for a `ptp_failed` reply would pass while
-// the socket was quietly rewritten anyway.
-//
-// Requires infra/scripts/ptt-harness-fixtures.sh to have run.
 import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';

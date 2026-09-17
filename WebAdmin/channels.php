@@ -3,14 +3,12 @@ require_once 'auth.php';
 require_once 'config.php';
 
 
-
 $success_msg = "";
 $error_msg = "";
 $current_admin_id = $_SESSION['admin_id'];
 $role_user = $_SESSION['admin_role'];
 $is_super = strtolower((string) $role_user) === 'superadmin';
 
-/** Answer as JSON and stop. The bulk paths ask over fetch. */
 function am2_ch_json(array $payload): void
 {
     header('Content-Type: application/json');
@@ -35,13 +33,6 @@ function am2_ch_scope(PDO $pdo, bool $is_super, $admin_id): ?array
     return array_map('strval', array_column($stmt->fetchAll(), 'id'));
 }
 
-/**
- * Whether this admin may manage a channel's roster.
- *
- * The same rule that decides whether the channel appears in the list at all:
- * created here, or delegated here. Narrowing it to created_by would have taken
- * the roster of every delegated channel away from the admin who runs it.
- */
 function am2_ch_visible(PDO $pdo, bool $is_super, $admin_id, $channel_id): bool
 {
     if ($is_super) {
@@ -67,15 +58,6 @@ if (isset($_GET['ajax_action'])) {
         exit;
     }
 
-    /*
-     * The units this admin may put on a channel.
-     *
-     * Asked for when the dialogue is first opened, not rendered into every
-     * page. Two hundred and eighteen units is thirteen hundred elements and
-     * a third of a megabyte of markup, carried on every visit to a page that
-     * shows eight channels -- and it grows with the fleet, so the page gets
-     * slower as the deployment succeeds.
-     */
     if ($_GET['ajax_action'] === 'list_units') {
         if ($is_super) {
             $stmt = $pdo->query("SELECT id, name FROM public.users WHERE role = 'user' ORDER BY name ASC");
@@ -110,28 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
     $selected_users = $_POST['users'] ?? [];
     $ajax = !empty($_POST['ajax']);
 
-    /*
-     * Additive mode, for a selection of channels.
-     *
-     * The dialogue cannot show a tick state that is true of five channels at
-     * once, so applying it as a replacement would silently drop every unit
-     * that happened to be unticked. Adding is the only reading of the gesture
-     * that means the same thing for one channel and for five.
-     */
     $add_only = !empty($_POST['add_only']);
 
-    /*
-     * Both halves of this form are attacker-chosen, and only the DELETE below
-     * was scoped.
-     *
-     * The channel: without this check a branch admin could post another
-     * branch's channel id and manage its membership. The users: the INSERT loop
-     * further down ran over whatever ids arrived, so a foreign unit could be
-     * grafted onto a channel this admin controls -- and syncUserChannels()
-     * pushes that to the relay, which means being able to hear and transmit on
-     * another branch's traffic. Filtering here rather than inside the loop
-     * keeps the membership write a single scoped statement.
-     */
     if (strtolower($role_user) !== 'superadmin') {
         $stmtOwn = $pdo->prepare("SELECT 1 FROM public.channels WHERE id = ? AND created_by = ?");
         $stmtOwn->execute([$ch_id, $current_admin_id]);
@@ -167,17 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
             }
         }
 
-        // Adding is the same call with the existing roster folded in: nothing
-        // is in $wanted's complement, so nothing is removed.
         $wanted = $add_only
             ? array_values(array_unique(array_merge(
                 array_map('strval', $old_users),
                 array_map('strval', $selected_users))))
             : $selected_users;
 
-        // Recreating the roster used to write is_default = 'false' for every
-        // member, so editing a channel stripped the default from every unit
-        // on it while users.last_channel_id went on pointing here.
         am2_set_channel_members($pdo, (string) $ch_id, $wanted, $scope);
 
         $pdo->commit();
@@ -247,9 +204,7 @@ if (isset($_POST['delete_channel'])) {
             if ($stmt_del->rowCount() > 0) {
                 $pdo->commit();
                 foreach ($affectedUsers as $uid) syncUserChannels($uid);
-                // The bulk path asks over fetch and cannot follow a redirect
-                // into a page it then throws away. Same guard, same query,
-                // different reply.
+
                 if ($ajax) {
                     am2_ch_json(['success' => true]);
                 }
@@ -269,13 +224,6 @@ if (isset($_POST['delete_channel'])) {
     }
 }
 
-/*
- * Export exactly the channels that were selected, as CSV.
- *
- * The ids narrow the query, they never widen it: the visibility rule below is
- * restated here, so posting somebody else's id returns nothing rather than a
- * row a branch admin was never shown.
- */
 if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST['ids'])) {
     $ids = array_values(array_filter(array_map('intval', $_POST['ids'])));
     $marks = implode(',', array_fill(0, max(1, count($ids)), '?'));
@@ -307,32 +255,17 @@ if (isset($_POST['export_selected']) && !empty($_POST['ids']) && is_array($_POST
     exit;
 }
 
-/** Page size. Twenty rows fill a screen without needing two scrolls. */
 const AM2_CHANNEL_PAGE = 20;
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-/*
- * Chips are filters that mean something operationally. "Tanpa unit" is a
- * channel nobody can hear, which the old list said nothing about -- it read as
- * a channel like any other until somebody tried to talk on it.
- */
 $chip = in_array($_GET['chip'] ?? '', ['owned', 'delegated', 'empty'], true)
     ? (string) $_GET['chip'] : '';
 
-// Whitelisted. Neither the column nor the direction is ever interpolated from
-// what arrived in the query string.
 $sortable = ['name' => 'c.display_name', 'access' => 'total_access', 'owner' => 'creator_name'];
 $sortCol  = $sortable[$_GET['sort'] ?? ''] ?? 'c.display_name';
 $sortDir  = ($_GET['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-/*
- * Visibility, as EXISTS rather than a LEFT JOIN.
- *
- * The join it replaces produced one row per managing admin, so a channel this
- * admin created and two others manage appeared three times -- harmless in a
- * list that showed everything, wrong the moment it is counted and paged.
- */
 $where  = [];
 $params = [];
 
@@ -368,8 +301,6 @@ $pages  = max(1, (int) ceil($total / AM2_CHANNEL_PAGE));
 $page   = min(max(1, (int) ($_GET['p'] ?? 1)), $pages);
 $offset = ($page - 1) * AM2_CHANNEL_PAGE;
 
-// total_access counts only the units this admin owns, so the number on the row
-// is the number the dialogue behind it can actually change.
 $accessCount = $is_super
     ? '(SELECT COUNT(*) FROM public.user_channels uc WHERE uc.channel_id = c.id)'
     : '(SELECT COUNT(*) FROM public.user_channels uc
@@ -389,14 +320,10 @@ $stmt = $pdo->prepare(
 $stmt->execute($listParams);
 $channels = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Every id the filter matches, so "pilih semua yang cocok" can mean it rather
-// than quietly meaning the twenty on screen.
 $stmt_all = $pdo->prepare("SELECT c.id {$fromWhere} ORDER BY c.id");
 $stmt_all->execute($params);
 $allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
 
-// Owned and delegated across everything visible, not just this page: a count
-// that changes when you turn the page is not a count of anything.
 $stmt_split = $pdo->prepare(
     "SELECT COUNT(*) FILTER (WHERE c.created_by = ?) AS owned,
             COUNT(*) FILTER (WHERE c.created_by IS NULL OR c.created_by <> ?) AS delegated
@@ -408,12 +335,9 @@ $stmt_split->execute($is_super
     : [$current_admin_id, $current_admin_id, $current_admin_id, $current_admin_id]);
 $split = $stmt_split->fetch(PDO::FETCH_ASSOC) ?: ['owned' => 0, 'delegated' => 0];
 $count_owned = (int) $split['owned'];
-// A superadmin owns the lot by definition; calling another admin's channel
-// "delegated to me" would be false, and the chip it draws would filter on a
-// distinction that does not exist at that level.
+
 $count_delegated = $is_super ? 0 : (int) $split['delegated'];
 
-// Only how many. The list itself is fetched when the dialogue opens.
 if ($is_super) {
     $managed_total = (int) $pdo->query("SELECT COUNT(*) FROM public.users WHERE role = 'user'")->fetchColumn();
 } else {
@@ -426,19 +350,11 @@ if ($is_super) {
 $pageTitle = t('ch.heading');
 $pageLede  = t('ch.lede', ['n' => number_format($total)]);
 
-/** The table frame reads these. See partials/table_open.php. */
 $tableId = 'am2-channels-table';
 $searchPlaceholder = 'ch.search';
 $countKey = 'ch.count';
 $pageSize = AM2_CHANNEL_PAGE;
 
-/*
- * A filter that can only ever return nothing is noise, so each chip has to
- * earn its place. A superadmin typically created none of these channels and
- * is delegated none of them either -- both words describe a distinction that
- * does not exist at that level, and drawing them anyway offers two filters
- * that always come back empty.
- */
 $chips = [['value' => '', 'key' => 'ch.chip_all']];
 if ($count_owned > 0) {
     $chips[] = ['value' => 'owned', 'key' => 'ch.chip_owned'];
@@ -455,16 +371,12 @@ $columns = [
     ['key' => 'ch.actions', 'align' => 'right'],
 ];
 
-/** The page's own verb, in the toolbar with the thing it acts on. */
 $tableAction = '<button type="button" data-hs-overlay="#am2-add-channel"'
     . ' class="h-11 shrink-0 rounded-control bg-brand px-4 font-mono text-[11px] font-semibold'
     . ' uppercase tracking-[0.15em] text-slate-950 transition-colors'
     . ' duration-[var(--duration-micro)] hover:bg-brand-hover">'
     . e('ch.add') . '</button>';
 
-// Access has to ask which units, and delete has to ask whether you meant it,
-// so neither can be declared as a fixed request on a button. Export answers
-// with a file, which fetch cannot hand to the browser.
 $bulkActions = [
     ['verb' => 'access', 'key' => 'ch.bulk_access', 'icon' => 'radio',
      'data' => ['hs-overlay' => '#am2-channel-access']],
@@ -478,12 +390,7 @@ include 'partials/shell.php';
 ?>
 
 <?php
-/*
- * One sentence, one place. The shared partial renders it for a browser with no
- * script and the bundle turns it into a toast for everyone else; a failure is
- * the one that waits to be dismissed. An error outranks a success when both
- * are somehow set -- the thing that went wrong is the thing to read.
- */
+
 $noticeText = $error_msg !== '' ? $error_msg : $success_msg;
 $noticeOk   = $error_msg === '';
 include 'partials/notice.php';
@@ -493,9 +400,7 @@ include 'partials/notice.php';
 
             <tbody class="divide-y divide-edge">
                 <?php if (!$channels): ?>
-                    <!-- Two empty states, not one. "Nothing yet" and "nothing
-                         matched" are different problems and want different
-                         next steps. -->
+
                     <tr>
                         <td colspan="5" class="px-5 py-16 text-center">
                             <?php $filtered = $search !== '' || $chip !== ''; ?>
@@ -541,8 +446,7 @@ include 'partials/notice.php';
 
                         <td data-cell="unit" data-label="<?= e('ch.name') ?>" class="px-4 py-2.5 align-middle">
                             <span class="flex items-start gap-2.5">
-                                <!-- Somebody is on it right now. A channel with
-                                     traffic is not one to delete by accident. -->
+
                                 <span data-live
                                       class="mt-1.5 h-2 w-2 shrink-0 rounded-full <?= $live > 0 ? 'bg-ok' : 'bg-edge-strong' ?>"
                                       aria-hidden="true"></span>
@@ -554,12 +458,6 @@ include 'partials/notice.php';
                                         <?= htmlspecialchars((string) $c['name']) ?>
                                     </span>
 
-                                    <!--
-                                        Narrow: one line, and a fault outranks a
-                                        fact on it. A channel with no unit on it
-                                        cannot carry anything, so it says that
-                                        where the count would have been.
-                                    -->
                                     <span data-summary class="block text-xs lg:hidden">
                                         <?php if ($units === 0): ?>
                                             <span class="text-warn"><?= e('ch.no_units') ?></span>
@@ -574,8 +472,6 @@ include 'partials/notice.php';
                                     </span>
                                 </span>
 
-                                <!-- Everything else about this channel is one tap
-                                     away, and the chevron is what says so. -->
                                 <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-channel-sheet"
                                         data-ch="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>"
@@ -670,10 +566,7 @@ include 'partials/notice.php';
 <?php include 'partials/table_close.php'; ?>
 
 <?php
-/*
- * The dialogues. Preline owns open, close, Escape and the focus trap; this
- * page only decides what a dialogue is about before Preline shows it.
- */
+
 $ovl = 'hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto bg-slate-950/50 backdrop-blur-sm';
 $card = 'am2-surface mx-auto my-[8vh] w-[92%] max-w-md overflow-hidden rounded-card';
 $fieldCls = 'mt-2 h-11 w-full rounded-control border border-edge bg-card px-3 text-sm text-ink'
@@ -688,8 +581,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
           . ' hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40';
 ?>
 
-<!-- New channel. The slug is derived, so the form asks for the one thing a
-     person actually decides. -->
 <div id="am2-add-channel" role="dialog" tabindex="-1" aria-labelledby="am2-add-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <form method="POST">
@@ -716,7 +607,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Rename. -->
 <div id="am2-edit-channel" role="dialog" tabindex="-1" aria-labelledby="am2-edit-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <form method="POST">
@@ -740,12 +630,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!--
-    Access. One dialogue for a single channel and for a selection, and the
-    difference between them is stated rather than implied: for one channel the
-    ticks are its current roster and saving replaces it; for several there is
-    no roster the ticks could describe, so saving adds and never removes.
--->
 <div id="am2-channel-access" role="dialog" tabindex="-1" aria-labelledby="am2-access-label" class="<?= $ovl ?>">
     <div data-am2-panel class="am2-surface mx-auto my-[6vh] flex max-h-[88vh] w-[92%] max-w-lg
                                 flex-col overflow-hidden rounded-card">
@@ -755,10 +639,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             <p data-access-mode class="mt-1 text-xs text-ink-muted"></p>
         </header>
 
-        <!--
-            Search, because this is every unit the account manages and the
-            dialogue is used by looking for one of them.
-        -->
         <div class="border-b border-edge px-5 py-2.5">
             <input type="search" data-unit-filter autocomplete="off"
                    placeholder="<?= e('ch.search_units') ?>"
@@ -780,8 +660,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             </span>
         </div>
 
-        <!-- Filled on first open. Empty here on purpose: see the list_units
-             endpoint above for why the roster is not rendered into the page. -->
         <div class="min-h-0 flex-1 overflow-y-auto px-5 py-3">
             <?php if ($managed_total === 0): ?>
                 <p class="py-8 text-center text-sm text-ink-muted"><?= e('ch.no_units_available') ?></p>
@@ -801,8 +679,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!-- Delete, for a selection. The count has to be typed: the number is the
-     whole sentence, and a channel takes its logs with it. -->
 <div id="am2-bulk-delete" role="dialog" tabindex="-1" aria-labelledby="am2-delete-label" class="<?= $ovl ?>">
     <div data-am2-panel class="<?= $card ?>">
         <header class="border-b border-edge px-5 py-4">
@@ -827,13 +703,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
     </div>
 </div>
 
-<!--
-    The channel sheet.
-
-    It holds no copy of anything: on open, the row's own cells are moved into
-    it and moved back when it closes. One set of controls, one set of handlers,
-    and a button that works in the sheet is the button that works in the table.
--->
 <div id="am2-channel-sheet" role="dialog" tabindex="-1" aria-labelledby="am2-sheet-label"
      class="hs-overlay fixed inset-0 z-80 hidden size-full overflow-y-auto
             bg-slate-950/50 backdrop-blur-sm lg:hidden">
@@ -892,7 +761,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         'prompt'  => t('ch.bulk_delete_prompt'),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
-    /** What the next dialogue is about: a row, or the selection. */
     let scope = { ids: [], label: '', addOnly: false };
 
     const setScope = (ids, label, addOnly) => {
@@ -907,13 +775,8 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     const picks = () => [...document.querySelectorAll('[data-unit-pick]')];
 
-    /*
-     * The unit list, fetched once and kept. Every path that opens the dialogue
-     * awaits this first, so nothing can tick a box that is not there yet.
-     */
     const unitList = document.querySelector('[data-unit-list]');
 
-    /** Only the rows a filter has left on screen. */
     const shownPicks = () => [...unitList?.querySelectorAll('li:not([hidden]) [data-unit-pick]') ?? []];
     let unitsReady = null;
 
@@ -948,8 +811,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
                 label.append(box, name, id);
                 li.appendChild(label);
-                // The searchable text, decided once here rather than read back
-                // out of the DOM on every keystroke.
+
                 li.dataset.unitSearch = `${u.name ?? ''} ${u.id}`.toLowerCase();
                 frag.appendChild(li);
             }
@@ -957,8 +819,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
             document.querySelector('[data-unit-status]')?.remove();
             applyUnitFilter();
         })().catch(() => {
-            // Let the next open try again rather than leaving a dialogue that
-            // is permanently empty and says nothing about why.
+
             unitsReady = null;
             const status = document.querySelector('[data-unit-status]');
             if (status) status.textContent = <?= json_encode(t('ch.units_failed'), JSON_UNESCAPED_UNICODE) ?>;
@@ -966,16 +827,11 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         return unitsReady;
     }
     const recount = () => {
-        // The count is every unit ticked, filtered or not: that is what the
-        // save will act on, and hiding a row does not un-choose it.
+
         const n = picks().filter((c) => c.checked).length;
         const out = document.querySelector('[data-access-count]');
         if (out) out.textContent = String(n);
 
-        // The box, though, describes the rows in front of the operator, since
-        // that is what pressing it will do. Filtered to three and all three
-        // ticked, it reads ticked -- against the whole roster it would have sat
-        // there half-lit with nothing left to press it for.
         const all = document.querySelector('[data-access-all]');
         if (all) {
             const shown = shownPicks();
@@ -985,14 +841,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         }
     };
 
-    /*
-     * Filtering the roster.
-     *
-     * Rows are hidden, not removed: a unit ticked before the filter was typed
-     * is still ticked and still counted, so the count can read 12 while three
-     * rows are on screen -- which is the honest number, and the one the save
-     * will act on.
-     */
     const unitFilter = document.querySelector('[data-unit-filter]');
     const unitNoMatch = document.querySelector('[data-filter-empty]');
 
@@ -1012,37 +860,24 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
 
     unitFilter?.addEventListener('input', applyUnitFilter);
 
-    // Opened fresh each time: a filter left over from the last channel would
-    // hide units the operator is about to be asked about.
     document.getElementById('am2-channel-access')?.addEventListener('open.hs.overlay', () => {
         if (unitFilter) unitFilter.value = '';
         applyUnitFilter();
     });
 
-    /*
-     * Select-all means the rows in front of you.
-     *
-     * It used to tick every box in the roster, filtered or not, so filtering to
-     * "Alpha" and pressing it granted access to units the operator could not
-     * see. With nothing typed the two are the same thing.
-     */
     document.querySelector('[data-access-all]')?.addEventListener('change', (e) => {
         shownPicks().forEach((c) => { c.checked = e.target.checked; });
         recount();
     });
-    // Delegated: the boxes do not exist when this runs.
+
     unitList?.addEventListener('change', (e) => {
         if (e.target.matches('[data-unit-pick]')) recount();
     });
 
-    // A bulk verb the table runtime handed back because it needs to ask
-    // something first. Preline opens the dialogue; this only says what it is
-    // about, and must run before the operator can answer.
     table?.addEventListener('am2:bulk', (e) => {
         const { verb, ids } = e.detail;
         if (verb === 'access') {
-            // Nothing is prefilled: no tick state is true of five channels at
-            // once, so the dialogue adds rather than replaces and says so.
+
             setScope(ids, scopeLabel(ids.length), true);
             loadUnits().then(() => {
                 picks().forEach((c) => { c.checked = false; });
@@ -1060,15 +895,12 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         if (verb === 'export') exportSelection(ids);
     });
 
-    // A single channel. The button carries data-hs-overlay as well, so Preline
-    // opens the dialogue through its own trigger.
     document.querySelectorAll('[data-row-access]').forEach((btn) => {
         btn.setAttribute('data-hs-overlay', '#am2-channel-access');
         btn.addEventListener('click', async () => {
             setScope([btn.dataset.ch], btn.dataset.name, false);
             try {
-                // Both in flight at once: the roster of this channel does not
-                // depend on the list of units it will be ticked onto.
+
                 const [, res] = await Promise.all([
                     loadUnits(),
                     fetch(`channels.php?ajax_action=get_channel_users&channel_id=${encodeURIComponent(btn.dataset.ch)}`),
@@ -1076,8 +908,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                 const wanted = new Set((await res.json() ?? []).map(String));
                 picks().forEach((c) => { c.checked = wanted.has(String(c.value)); });
             } catch {
-                // Leave every box clear rather than show a roster that is a
-                // guess: saving from a guess is what would drop units.
+
             }
             recount();
         });
@@ -1092,12 +923,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    /**
-     * One request per channel, against the handlers this page already has, so
-     * the ownership checks come along for free. Every row is given its own
-     * outcome: one spinner turning into a tick says nothing about the three
-     * that failed.
-     */
     async function applyToScope(fieldsFor, closeSelector) {
         const csrf = document.querySelector('input[name="_csrf"]').value;
         let ok = 0;
@@ -1147,7 +972,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         }, '#am2-channel-access');
     });
 
-    // The count has to be typed. The number is the whole sentence.
     const delInput = $('am2-delete-count');
     delInput?.addEventListener('input', () => {
         document.querySelector('[data-delete-apply]').disabled =
@@ -1157,7 +981,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         applyToScope((id) => ({ delete_channel: id, ajax: '1' }), '#am2-bulk-delete');
     });
 
-    /** A native POST, because the answer to it is a file. */
     function exportSelection(ids) {
         const form = document.createElement('form');
         form.method = 'POST';
@@ -1177,7 +1000,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         form.remove();
     }
 
-    /** The slug is derived, so the form shows what it is deriving. */
     const slugSource = document.querySelector('[data-slug-source]');
     slugSource?.addEventListener('input', () => {
         const preview = document.querySelector('[data-slug-preview]');
@@ -1185,11 +1007,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         if (preview) preview.textContent = v || '—';
     });
 
-    /*
-     * The sheet borrows the row's own cells rather than copying them, so the
-     * control in the sheet is the control in the table: the same element, the
-     * same state, the same listener. They go home when the sheet closes.
-     */
     const sheet = $('am2-channel-sheet');
     const SLOTS = ['access', 'owner', 'actions'];
     let borrowed = [];
@@ -1220,7 +1037,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         });
     });
 
-    // Preline owns the closing; this only puts the furniture back.
     sheet?.addEventListener('close.hs.overlay', returnBorrowed);
 
     /*

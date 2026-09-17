@@ -1,20 +1,3 @@
-/**
- * How a dialogue arrives, and how it leaves.
- *
- * Every overlay in this panel appeared instantly: measured transition-duration
- * 0s and transform none on both the centred modal and the bottom sheet. A
- * dialogue that is simply there gives no sense of where it came from, and at
- * the sheet's size that reads as the page having been replaced.
- *
- * Also here: the sheet is markup that only exists below lg, so widening the
- * window past lg while it is open used to leave its backdrop behind -- the
- * panel hid, the scrim did not, and the page was covered by something with no
- * visible owner.
- *
- * Credential-free by construction. It must never import
- * tests/contract/helpers.mjs, which reads a protected environment file at
- * module scope.
- */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

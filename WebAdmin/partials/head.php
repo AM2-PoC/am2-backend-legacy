@@ -1,10 +1,5 @@
 <?php
-/**
- * Document head and the opening of the page shell.
- *
- * Pages set $pageTitle before including this. Everything else — locale, theme,
- * asset versions — is resolved here so no page repeats it.
- */
+
 $pageTitle = $pageTitle ?? '';
 ?>
 <!DOCTYPE html>
@@ -42,8 +37,7 @@ $pageTitle = $pageTitle ?? '';
     </script>
     <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexSans-Regular.woff2" crossorigin>
     <link rel="preload" as="font" type="font/woff2" href="asset/font/IBMPlexMono-Regular.woff2" crossorigin>
-    <!-- Still loaded while pages migrate one at a time: the un-migrated ones
-         depend on it, and it owns the tokens Tailwind reads. -->
+
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-ui.css') ?>">
     <link rel="stylesheet" href="<?= am2_asset('asset/css/am2-tailwind.css') ?>">
     <?php /* Leaflet, vendored: livetrack.php pulled it from unpkg before. Its

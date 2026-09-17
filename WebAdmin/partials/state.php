@@ -1,17 +1,4 @@
 <?php
-/**
- * The states a panel is in when it has nothing to show.
- *
- * Empty, no-results, error, stale and loading were each improvised per page,
- * or -- more often -- not drawn at all: a failed fetch left the last good rows
- * on screen with no sign they had stopped being true, and an empty table was a
- * blank rectangle. Every one of them now says what happened and, where there
- * is one, what to do about it.
- *
- * Structure is the same in all five: mark, heading, sentence, action. The mark
- * carries the meaning, so it is never the only thing carrying it -- the
- * heading says the same thing in words.
- */
 
 const AM2_STATE_MARKS = [
     'empty'      => ['inbox',     'text-ink-subtle'],
@@ -21,12 +8,6 @@ const AM2_STATE_MARKS = [
     'restricted' => ['lock',      'text-ink-subtle'],
 ];
 
-/**
- * @param string      $variant One of AM2_STATE_MARKS.
- * @param string      $title   Already-translated heading.
- * @param string      $body    Already-translated sentence, or ''.
- * @param string|null $action  Raw markup for a single button or link.
- */
 function am2_state(string $variant, string $title, string $body = '', ?string $action = null): string
 {
     [$icon, $tone] = AM2_STATE_MARKS[$variant] ?? AM2_STATE_MARKS['empty'];

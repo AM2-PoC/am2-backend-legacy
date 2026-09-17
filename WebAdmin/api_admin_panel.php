@@ -8,9 +8,6 @@ am2_csrf_require();
 // retain both shared policy checks and conditional SQL backstops.
 $method = $_SERVER['REQUEST_METHOD'];
 
-// This file manages the admin table itself: who exists, what quota they
-// hold, and who is a superadmin. Nothing below is ever a branch admin's
-// job, so the whole file is gated rather than each action.
 if (am2_api_require_super('admin-panel')) {
     exit;
 }
@@ -90,18 +87,6 @@ elseif ($method == 'POST') {
     elseif ($action == 'delete') {
         $id = (int)$_POST['id'];
         try {
-            /*
-             * The same four rules the page applies. This used to be
-             * `WHERE id = ? AND role != 'superadmin'` written into the
-             * statement, which protected the superadmin row and nothing else --
-             * so the master admin and the caller's own account were deletable
-             * here and refused on the page.
-             *
-             * Checked before the query rather than after, so a rule doing its
-             * job is not reported to the operator as a system error. Migration
-             * 006 makes the database refuse as well; this is what makes the
-             * refusal readable.
-             */
             $found = $pdo->prepare('SELECT id, role FROM public.admin WHERE id = ?');
             $found->execute([$id]);
             $target = $found->fetch();
@@ -126,8 +111,7 @@ elseif ($method == 'POST') {
                             echo json_encode(['success' => true, 'message' => 'Admin deleted']);
                         }
                     } catch (PDOException $e) {
-                        // 23503 is foreign_key_violation: a unit appeared after
-                        // the count. Name it rather than calling it a system error.
+
                         if (($e->getCode() ?? '') === '23503') {
                             [$why2, $why2p] = am2_admin_undeletable($pdo, $target, $me);
                             echo json_encode(['success' => false,

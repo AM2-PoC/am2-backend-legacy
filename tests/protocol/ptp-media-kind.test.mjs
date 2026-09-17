@@ -1,32 +1,3 @@
-// A private session carries the medium it was accepted for, and nothing else.
-//
-// The control plane is careful about this. `ptt_video_start_private` demands
-// `enable_ptt_video` on both ends and `ptpSessionKind === 'video'`;
-// `ptt_audio_start_private` demands `ptpSessionKind === 'audio'`. A comment in
-// that handler records an earlier fix: naming any online unit used to be enough
-// to start pushing audio at them, so the pairing is now established by
-// request/accept and only read afterwards.
-//
-// The data plane enforces none of it. The binary branch for a private session
-// looks up the peer and forwards, without ever reading the frame's media type:
-//
-//     if (ws.ptpTargetId) {
-//         const targetWs = ptpPeerFor(ws, ws.ptpSessionKind);
-//         if (targetWs && targetWs.readyState === WebSocket.OPEN
-//             && shouldForwardBinary(targetWs, binaryType)) {
-//             targetWs.send(message, { binary: true });
-//
-// So the hardening stopped at the control plane. Two consequences:
-//
-// Establishing an *audio* call needs only `enable_p2p` -- video permission is
-// checked solely by `request_ptp_video`. A unit denied video can therefore open
-// an audio call and push video frames through it, and the relay delivers them.
-// The per-frame `enable_ptt_video` gate that guards the channel path has no
-// counterpart here.
-//
-// And the peer accepted an audio call. Receiving video in it is a consent
-// problem regardless of permissions: their client renders an incoming video
-// view for a call they answered as voice.
 import test, { describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';

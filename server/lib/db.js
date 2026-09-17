@@ -1,11 +1,3 @@
-/**
- * Postgres, Redis, and the two things the relay writes without being asked.
- *
- * Importing this file connects nothing and starts no timer: connectRedis() and
- * startCleanup() are called once by server.js. A module that opens a socket
- * when it is required cannot be loaded by a test that only wants to read a
- * query.
- */
 const { Pool } = require('pg');
 const { createClient } = require('redis');
 
@@ -22,94 +14,43 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-    console.error('❌ Database Pool Error:', err.message);
+    console.error('Database Pool Error:', err.message);
 });
 
 pool.on('connect', () => {
-    console.log('🐘 New DB Client connected to pool');
+    console.log('New DB Client connected to pool');
 });
 
 const redisClient = createClient({
     url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
 
-redisClient.on('error', (err) => console.error('❌ Redis Client Error', err));
+redisClient.on('error', (err) => console.error('Redis Client Error', err));
 
 const connectRedis = async () => {
     try {
         await redisClient.connect();
-        console.log('🚀 Redis Connected');
+        console.log('Redis Connected');
     } catch (err) {
-        console.error('❌ Redis Connection Failed:', err.message);
+        console.error('Redis Connection Failed:', err.message);
     }
 };
 
-/** Logs older than 30 days. The activity log's free-text rows age out here. */
 const runCleanup = async () => {
-    console.log('🧹 Running automatic log cleanup (30 days)...');
+    console.log('Running automatic log cleanup (30 days)...');
     try {
-        // Hapus log aktivitas PTT (Push/Release/Login)
+
         const pttRes = await pool.query("DELETE FROM public.ptt_logs WHERE event_time < NOW() - INTERVAL '30 days'");
-        // Hapus log aktivitas Admin
+
         const adminRes = await pool.query("DELETE FROM public.admin_activity_logs WHERE waktu < NOW() - INTERVAL '30 days'");
 
-        console.log(`✅ Cleanup complete: removed ${pttRes.rowCount} PTT logs & ${adminRes.rowCount} admin logs.`);
+        console.log(`Cleanup complete: removed ${pttRes.rowCount} PTT logs & ${adminRes.rowCount} admin logs.`);
     } catch (err) {
-        console.error('❌ Cleanup Error:', err.message);
+        console.error('Cleanup Error:', err.message);
     }
 };
 
-/**
- * Nobody is connected to a process that has just started.
- *
- * Session state lives in two places. In memory, which a restart clears for
- * free; and in public.users -- status, current_device_id, is_speaking -- which
- * it does not. Only the close handler wrote those back, behind a ten second
- * grace timer, so any termination that is not graceful left them set: a crash,
- * an OOM kill, or `systemctl restart` during a deploy, which is every deploy
- * with anyone on the air.
- *
- * The roster then lies -- broadcastUsersInChannel selects on status = 'online'
- * -- and, worse, login can be refused outright: the single-device check reads
- * current_device_id and, outside a grace period, refuses a different one. The
- * operator is told they are signed in on another device when no device is
- * signed in anywhere, and the only recovery is an administrator editing the
- * row. ANDROID_ID is derived from the signing key, so a handset that installs a
- * build signed with a different key presents a new device id to a row that
- * still names the old one.
- *
- * Unconditional, because the premise is: this process has no connections yet.
- * It corrects session state and nothing else.
- */
-/*
- * Whether this process is the relay for this database, or only visiting it.
- *
- * The premise under resetSessions() and the boot-time cleanup is "this process
- * has no connections yet". That is true of the process and false of the
- * database, which is shared. infra/scripts/smoke-release.sh proves a candidate
- * release can cold-start by running server.js against the real environment file
- * on a loopback port -- so every deploy started a second relay against
- * production, and that second relay reset every live session and deleted logs
- * before exiting.
- *
- * Measured on production: the busiest unit on the network, 137 transmissions in
- * fifteen minutes and one seven seconds earlier, sat at status='offline' with
- * its row untouched since login. Live Track selects on status='online', so it
- * had been invisible on the map for hours while transmitting perfectly.
- *
- * A session-scoped advisory lock says it exactly: whoever holds it is the relay
- * for this database. The real relay takes it at boot and keeps it for its
- * lifetime; a probe cannot take it, learns it is a visitor, and skips every
- * boot-time write while still proving it can start, connect and answer.
- *
- * No cooperation is needed from whoever launches the process, which is the
- * point -- a flag the caller has to remember is a flag the next caller forgets.
- * On a genuine cold start nobody holds the lock, it is taken, and the reset runs
- * as it always did.
- *
- * The key is arbitrary and permanent; changing it would let two relays each
- * believe they own the same database.
- */
+/* A process may perform boot-time writes only while it owns this permanent advisory lock. */
 const RELAY_OWNER_LOCK_KEY = 0x414d3201; // "AM2" + 1
 
 let relayOwnership = null;
@@ -118,30 +59,22 @@ const claimRelayOwnership = async () => {
     if (relayOwnership) return relayOwnership;
     relayOwnership = (async () => {
         try {
-            // A dedicated client, held for the life of the process: an advisory
-            // lock belongs to a session, and a pooled connection handed back
-            // would drop it the moment it was reused.
+            // Advisory locks are session-scoped, so this client remains checked out.
             const client = await pool.connect();
             const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS held', [RELAY_OWNER_LOCK_KEY]);
             if (rows[0]?.held !== true) {
                 client.release();
-                console.log('\u{1F50E} Another relay owns this database; starting as a probe and touching nothing.');
+                console.log('Another relay owns this database; starting as a probe and touching nothing.');
                 return false;
             }
-            // Never released and never returned to the pool. Holding it is the
-            // statement being made.
+
             client.on('error', (err) => {
-                console.error('\u274C Relay ownership connection error:', err.message);
+                console.error('Relay ownership connection error:', err.message);
             });
             return true;
         } catch (err) {
-            /*
-             * A relay that will not start because it could not ask who owns the
-             * database is worse than one that starts without the answer. It
-             * assumes it is a visitor, which costs a stale roster at worst and
-             * cannot corrupt a live one.
-             */
-            console.error('\u274C Relay ownership check failed:', err.message);
+
+            console.error('Relay ownership check failed:', err.message);
             return false;
         }
     })();
@@ -155,67 +88,16 @@ const resetSessions = async () => {
             + "WHERE status <> 'offline' OR current_device_id IS NOT NULL OR is_speaking"
         );
         if (res.rowCount) {
-            console.log(`\u{1F9F9} Cleared ${res.rowCount} session(s) left by the previous process.`);
+            console.log(`Cleared ${res.rowCount} session(s) left by the previous process.`);
         }
     } catch (err) {
-        // A radio that will not start because a cleanup query failed is worse
-        // than one that starts with a stale roster.
-        console.error('\u274C Session reset error:', err.message);
+
+        console.error('Session reset error:', err.message);
     }
 };
 
-/*
- * Device tokens: issuing, checking, and taking back.
- *
- * The credential itself is made in lib/device-tokens.js, which touches no
- * database and can therefore be tested anywhere. These are the three things
- * that need the pool.
- */
-const { newToken, hashToken } = require('./device-tokens');
+const { hashToken } = require('./device-tokens');
 
-/** Issue one, replacing whatever that device held before. */
-const issueDeviceToken = async (userId, deviceId) => {
-    const token = newToken();
-    if (deviceId) {
-        await pool.query(
-            'DELETE FROM public.device_tokens WHERE user_id = $1 AND device_id = $2',
-            [userId, deviceId],
-        );
-    }
-    await pool.query(
-        `INSERT INTO public.device_tokens (token_hash, user_id, device_id, last_used_at)
-         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-        [hashToken(token), userId, deviceId || null],
-    );
-    return token;
-};
-
-/**
- * The user this token belongs to, or null.
- *
- * Looked up by digest, so a token that is not in the table is
- * indistinguishable from one that never existed. last_used_at is written
- * because a token nobody has presented in months is the one worth asking
- * about.
- */
-/*
- * A token nobody has used for this long stops being one.
- *
- * Revocation is what makes a permanently stored token acceptable: a lost
- * handset costs an admin one click rather than a password change for the
- * person. But revocation is somebody noticing and acting, and a radio that
- * quietly disappears -- left in a vehicle, in a drawer, sold with the phone --
- * is never reported. Its token would stay valid for as long as the row exists.
- *
- * So there is a backstop that needs nobody to notice. last_used_at is written
- * on every token login, so a handset in daily use never approaches this; only
- * one that has stopped being used does.
- *
- * Ninety days, because a spare radio left in a drawer between deployments has
- * to start when it is picked up. A limit measured in hours or days would make
- * this the thing that takes radios off the air, which is the failure it exists
- * to prevent.
- */
 const TOKEN_MAX_IDLE_DAYS = 90;
 
 const userForDeviceToken = async (token) => {
@@ -239,28 +121,11 @@ const userForDeviceToken = async (token) => {
     };
 };
 
-/** Take them all back. What happens when a handset is lost. */
-const revokeDeviceTokens = async (userId) => {
-    const res = await pool.query(
-        'DELETE FROM public.device_tokens WHERE user_id = $1',
-        [userId],
-    );
-    return res.rowCount || 0;
-};
-
-/** On boot, then once a day. */
 const startCleanup = () => {
     runCleanup();
     return setInterval(runCleanup, 86400000);
 };
 
-/**
- * One transmission, recorded.
- *
- * Never throws: a log write must not be the reason a live channel drops a
- * frame. A bad channel id is stored as null rather than refused, because the
- * event still happened.
- */
 const createLog = async (userId, channelId, eventType) => {
     try {
         if (!userId) return;
@@ -274,7 +139,7 @@ const createLog = async (userId, channelId, eventType) => {
             VALUES ($1::text, $2::integer, $3::text, CURRENT_TIMESTAMP)
         `, [uid, validChannelId, String(eventType)]);
     } catch (err) {
-        console.error(`❌ LOG ERROR [${eventType}]:`, err.message);
+        console.error(`LOG ERROR [${eventType}]:`, err.message);
     }
 };
 
@@ -303,6 +168,6 @@ async function channelPermission(userId, channelSlug) {
 }
 
 module.exports = {
-    issueDeviceToken, userForDeviceToken, revokeDeviceTokens,
+    userForDeviceToken,
     resetSessions, pool, redisClient, connectRedis, runCleanup, startCleanup, createLog, channelPermission,
     claimRelayOwnership };

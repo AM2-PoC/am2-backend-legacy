@@ -2,7 +2,6 @@
 require_once 'config.php';
 am2_api_auth();
 
-// Identity is resolved by the server; see am2_api_identity().
 [$admin_id, $admin_role] = am2_api_identity();
 $is_superadmin = ($admin_role === 'superadmin');
 
@@ -32,9 +31,7 @@ try {
             WHERE u.status = 'online'";
 
     if (!$is_superadmin) {
-        // Previously this was `if (!$is_superadmin && $admin_id)`, so dropping
-        // the parameter dropped the filter and returned every online user's
-        // position instead of none.
+
         if (!$admin_id) {
             echo json_encode([]);
             exit;

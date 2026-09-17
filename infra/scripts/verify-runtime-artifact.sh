@@ -90,7 +90,7 @@ import tarfile
 from pathlib import PurePosixPath
 
 manifest_path, archive_path = sys.argv[1:]
-# Inspect headers before any privileged extraction, including the verifier copy.
+
 with tarfile.open(archive_path) as archive:
     for member in archive:
         path = PurePosixPath(member.name)

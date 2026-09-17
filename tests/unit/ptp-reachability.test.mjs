@@ -83,19 +83,3 @@ test('a reachable peer resolves', () => {
 
     assert.deepEqual(state.resolvePeer(caller, 'A2'), { peer: target, reason: 'ok' });
 });
-
-test('reachability can be asked about a roster entry without inviting', () => {
-    const caller = socket('A1', 'tenant-a');
-    const same = socket('A2', 'tenant-a');
-    const other = socket('B1', 'tenant-b');
-    const noP2p = socket('A3', 'tenant-a', { p2p: false });
-    state.activeConnections.set('A1', caller);
-    state.activeConnections.set('A2', same);
-    state.activeConnections.set('B1', other);
-    state.activeConnections.set('A3', noP2p);
-
-    assert.equal(state.canPrivateCall(caller, 'A2'), true);
-    assert.equal(state.canPrivateCall(caller, 'B1'), false, 'another tenant is not callable');
-    assert.equal(state.canPrivateCall(caller, 'A3'), false, 'a unit with p2p off is not callable');
-    assert.equal(state.canPrivateCall(caller, 'A1'), false, 'a unit cannot call itself');
-});

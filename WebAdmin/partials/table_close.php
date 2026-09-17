@@ -1,11 +1,4 @@
 <?php
-/**
- * The other half of the frame: pagination, the offer to extend a selection
- * past the current page, and the bulk bar.
- *
- * A page sets $page, $pages, $total, $pageSize and $bulkActions before
- * including this. See partials/table_open.php for the rest of the contract.
- */
 
 $page       = max(1, (int) ($page ?? 1));
 $pages      = max(1, (int) ($pages ?? 1));
@@ -19,7 +12,6 @@ $bulkEditCount = count(array_filter($bulkActions, static fn ($act) => empty($act
 $from = $total === 0 ? 0 : (($page - 1) * $pageSize) + 1;
 $to   = min($total, $page * $pageSize);
 
-/** Pages worth drawing: the ends, and a window around where you are. */
 $window = [];
 for ($i = 1; $i <= $pages; $i++) {
     if ($i <= 2 || $i > $pages - 2 || abs($i - $page) <= 1) {
@@ -83,12 +75,7 @@ for ($i = 1; $i <= $pages; $i++) {
 </section>
 
 <?php if ($bulkActions): ?>
-    <!--
-        A contextual command bar: count and scope lead, routine commands sit in
-        the middle, and the destructive command is deliberately separate. On a
-        phone only the two highest-frequency commands remain in the tray; More
-        keeps every other action reachable without making five tiny targets.
-    -->
+
     <div data-bulk-bar <?= $bulkMobileDirect ? 'data-bulk-mobile-direct' : '' ?> hidden
          role="toolbar" aria-label="<?= e('tbl.bulk_actions') ?>"
          class="fixed inset-x-0 bottom-2 z-40 mx-auto flex w-[calc(100vw-1rem)] max-w-[46rem]
@@ -192,9 +179,6 @@ for ($i = 1; $i <= $pages; $i++) {
             </span>
         </div>
 
-        <!-- The narrow tray carries the frequent pair. Less frequent and
-             destructive commands remain available in this explicit menu rather
-             than shrinking every target until it is hard to use. -->
         <div data-bulk-more-menu hidden role="menu" aria-label="<?= e('tbl.more_actions') ?>"
              class="rounded-control border border-edge bg-card-muted p-1 sm:hidden">
             <?php foreach ($bulkActions as $index => $act):

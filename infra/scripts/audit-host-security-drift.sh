@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
         --root|--lifecycle|--expected-manifest)
             [[ $# -ge 2 ]] || { usage; exit 64; }; forwarded+=("$1" "$2"); shift 2 ;;
         --unprivileged-root) forwarded+=("$1"); shift ;;
-        *) usage; exit 64 ;;
+
     esac
 done
 
@@ -45,14 +45,11 @@ here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier=$here/verify-host-security-installed.sh
 [[ -f $verifier && ! -L $verifier ]] || { echo "host-security installed-state verifier is missing" >&2; exit 1; }
 
-# A receipt that has gone missing is itself drift: without it there is nothing
-# to hold the host to, and staying quiet would report health it cannot see.
 if [[ ! -f $receipt || -L $receipt ]]; then
     echo "host-security drift: receipt is missing or not a regular file: $receipt" >&2
     exit 1
 fi
 
-# Success is discarded, failure is passed through untouched.
 output=$("$verifier" --receipt "$receipt" "${forwarded[@]+"${forwarded[@]}"}" 2>&1) || {
     printf '%s\n' "$output" >&2
     exit 1

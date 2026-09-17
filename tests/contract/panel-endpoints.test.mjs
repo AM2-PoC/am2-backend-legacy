@@ -7,16 +7,6 @@ import test, { describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { asSuper, asBranchA, get, postForm, json , ctChannelId} from './helpers.mjs';
 
-// This file owns CT_A3. It used to write CT_A1, which channel-access.test.mjs
-// seeds and asserts on -- the two ran concurrently and the cross-tenant
-// assertion failed on membership this file had rewritten underneath it.
-//
-// The same mistake, one level up: it owned the unit but shared ct_channel_a
-// with channel-access.test.mjs, which empties that channel's roster to prove
-// that emptying it works. As superadmin that removes every member, including
-// the one this file had just put there -- so "save_user_channels then read it
-// back" came back empty roughly one run in eight. The channel is owned now
-// too.
 const PANEL_UNIT = 'CT_A3';
 const PANEL_CHANNEL = ctChannelId('ct_channel_a3');
 
@@ -126,16 +116,6 @@ describe('session guards on the AJAX endpoints', () => {
     });
 
     test('fetch_logs.php refuses an anonymous caller with a status', async () => {
-        /*
-         * This used to assert only that the body carried an `error` key,
-         * because the endpoint answered HTTP 200 and put the refusal in the
-         * payload. No status-reading client could see that -- which is exactly
-         * how an expired session showed up in Admin Native as "Gagal
-         * memperbarui fitur" on whatever switch happened to be tapped.
-         *
-         * The refusal now comes from the shared guard, so it carries 401 and
-         * the same envelope every other endpoint uses.
-         */
         const res = await get('/fetch_logs.php', null);
         assert.equal(res.status, 401, 'a refusal no client can read is not a refusal');
         const body = await json(res);

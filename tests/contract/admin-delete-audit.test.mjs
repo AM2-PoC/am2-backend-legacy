@@ -27,20 +27,6 @@ before(() => {
 after(cleanup);
 
 test('deleting an admin that still owns units is refused, and the units stay', async () => {
-    /*
-     * This test used to be called "deleting an admin with owned users succeeds
-     * and removes its users", and it asserted exactly that: the admin gone, the
-     * unit gone with it. It was describing ON DELETE CASCADE as the contract.
-     *
-     * On 2026-09-04 at 11:35:58 that contract was honoured. One POST deleted
-     * admin id 4 and took 186 units, 191 channel memberships, 186 permission
-     * rows and 114,514 log rows with it, in a single statement, with no
-     * confirmation and no count. Migration 006 changed the foreign key to
-     * RESTRICT; am2_admin_undeletable() says so in words before the query runs.
-     *
-     * The unit surviving is the assertion that matters. A refusal that still
-     * deleted something would be worse than no refusal at all.
-     */
     const cookie = await asSuper();
     const res = await postForm('/admin_panel.php', cookie, {
         delete_admin_id: adminId,

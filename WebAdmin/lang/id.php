@@ -1,11 +1,4 @@
 <?php
-/**
- * Indonesian catalogue. This is the default, so it is also the fallback for any
- * key another locale has not translated yet.
- *
- * Keys are English and namespaced by area. The rule for this codebase: source,
- * comments and keys are English; Indonesian text lives only in this file.
- */
 return [
     'track.zoom_in' => 'Perbesar',
     'track.zoom_out' => 'Perkecil',
@@ -266,11 +259,7 @@ return [
     'adm.locked_super' => 'Akun superadmin tidak dapat dihapus',
     'adm.locked_master' => 'Akun master sistem tidak dapat dihapus',
     'adm.locked_self' => 'Akun yang sedang dipakai tidak dapat dihapus',
-    // Menyebut angkanya, bukan sekadar menolak. Pada 2026-09-04 satu
-    // penghapusan admin menghapus 186 unit lewat cascade, dan angka itu
-    // tidak pernah muncul di layar siapa pun sebelum maupun sesudahnya.
-    // Perubahan database tetap tersimpan; yang tidak dikonfirmasi adalah
-    // relay memutus socket yang sedang terbuka.
+
     'msg.relay_unconfirmed' => 'Tersimpan, tetapi relay tidak mengonfirmasi. Unit mungkin masih tersambung — periksa Livetrack.',
     'adm.locked_owns_units' => 'Admin ini masih memiliki :count unit. Pindahkan atau hapus unitnya lebih dulu.',
     'adm.username' => 'Username',
@@ -298,7 +287,7 @@ return [
     'adm.bulk_delete_title' => 'Hapus :n akun admin?',
     'adm.bulk_delete_prompt' => 'Seluruh anggota di bawah :who akan kehilangan akses. Ketik :n untuk melanjutkan',
     'adm.bulk_done' => ':ok berhasil, :failed gagal',
-    // Navigation
+
     'nav.home'            => 'Home',
     'nav.management'      => 'Manajemen',
     'nav.monitoring'      => 'Monitoring',
@@ -310,17 +299,6 @@ return [
     'nav.channel_access'  => 'Akses Channel',
     'nav.live_track'      => 'Live Track',
 
-    /*
-     * The result of a write.
-     *
-     * These were written straight into four pages in Indonesian and never went
-     * through t(), so an English interface answered an action in Indonesian.
-     * The banner made that easy to miss; the toast does not.
-     *
-     * Values arrive as placeholders rather than by concatenation -- the pieces
-     * of a sentence do not sit in the same order in both languages -- and
-     * ':detail' carries whatever am2_safe_error() decided is safe to show.
-     */
     'msg.user_added'             => 'User :name (User: :id) berhasil didaftarkan.',
     'msg.user_updated'           => 'Data :id diperbarui.',
     'msg.user_delete_failed'     => 'Gagal menghapus user.',
@@ -357,7 +335,6 @@ return [
     'nav.open_menu'       => 'Buka menu navigasi',
     'nav.logout'          => 'Logout',
 
-    // Login
     'login.heading' => 'Masuk ke konsol',
     'login.lede' => 'Gunakan akun administrator yang terdaftar.',
     'login.connecting' => 'Menghubungkan…',
@@ -378,10 +355,9 @@ return [
     'login.error_disabled'   => 'Akun Anda sedang dinonaktifkan.',
     'login.error_throttled'  => 'Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit.',
 
-    // Preferences
     'pref.language'   => 'Bahasa',
     'pref.theme'      => 'Tema',
-    // Settings
+
     'set.heading'               => 'Konfigurasi',
     'set.lede'                  => 'Akun, lisensi, dan cadangan data.',
     'set.stat_admins'           => 'Admin satwil',
@@ -476,7 +452,7 @@ return [
     'set.err_server_store'      => 'Server tidak bisa menyimpan berkas sementara.',
     'set.err_upload'            => 'Unggahan gagal.',
     'set.err_denied'            => 'Akses ditolak.',
-    // Tables
+
     'tbl.rows'                  => ':n baris',
     'tbl.select_page'           => 'Pilih semua di halaman ini',
     'tbl.items_selected'        => 'item dipilih',
@@ -491,7 +467,7 @@ return [
     'tbl.pagination'            => 'Halaman',
     'tbl.prev'                  => 'Sebelumnya',
     'tbl.next'                  => 'Berikutnya',
-    // Roster table
+
     'usr.count'                  => ':n unit',
     'usr.chip_all'               => 'Semua',
     'usr.chip_online'            => 'Online',

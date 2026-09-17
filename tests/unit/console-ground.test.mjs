@@ -74,8 +74,9 @@ test('light carries enough of the hairline to be seen', () => {
 });
 
 test('the foot is pattern, and only pattern', () => {
-    const foot = shell.slice(shell.indexOf('<!--\n        The foot.'), shell.indexOf('</aside>'));
-    assert.match(foot, /am2-rail-batik/);
+    const marker = 'class="am2-rail-batik';
+    const foot = shell.slice(shell.indexOf(marker), shell.indexOf('</aside>'));
+    assert.notEqual(foot.indexOf(marker), -1, 'the rail pattern is missing');
     assert.match(foot, /aria-hidden="true"/, 'decoration is announced to a screen reader');
     assert.doesNotMatch(foot, /data-relay-dot|data-relay-text/,
         'the foot repeats a readout the header already carries');
