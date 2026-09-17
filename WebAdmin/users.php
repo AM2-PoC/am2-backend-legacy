@@ -453,20 +453,6 @@ include 'partials/notice.php';
                                     </span>
                                 </span>
 
-                                <!--
-                                    Everything else about this unit is one tap
-                                    away, and the chevron is what says so.
-
-                                    The button is 28px wide inside a row of
-                                    around 356, and it used to be the only way
-                                    in: a thumb had to find the chevron exactly.
-                                    It stretches across the whole cell now
-                                    (data-sheet-row), so anywhere on the row
-                                    opens the sheet -- the chevron stays as the
-                                    thing that says the row is tappable, and the
-                                    text above it keeps its own selection
-                                    because the stretched layer sits behind it.
-                                -->
                                 <button type="button" data-open-sheet data-sheet-row
                                         data-hs-overlay="#am2-unit-sheet"
                                         data-unit="<?= htmlspecialchars($uid, ENT_QUOTES, 'UTF-8') ?>"

@@ -113,13 +113,6 @@ const AM2_LOG_PAGE = 20;
     <div id="logEmpty" hidden></div>
     <div id="logError" hidden></div>
 
-    <!--
-        Footer. The count is of what is held, not of what exists: the endpoint
-        answers a page at a time, and "load older" asks for the one before it
-        until the server says there is nothing left. It used to stop at the
-        newest 200 and say so, which was honest but was also the whole log
-        anybody could reach.
-    -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-edge px-4 py-3 lg:px-5">
         <p id="logCount" class="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-subtle"></p>
         <div class="flex items-center gap-3">

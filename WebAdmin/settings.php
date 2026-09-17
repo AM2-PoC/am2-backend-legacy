@@ -56,13 +56,6 @@ function am2_bytes_human(int $bytes): string
     return $bytes . ' B';
 }
 
-/**
- * Why an upload did not arrive.
- *
- * move_uploaded_file() failing was reported as "Gagal mengunggah file ke
- * server" whatever went wrong, including the case that actually happens: the
- * file was larger than PHP accepts and was never written at all.
- */
 function am2_upload_error(array $file): string
 {
     return match ($file['error'] ?? UPLOAD_ERR_NO_FILE) {
@@ -277,7 +270,6 @@ if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
                      . ' -h ' . $host . ' -p ' . $port . ' -U ' . $user
                      . ' -d ' . $dbname . ' < ' . $file . ' 2>&1';
 
-            // exec(), not shell_exec(): the exit status is the whole point.
             $output = [];
             $status = 1;
             exec($command, $output, $status);
@@ -906,11 +898,6 @@ include 'partials/notice.php';
     </section>
 <?php endif; ?>
 
-<!--
-    Everything below this line changes data that cannot be got back. It used to
-    sit in the same card as the password field, which said the two were the same
-    kind of act.
--->
 <section id="am2-card-danger" class="am2-surface mt-4 rounded-card border-bad/40 scroll-mt-28" data-reveal>
     <header class="flex items-center gap-2.5 border-b border-bad/30 bg-bad/5 px-5 py-3.5">
         <span class="text-bad"><?= am2_icon('alert', 'h-4 w-4') ?></span>

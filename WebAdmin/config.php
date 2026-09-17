@@ -376,16 +376,6 @@ try {
 // i18n first, so a refusal can be phrased in the operator's language.
 require_once __DIR__ . '/i18n.php';
 
-/*
- * The guard, for every request that reaches any file including this one.
- *
- * Order is the whole point and it is the order the incidents taught:
- * session started, idle expiry applied, *then* authentication, *then* CSRF.
- * Authenticating before CSRF is what makes an anonymous POST answer 401 rather
- * than 403 -- and Admin Native signs the operator out on one and not the other,
- * so getting it the wrong way round leaves a handset holding a dead session
- * while every screen reports its own feature as broken.
- */
 am2_require_identity();
 am2_csrf_require();
 

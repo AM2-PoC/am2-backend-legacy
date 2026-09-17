@@ -175,9 +175,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_channel_access'])
                 array_map('strval', $selected_users))))
             : $selected_users;
 
-        // Recreating the roster used to write is_default = 'false' for every
-        // member, so editing a channel stripped the default from every unit
-        // on it while users.last_channel_id went on pointing here.
         am2_set_channel_members($pdo, (string) $ch_id, $wanted, $scope);
 
         $pdo->commit();

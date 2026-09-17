@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install the panel's second-layer guard into PHP's own configuration.
-#
-# The guard that matters lives in the code: WebAdmin/config.php requires
-# WebAdmin/auth_guard.php, every endpoint requires config.php, and nothing on
-# the host has to be right for that to work. This script installs the *net* --
-# the copy that runs via auto_prepend_file, so a file which forgets to require
-# config.php is still refused.
-#
-# It is installed into PHP's configuration directory, not into an Apache vhost,
-# and that is the whole point of the script existing. The directive lives in two
-# vhosts today; the migration plan retires Apache in favour of nginx and PHP-FPM
-# (.hermes/plans/2026-08-19_004858, Task 12A), and a guard written into a vhost
-# disappears during that cutover with nothing to show for it -- silently, and in
-# the direction of open. A conf.d file is carried by the SAPI instead, so the
-# same one line covers mod_php today and an FPM pool tomorrow.
-#
-# Applying host-wide is safe by construction: the prepend resolves the panel
-# through DOCUMENT_ROOT and does nothing at all when the document root holds no
-# auth_guard.php, so a vhost that is not the panel is unaffected.
-#
-# Read-only unless --apply is given.
 
 usage() {
     cat >&2 <<'USAGE'

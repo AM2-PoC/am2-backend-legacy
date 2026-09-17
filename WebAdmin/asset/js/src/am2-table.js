@@ -1,27 +1,3 @@
-/**
- * The roster tables: selection, keyboard, optimistic toggles, bulk dispatch.
- *
- * One implementation for users.php, channels.php and user_access.php. A page
- * supplies markup and data attributes; it writes no JavaScript of its own, so
- * a behaviour fixed here is fixed on all three.
- *
- * The rule this module exists to enforce: a control that changes state writes
- * its own DOM. The bug it replaces bound `:class` and `x-text` to
- * `$el.dataset`, which Alpine does not observe -- the write reached the
- * database and the screen never moved until a reload.
- *
- * Markup contract
- *   [data-am2-table]            the wrapper, with data-total = rows matching the filter
- *   tr[data-row-id]             one row
- *   [data-select]               row checkbox
- *   [data-select-page]          header checkbox: this page only
- *   [data-select-all-matching]  the offer to extend to the whole filter
- *   [data-bulk-bar]             the floating bar
- *   [data-bulk-count]           where the count is written
- *   [data-bulk="<verb>"]        a verb; simple ones declare their own request
- *   [data-row-result]           where a row's outcome is written
- *   [data-toggle]               a control that flips one field
- */
 
 import { playExit } from './am2-exit.js';
 

@@ -3,8 +3,6 @@ header('Content-Type: application/json');
 require_once 'config.php';
 am2_api_auth();
 
-// am2_session_boot() is a no-op when a session is already open, so the
-// status check it used to carry lives inside it now.
 require_once __DIR__ . '/session_boot.php';
 am2_session_boot();
 am2_csrf_require();

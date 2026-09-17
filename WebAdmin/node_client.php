@@ -1,18 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
 
-/**
- * The one place a request actually leaves the panel.
- *
- * One transport, because that is the whole point of this file: three of the six
- * old syncUserChannels copies never sent the API key, and nothing surfaced it
- * because they discarded the response. A second transport added here for a
- * reading call would be the same mistake in miniature -- a path the auth header
- * could fall off without anybody noticing.
- *
- * Returns the body so a reader can use it. Two second ceiling either way: the
- * panel must not block on the relay.
- */
 function am2_node_transport(string $url, string $header, ?array $payload): ?string
 {
     if (function_exists('curl_init')) {

@@ -32,12 +32,7 @@ include 'partials/shell.php';
         nothing at all on a touch screen except pinching. These are the console's
         own, in the console's tokens.
     -->
-    <!--
-        Left, under the transmitting badge. They used to sit top-right and step
-        aside when the panel collapsed -- straight underneath the handle that
-        brings the panel back, which covered the zoom-in button entirely. The
-        left edge belongs to nothing else, so nothing can land on top of them.
-    -->
+
     <div class="absolute left-4 top-16 z-30 flex flex-col gap-1.5" id="mapControls">
         <button type="button" id="mapZoomIn" aria-label="<?= e('track.zoom_in') ?>"
                 title="<?= e('track.zoom_in') ?>"

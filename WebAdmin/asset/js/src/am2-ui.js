@@ -103,21 +103,6 @@ function styleable(obj) {
  * that small movement is what says it came from somewhere.
  * ------------------------------------------------------------------ */
 
-/*
- * Both directions are CSS now -- see the .hs-overlay rules in tailwind.src.css.
- *
- * These used to be Motion calls on `open.hs.overlay` and `close.hs.overlay`,
- * and neither worked. The entrance ran against a scrim Preline had already
- * painted at full opacity a frame earlier, so the screen went dark and the
- * dialogue arrived into it ~80ms later, which is the pulse this kept being
- * reported as. The exit never ran at all: Preline sets `hidden` in the same
- * frame it fires the event, and display:none cancels a running animation.
- *
- * The CSS rules key off `opened`, and am2-exit.js holds the element with
- * `.am2-closing` for the length of its exit. Motion is left to the things it
- * owns outright -- toasts, counters, the login emit -- rather than racing
- * Preline for the same element.
- */
 
 /* Dropdowns and the search popover: opacity and a little travel, no bounce. */
 document.addEventListener('open.hs.dropdown', (e) => {
@@ -163,9 +148,7 @@ function countTo(el, value) {
     const first = el.dataset.am2Value === undefined;
     el.dataset.am2Value = String(target);
     if (from === target) {
-        // Still write it. On the first pass the element holds a placeholder,
-        // and a genuine zero equals the assumed starting value -- so returning
-        // here left "–" on screen for every count that really was zero.
+
         if (first) el.textContent = target.toLocaleString();
         return;
     }
@@ -259,15 +242,7 @@ function filtered(tbody) {
 }
 
 /** Toast in from the edge, out faster. */
-/**
- * Say what just happened.
- *
- * This used to take an element and animate it, which meant every call that
- * passed a sentence -- every save, every refusal, every bulk result -- did
- * nothing at all. Silently: the string was treated as an element, and animating
- * a string is a no-op. Elements are still accepted so the pages that hand it
- * one keep working.
- */
+
 function toastRoot() {
     let root = document.getElementById('am2-toasts');
     if (root) return root;
@@ -310,16 +285,6 @@ function toast(what, ok = true) {
 
     el.append(mark, body);
 
-    /*
-     * A failure waits to be dismissed.
-     *
-     * These carry the database's own words -- a constraint name, a duplicate
-     * key, a refusal with a reason -- and four seconds is not long enough to
-     * read one, let alone act on it. It used to be a banner that stayed on the
-     * page, and turning every banner into a toast would have thrown that away.
-     * A success is different: it says the thing you asked for happened, which
-     * is read at a glance and wanted gone.
-     */
     if (!ok) {
         const close = document.createElement('button');
         close.type = 'button';

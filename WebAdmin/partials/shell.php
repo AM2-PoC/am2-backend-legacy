@@ -219,23 +219,6 @@ function am2_icon(string $name, string $extra = 'h-[18px] w-[18px]'): string
         </ul>
     </nav>
 
-    <!--
-        The foot.
-
-        The account menu used to live here and moved to the header, which left
-        a column of nothing under the navigation. It carries kawung now -- one
-        of the oldest Javanese batik patterns, and the one that is purely
-        geometric, so it survives being drawn as a hairline and sits beside the
-        console's own grid without fighting it.
-
-        Decoration, and only that. It was briefly a relay dot and a build stamp;
-        the space reads better as pattern, and the relay readout it duplicated
-        is still in the strip under the header where it always was.
-
-        The pattern is a mask rather than an image, so its colour is the same
-        token the console ground uses -- it follows the theme and disappears
-        under prefers-contrast: more without a second rule.
-    -->
     <div class="am2-rail-batik shrink" aria-hidden="true"></div>
 </aside>
 

@@ -417,9 +417,7 @@ include 'partials/notice.php';
                                 </button>
 
                                 <?php if (!$isSuper): ?>
-                                    <!-- Delegation used to open by clicking the row
-                                         itself, which nothing announced and a
-                                         keyboard could not reach. -->
+
                                     <button type="button" data-row-delegate
                                             data-id="<?= (int) $a['id'] ?>"
                                             data-name="<?= htmlspecialchars((string) $a['username'], ENT_QUOTES, 'UTF-8') ?>"

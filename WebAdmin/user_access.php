@@ -647,13 +647,6 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         'pick_default' => t('acc.pick_default'),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
-    /* ── the access dialogue ──────────────────────────────────────────────
-     *
-     * Its state is held here and painted onto the controls, rather than bound
-     * to a dataset an observer never watched. That binding is the bug this
-     * rebuild exists to remove: the write reached the database and the screen
-     * did not move until a reload.
-     */
     const m = { ids: new Set(), def: '', perm: {} };
 
     const items = [...document.querySelectorAll('[data-item]')];

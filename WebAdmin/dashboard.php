@@ -48,18 +48,6 @@ try {
 
     $ptt_activity = $stmt_ptt->fetchAll(PDO::FETCH_ASSOC);
 
-    /**
-     * Seven days of growth for the two counts that have a creation date.
-     *
-     * Cumulative rather than per-day, because the card shows a total: the line
-     * has to end where the number is. Both are correlated subqueries over a
-     * generated date series -- 1.9ms and 0.3ms measured on the production copy,
-     * against the 16 seconds a LEFT JOIN over ptt_logs used to cost here.
-     *
-     * Online has no series and gets none. Nothing records how many units were
-     * connected an hour ago, and drawing something that looks like history
-     * where there is none is worse than an empty space.
-     */
     $days = "SELECT generate_series(CURRENT_DATE - 6, CURRENT_DATE, '1 day')::date AS day";
 
     if ($admin_role === 'superadmin') {  // $isSuper is not assigned until later
@@ -179,10 +167,6 @@ try {
     }
     $channel_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Units that cannot sign in at all. server.js refuses app_login unless the
-    // user has a last_channel_id AND a matching user_channels row, answering
-    // "Admin belum menentukan Channel Default". Nothing in the panel showed
-    // which users are in that state, so it surfaced only as a support call.
     if ($isSuper) {
         $stmt = $pdo->query("
             SELECT u.id, u.name FROM public.users u
