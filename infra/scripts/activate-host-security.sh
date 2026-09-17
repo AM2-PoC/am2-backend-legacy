@@ -53,6 +53,7 @@ while [[ $# -gt 0 ]]; do
         --allow-reload) allow_reload=1; shift ;;
         --supersede) supersede=1; shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

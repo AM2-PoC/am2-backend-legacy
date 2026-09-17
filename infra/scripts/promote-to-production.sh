@@ -21,6 +21,7 @@ while [[ $# -gt 0 ]]; do
         --allow-relay-restart) allow_restart=1; shift ;;
         -h|--help) usage; exit 0 ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 [[ -n $release && $release == /* && -d $release ]] || { usage; exit 64; }

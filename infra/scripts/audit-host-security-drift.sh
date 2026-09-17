@@ -36,6 +36,7 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { usage; exit 64; }; forwarded+=("$1" "$2"); shift 2 ;;
         --unprivileged-root) forwarded+=("$1"); shift ;;
 
+        *) usage; exit 64 ;;
     esac
 done
 

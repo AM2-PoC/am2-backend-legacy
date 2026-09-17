@@ -16,6 +16,7 @@ while [[ $# -gt 0 ]]; do
     --deploy-gate) mode=deploy-gate; shift ;;
     -h|--help) usage; exit 0 ;;
 
+    *) usage; exit 64 ;;
   esac
 done
 
