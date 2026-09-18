@@ -11,6 +11,9 @@
 .claude/
 .superpowers/
 .hermes/
+AGENTS.md
+HERMES.md
+CLAUDE.md
 docs/ai/
 docs/prompts/
 docs/plans/
