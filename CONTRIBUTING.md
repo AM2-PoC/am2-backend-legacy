@@ -1,6 +1,6 @@
 # Contributing
 
-Repository access and contributions require authorization. Do not change visibility, grant access, weaken repository controls, or distribute source or release artifacts outside approved channels.
+Changes to this repository must follow the workflow below and satisfy the applicable review, verification, and release controls.
 
 ## Workflow
 
@@ -12,6 +12,12 @@ Repository access and contributions require authorization. Do not change visibil
 6. Merge only after review and required checks pass.
 
 Do not push directly to `main`. Deployment, restart, publication, signing, and environment changes require separate approval.
+
+## Releases
+
+- Use Semantic Versioning for externally meaningful behavior: breaking change = major, compatible feature = minor, compatible fix = patch. Documentation, comments, tests, and behavior-neutral chores do not force a version bump.
+- Create immutable annotated `backend/vX.Y.Z` tags at the exact accepted source SHA. Record archive and payload digests; never rebuild or move an accepted tag.
+- A GitHub Release documents provenance. Deployment still selects a separately approved retained artifact by digest.
 
 ## Local checks
 
@@ -29,4 +35,4 @@ GitHub Actions performs clean-room dependency, asset, protocol, and release chec
 
 Do not commit credentials, personal or production data, database dumps, generated dependencies, local editor state, or assistant workspaces. Keep comments focused on current contracts, non-obvious constraints, and failure behavior.
 
-Security-sensitive changes require focused regression coverage and independent review. Report vulnerabilities through the team's security channel; do not place undisclosed details in issues or pull requests.
+Security-sensitive changes require focused regression coverage and independent review. See [SECURITY.md](SECURITY.md) for vulnerability reporting; do not place undisclosed details in issues or pull requests.
