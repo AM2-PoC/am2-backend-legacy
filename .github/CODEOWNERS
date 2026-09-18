@@ -6,7 +6,4 @@
 /server/ @cipheraenys @riskyprsty
 /WebAdmin/ @cipheraenys @riskyprsty
 /tests/ @cipheraenys @riskyprsty
-/package-lock.json @cipheraenys @riskyprsty
-/server/package-lock.json @cipheraenys @riskyprsty
-/WebAdmin/package-lock.json @cipheraenys @riskyprsty
-/.github/CODEOWNERS @cipheraenys @riskyprsty
+/server/WebAdmin/.github/CODEOWNERS @cipheraenys @riskyprsty

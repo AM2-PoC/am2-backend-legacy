@@ -1,7 +1,7 @@
 # Security
 
-Report suspected vulnerabilities through the team's security channel. Do not open a public issue or pull request containing undisclosed vulnerability details.
+Report suspected vulnerabilities through GitHub's **Report a vulnerability** flow: https://github.com/AM2-PoC/am2-backend-legacy/security/advisories/new
 
-Never include credentials, tokens, private keys, personal or production data, database rows, or destructive proof-of-concept payloads in tickets, pull requests, logs, or fixtures.
+Do not include undisclosed vulnerability details in public issues or pull requests. Include the affected component/version, impact, reproduction conditions, and a minimal non-destructive proof in the private report.
 
-External disclosure and customer communication require internal approval.
+Never include credentials, tokens, private keys, personal or production data, database rows, or destructive proof-of-concept payloads in issues, pull requests, logs, or fixtures.
