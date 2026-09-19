@@ -86,9 +86,7 @@ done
 # Production (:8080) and staging (:8081) share /var/lib/php/sessions today, with
 # no per-vhost override -- so a session id obtained on staging is a valid
 # session id on production. The cookie domains differ, which stops a browser
-# carrying one across; nothing stops curl. Splitting the store closes it, and
-# the task is already written down in
-# .hermes/plans/2026-08-19_004859-minimum-environment-separation.md:87.
+# carrying one across; nothing stops curl. Splitting the store closes it.
 if (( drain )); then
     for pair in "am2-webadmin-internal.conf:/var/lib/php/sessions/am2" \
                 "am2-webadmin-staging.conf:/var/lib/php/sessions/am2-staging"; do
