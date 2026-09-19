@@ -32,17 +32,18 @@ const HELPERS_IMPORT = new RegExp(String.raw`^\s*(?:import|export)\s[^;'"]*?['"]
 const EXCLUDE_MARKER = new RegExp('^\\s*//\\s*offline-' + 'tests:\\s*exclude', 'm');
 const NETWORK_OR_CREDENTIAL = {
     '.mjs': { test: (body) => HELPERS_IMPORT.test(body) || EXCLUDE_MARKER.test(body) },
-    '.php': /file_get_contents\(\s*['"]https?:|curl_\w+\(|fsockopen\(|fopen\(\s*['"]https?:|getenv\(/,
+    '.php': { test: (body) => EXCLUDE_MARKER.test(body)
+        || /file_get_contents\(\s*['"]https?:|curl_\w+\(|fsockopen\(|fopen\(\s*['"]https?:|getenv\(/.test(body) },
 };
 
 // The exclude marker is a declaration, and every declaration is listed here, so
 // adding one is a visible diff rather than a suite quietly leaving CI. The
 // selector's own rules cannot catch an overused marker: they are the marker.
-const MARKED_FOR_EXCLUSION = ['relay-watchdog.test.mjs'];
+const MARKED_FOR_EXCLUSION = ['laravel-health.test.php', 'relay-watchdog.test.mjs'];
 
 test('only the listed suites declare themselves excluded from the offline job', () => {
     const marked = readdirSync(contractDir)
-        .filter((name) => name.endsWith('.test.mjs'))
+        .filter((name) => /\.test\.(?:mjs|php)$/.test(name))
         .filter((name) => EXCLUDE_MARKER.test(readFileSync(path.join(contractDir, name), 'utf8')))
         .sort();
     assert.deepEqual(marked, MARKED_FOR_EXCLUSION,
