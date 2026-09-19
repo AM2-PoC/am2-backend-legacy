@@ -189,7 +189,7 @@ jobs:
       - name: Verify dependency lock requirements
         run: |
           node --test tests/contract/platform-baseline.test.mjs
-          php tests/contract/laravel-health.test.php
+          php tests/contract/laravel-health-red.test.php
   restart-safety:
     name: restart-safe release artifact
     runs-on: ubuntu-latest
