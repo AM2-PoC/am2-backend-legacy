@@ -1,19 +1,43 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "android_admin_source": {
     "repository": "AM2-PoC/am2-android-admin",
     "source_sha": "6a8f2a010fd855afc57100f5f6beb7e75279104a",
     "path": "app/src/main/java/com/am2/admin/data/api/ApiService.kt",
-    "sha256": "6901f947e5ee32a255c0ee02445b6a5436eb038a3ae34557665aa03c7356d9c5"
+    "sha256": "6901f947e5ee32a255c0ee02445b6a5436eb038a3ae34557665aa03c7356d9c5",
+    "callsite": {
+      "path": "app/src/main/java/com/am2/admin/ui/settings/SettingsActivity.kt",
+      "sha256": "1aeb488b1f1158f486da39c731d88a6bb2fb39530965a3f2e754d86c23ebbf30"
+    }
   },
   "shared_semantics": {
     "identity_authority": "server-session",
     "client_identity_fields": "compatibility-input-only",
-    "anonymous": {"status": 401, "body_keys": ["success", "message"]},
-    "csrf": {"status": 403, "body_keys": ["success", "msg"]},
-    "forbidden": {"status": 403, "body_keys": ["success", "message"]},
-    "method_not_allowed": {"status": 405},
-    "handler_failures_may_use_http_200": true
+    "anonymous": {
+      "status": 401,
+      "body_keys": [
+        "success",
+        "message"
+      ]
+    },
+    "csrf": {
+      "status": 403,
+      "body_keys": [
+        "success",
+        "msg"
+      ]
+    },
+    "forbidden": {
+      "status": 403,
+      "body_keys": [
+        "success",
+        "message"
+      ]
+    },
+    "handler_failures_may_use_http_200": true,
+    "method_not_allowed": {
+      "status": 405
+    }
   },
   "operations": [
     {
@@ -30,9 +54,30 @@
       "response_keys": [
         "success",
         "message",
+        "admin_id",
+        "username",
+        "role",
         "csrf_token"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "login",
+        "http_method": "POST",
+        "path": "api_login.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "username"
+          },
+          {
+            "kind": "field",
+            "name": "password"
+          }
+        ],
+        "response_type": "LoginResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "logout",
@@ -43,10 +88,18 @@
       "csrf": true,
       "request_fields": [],
       "response_keys": [
-        "success",
-        "message"
+        "success"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "logout",
+        "http_method": "POST",
+        "path": "api_logout.php",
+        "encoding": "query",
+        "parameters": [],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "dashboard-stats",
@@ -64,7 +117,25 @@
         "user_online",
         "total_channel"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getDashboardStats",
+        "http_method": "GET",
+        "path": "api_dashboard_stats.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          }
+        ],
+        "response_type": "DashboardStats"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "dashboard-chart",
@@ -83,7 +154,25 @@
         "status",
         "timestamp"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getChartData",
+        "http_method": "GET",
+        "path": "api_dashboard_chart.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          }
+        ],
+        "response_type": "ChartDataResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-list",
@@ -101,7 +190,30 @@
         "id",
         "name"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getUsers",
+        "http_method": "GET",
+        "path": "api_users.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          },
+          {
+            "kind": "query",
+            "name": "search",
+            "default": null
+          }
+        ],
+        "response_type": "List<User>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-add",
@@ -121,7 +233,38 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "addUser",
+        "http_method": "POST",
+        "path": "api_users.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "add"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "id"
+          },
+          {
+            "kind": "field",
+            "name": "name"
+          },
+          {
+            "kind": "field",
+            "name": "password"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-update-feature",
@@ -140,7 +283,34 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "updateFeature",
+        "http_method": "POST",
+        "path": "api_users.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "update_feature"
+          },
+          {
+            "kind": "field",
+            "name": "u_id"
+          },
+          {
+            "kind": "field",
+            "name": "feature"
+          },
+          {
+            "kind": "field",
+            "name": "val"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-delete",
@@ -157,7 +327,26 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "deleteUser",
+        "http_method": "POST",
+        "path": "api_users.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "delete"
+          },
+          {
+            "kind": "field",
+            "name": "id"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-get-channels",
@@ -171,7 +360,26 @@
         "u_id"
       ],
       "response_keys": [],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getUserChannels",
+        "http_method": "GET",
+        "path": "api_users.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "action",
+            "default": "get_user_channels"
+          },
+          {
+            "kind": "query",
+            "name": "u_id"
+          }
+        ],
+        "response_type": "List<Int>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "users-save-channels",
@@ -189,7 +397,30 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "saveUserChannels",
+        "http_method": "POST",
+        "path": "api_users.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "save_user_channels"
+          },
+          {
+            "kind": "field",
+            "name": "u_id"
+          },
+          {
+            "kind": "field",
+            "name": "channels"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-list",
@@ -207,7 +438,25 @@
         "name",
         "display_name"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getChannels",
+        "http_method": "GET",
+        "path": "api_channels.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          }
+        ],
+        "response_type": "List<Channel>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-add",
@@ -226,7 +475,34 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "addChannel",
+        "http_method": "POST",
+        "path": "api_channels.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "add"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "display_name"
+          },
+          {
+            "kind": "field",
+            "name": "category"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-edit",
@@ -246,7 +522,38 @@
         "success",
         "message"
       ],
-      "legacy_status": "legacy-unsupported"
+      "legacy_status": "legacy-unsupported",
+      "retrofit": {
+        "function": "updateChannel",
+        "http_method": "POST",
+        "path": "api_channels.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "edit"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "role"
+          },
+          {
+            "kind": "field",
+            "name": "id"
+          },
+          {
+            "kind": "field",
+            "name": "display_name"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-delete",
@@ -265,7 +572,34 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "deleteChannel",
+        "http_method": "POST",
+        "path": "api_channels.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "delete"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "role"
+          },
+          {
+            "kind": "field",
+            "name": "id"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-get-users-access",
@@ -279,7 +613,26 @@
         "channel_id"
       ],
       "response_keys": [],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getChannelUsersAccess",
+        "http_method": "GET",
+        "path": "api_channels.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "action",
+            "default": "get_users_access"
+          },
+          {
+            "kind": "query",
+            "name": "channel_id"
+          }
+        ],
+        "response_type": "List<String>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "channels-save-access",
@@ -299,7 +652,38 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "saveChannelAccess",
+        "http_method": "POST",
+        "path": "api_channels.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "save_access"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "role"
+          },
+          {
+            "kind": "field",
+            "name": "channel_id"
+          },
+          {
+            "kind": "field",
+            "name": "users"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "user-access-list",
@@ -317,7 +701,30 @@
         "id",
         "name"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getUserAccessList",
+        "http_method": "GET",
+        "path": "api_user_access.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          },
+          {
+            "kind": "query",
+            "name": "search",
+            "default": null
+          }
+        ],
+        "response_type": "List<UserAccess>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "user-access-force-logout",
@@ -335,7 +742,30 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "forceLogout",
+        "http_method": "POST",
+        "path": "api_user_access.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "force_logout"
+          },
+          {
+            "kind": "field",
+            "name": "user_id"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "user-access-update",
@@ -356,7 +786,42 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "updateUserAccess",
+        "http_method": "POST",
+        "path": "api_user_access.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "update_access"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "user_id"
+          },
+          {
+            "kind": "field",
+            "name": "channels[]"
+          },
+          {
+            "kind": "field",
+            "name": "default_channel"
+          },
+          {
+            "kind": "field",
+            "name": "permissions"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "track-units",
@@ -373,7 +838,25 @@
         "id",
         "name"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getTrackUnits",
+        "http_method": "GET",
+        "path": "api_get_users.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          }
+        ],
+        "response_type": "List<TrackUnit>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "logs-list",
@@ -398,7 +881,29 @@
         "kategori",
         "raw_time"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getLogs",
+        "http_method": "GET",
+        "path": "api_logs.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          },
+          {
+            "kind": "query",
+            "name": "category"
+          }
+        ],
+        "response_type": "List<LogEntry>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "admins-list",
@@ -413,7 +918,16 @@
         "username",
         "role"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getAdminList",
+        "http_method": "GET",
+        "path": "api_admin_panel.php",
+        "encoding": "query",
+        "parameters": [],
+        "response_type": "List<Admin>"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "admins-save",
@@ -439,7 +953,62 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "saveAdmin",
+        "http_method": "POST",
+        "path": "api_admin_panel.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "save"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "username"
+          },
+          {
+            "kind": "field",
+            "name": "password"
+          },
+          {
+            "kind": "field",
+            "name": "role"
+          },
+          {
+            "kind": "field",
+            "name": "user_quota"
+          },
+          {
+            "kind": "field",
+            "name": "channel_quota"
+          },
+          {
+            "kind": "field",
+            "name": "expired_at"
+          },
+          {
+            "kind": "field",
+            "name": "can_manage_maps"
+          },
+          {
+            "kind": "field",
+            "name": "can_manage_p2p"
+          },
+          {
+            "kind": "field",
+            "name": "can_manage_video"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "admins-delete",
@@ -456,7 +1025,26 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "deleteAdmin",
+        "http_method": "POST",
+        "path": "api_admin_panel.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "delete"
+          },
+          {
+            "kind": "field",
+            "name": "id"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "admins-delegate",
@@ -474,7 +1062,30 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "delegateChannels",
+        "http_method": "POST",
+        "path": "api_admin_panel.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "delegate"
+          },
+          {
+            "kind": "field",
+            "name": "target_admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "channels[]"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "settings-profile",
@@ -491,7 +1102,25 @@
         "username",
         "role"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "getAdminProfile",
+        "http_method": "GET",
+        "path": "api_settings.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "admin_id"
+          },
+          {
+            "kind": "query",
+            "name": "role"
+          }
+        ],
+        "response_type": "AdminProfile"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "settings-check-update",
@@ -512,7 +1141,22 @@
         "sha256",
         "signer_sha256"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "checkAppUpdate",
+        "http_method": "GET",
+        "path": "api_settings.php",
+        "encoding": "query",
+        "parameters": [
+          {
+            "kind": "query",
+            "name": "action",
+            "default": "check_update"
+          }
+        ],
+        "response_type": "UpdateInfo"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "settings-update-password",
@@ -530,7 +1174,30 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "updateAdminPassword",
+        "http_method": "POST",
+        "path": "api_settings.php",
+        "encoding": "form",
+        "parameters": [
+          {
+            "kind": "field",
+            "name": "action",
+            "default": "update_password"
+          },
+          {
+            "kind": "field",
+            "name": "admin_id"
+          },
+          {
+            "kind": "field",
+            "name": "new_password"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     },
     {
       "id": "settings-import-database",
@@ -548,7 +1215,29 @@
         "success",
         "message"
       ],
-      "legacy_status": "implemented"
+      "legacy_status": "implemented",
+      "retrofit": {
+        "function": "importDatabase",
+        "http_method": "POST",
+        "path": "api_settings.php",
+        "encoding": "multipart",
+        "parameters": [
+          {
+            "kind": "part",
+            "name": "action"
+          },
+          {
+            "kind": "part",
+            "name": "admin_id"
+          },
+          {
+            "kind": "part",
+            "name": "sql_file"
+          }
+        ],
+        "response_type": "GenericResponse"
+      },
+      "response_keys_scope": "non-exhaustive-sample"
     }
   ]
 }
