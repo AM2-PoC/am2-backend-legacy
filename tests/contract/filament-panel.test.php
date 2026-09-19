@@ -13,8 +13,6 @@ $kernel = $app->make(Kernel::class);
 $kernel->handle(Request::create('/next/health', 'GET'));
 
 $panels = Filament\Facades\Filament::getPanels();
-fwrite(STDERR, 'registered panels: ' . implode(',', array_keys($panels)) . "\n");
-exit(1);
 if (! array_key_exists('admin', $panels)) {
     fwrite(STDERR, "Filament panel admin is not registered\n");
     exit(1);
