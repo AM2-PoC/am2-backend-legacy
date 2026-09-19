@@ -185,10 +185,19 @@ jobs:
           composer check-platform-reqs --lock
           composer audit --locked --abandoned=fail
           npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify Laravel health and panel contracts
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: |
+          set -euo pipefail
+          mkdir -p laravel/bootstrap/cache
+          php tests/contract/laravel-health.test.php
+          php tests/contract/filament-panel.test.php
       - name: Verify dependency lock requirements
         run: |
+          set -euo pipefail
           node --test tests/contract/platform-baseline.test.mjs
-          php tests/contract/laravel-health.test.php
           npm --prefix laravel audit --audit-level=high
   restart-safety:
     name: restart-safe release artifact
