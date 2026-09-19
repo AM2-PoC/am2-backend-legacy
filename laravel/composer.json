@@ -1,0 +1,35 @@
+{
+  "name": "am2/webadmin-next",
+  "type": "project",
+  "description": "Locked dependency graph for the incremental AM2 WebAdmin panel.",
+  "license": "proprietary",
+  "require": {
+    "php": "8.5.10",
+    "ext-ctype": "*",
+    "ext-curl": "*",
+    "ext-dom": "*",
+    "ext-fileinfo": "*",
+    "ext-filter": "*",
+    "ext-hash": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "ext-pcre": "*",
+    "ext-pdo": "*",
+    "ext-pdo_pgsql": "*",
+    "ext-pgsql": "*",
+    "ext-session": "*",
+    "ext-tokenizer": "*",
+    "ext-xml": "*",
+    "ext-zip": "*",
+    "laravel/framework": "13.32.0",
+    "filament/filament": "5.8.2"
+  },
+  "config": {
+    "allow-plugins": {},
+    "audit": {"abandoned": "fail"},
+    "platform": {"php": "8.5.10"},
+    "sort-packages": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

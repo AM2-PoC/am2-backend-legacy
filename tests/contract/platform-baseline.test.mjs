@@ -42,12 +42,19 @@ test('WebAdmin build toolchain is exact and its dependency locks exist', () => {
   }
 
   const composer = JSON.parse(readFileSync(resolve(ROOT, 'laravel/composer.json'), 'utf8'));
-  assert.match(composer.require?.php ?? '', /8\.5/);
-  assert.match(composer.require?.['laravel/framework'] ?? '', /13/);
-  assert.match(composer.require?.['filament/filament'] ?? '', /5/);
+  assert.equal(composer.require?.php, '8.5.10');
+  assert.equal(composer.require?.['laravel/framework'], '13.32.0');
+  assert.equal(composer.require?.['filament/filament'], '5.8.2');
   const npm = JSON.parse(readFileSync(resolve(ROOT, 'laravel/package.json'), 'utf8'));
   assert.equal(npm.private, true);
-  assert.equal(typeof npm.scripts?.build, 'string');
+  assert.equal(npm.engines?.node, '24.21.0');
+  assert.deepEqual(npm.devDependencies, {
+    '@tailwindcss/vite': '4.3.3',
+    'laravel-vite-plugin': '3.2.0',
+    tailwindcss: '4.3.3',
+    vite: '8.3.0',
+  });
+  assert.equal(npm.scripts?.build, 'vite build');
   assert.doesNotMatch(JSON.stringify(npm), /(?:inertia|vue|preline|flux)/i);
   assert.doesNotMatch(JSON.stringify(contract), /"latest"/i);
 });
