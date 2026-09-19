@@ -189,6 +189,7 @@ jobs:
         run: |
           node --test tests/contract/platform-baseline.test.mjs
           php tests/contract/laravel-health.test.php
+          php tests/contract/filament-panel.test.php
           npm --prefix laravel audit --audit-level=high
   restart-safety:
     name: restart-safe release artifact
