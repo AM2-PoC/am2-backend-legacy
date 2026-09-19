@@ -12,7 +12,8 @@ $app = require __DIR__ . '/../../laravel/bootstrap/app.php';
 $kernel = $app->make(Kernel::class);
 $kernel->handle(Request::create('/next/health', 'GET'));
 
-$panel = Filament\Facades\Filament::getPanel('admin');
+$panels = Filament\Facades\Filament::getPanels();
+$panel = $panels['admin'] ?? null;
 if ($panel === null) {
     fwrite(STDERR, "Filament panel admin is not registered\n");
     exit(1);
