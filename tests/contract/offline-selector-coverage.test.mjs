@@ -39,7 +39,11 @@ const NETWORK_OR_CREDENTIAL = {
 // The exclude marker is a declaration, and every declaration is listed here, so
 // adding one is a visible diff rather than a suite quietly leaving CI. The
 // selector's own rules cannot catch an overused marker: they are the marker.
-const MARKED_FOR_EXCLUSION = ['laravel-health.test.php', 'relay-watchdog.test.mjs'];
+const MARKED_FOR_EXCLUSION = [
+    'filament-panel.test.php',
+    'laravel-health.test.php',
+    'relay-watchdog.test.mjs',
+];
 
 test('only the listed suites declare themselves excluded from the offline job', () => {
     const marked = readdirSync(contractDir)
