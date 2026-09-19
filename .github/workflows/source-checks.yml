@@ -176,29 +176,18 @@ jobs:
           for extension in ctype curl dom fileinfo filter hash mbstring openssl pcre PDO pdo_pgsql pgsql session tokenizer xml zip; do
               php -m | grep -Fxi "$extension"
           done
-      - name: Resolve locked dependency graphs
+      - name: Install locked dependency graphs cleanly
         working-directory: laravel
         run: |
           set -euo pipefail
-          composer validate --strict --no-check-lock
-          composer update --no-interaction --no-progress --prefer-dist
           composer validate --strict
+          composer install --no-interaction --no-progress --prefer-dist
           composer check-platform-reqs --lock
           composer audit --locked --abandoned=fail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm audit --package-lock-only --audit-level=high
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=high
       - name: Verify dependency lock requirements
         run: node --test tests/contract/platform-baseline.test.mjs
-      - name: Upload resolved locks
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: webadmin-locks-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            laravel/composer.lock
-            laravel/package-lock.json
-
   restart-safety:
     name: restart-safe release artifact
     runs-on: ubuntu-latest
