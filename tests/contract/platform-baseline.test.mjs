@@ -42,9 +42,10 @@ test('WebAdmin build toolchain is exact and its dependency locks exist', () => {
   }
 
   const composer = JSON.parse(readFileSync(resolve(ROOT, 'laravel/composer.json'), 'utf8'));
-  assert.equal(composer.require?.php, '8.5.10');
-  assert.equal(composer.require?.['laravel/framework'], '13.32.0');
-  assert.equal(composer.require?.['filament/filament'], '5.8.2');
+  assert.equal(composer.require?.php, '^8.5');
+  assert.equal(composer.config?.platform?.php, '8.5.10');
+  assert.equal(composer.require?.['laravel/framework'], '^13.0');
+  assert.equal(composer.require?.['filament/filament'], '^5.0');
   const npm = JSON.parse(readFileSync(resolve(ROOT, 'laravel/package.json'), 'utf8'));
   assert.equal(npm.private, true);
   assert.equal(npm.engines?.node, '24.21.0');
