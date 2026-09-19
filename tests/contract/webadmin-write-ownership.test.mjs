@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
+import { extractWriteSites } from './lib/write-site-inventory.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const owners = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/webadmin-write-owners.json'), 'utf8'));
@@ -34,8 +35,8 @@ const treeDigest = (root, extension) => {
 };
 
 test('current direct-writer inventory fails closed when PHP or relay source changes', () => {
-    assert.equal(inventory.schema_version, 1);
-    assert.equal(inventory.source.backend_sha, '2037116c5748ba22d02185f1865606da964a5586');
+    assert.equal(inventory.schema_version, 2);
+    assert.equal(inventory.source.backend_sha, '3511ca8857333a098e2204eee2bcf7b7df264e9f');
     const webadmin = treeDigest('WebAdmin', '.php');
     const relay = treeDigest('server', '.js');
     assert.deepEqual(webadmin, {
@@ -67,6 +68,26 @@ test('current direct-writer inventory fails closed when PHP or relay source chan
     assert.deepEqual(inventory.opaque_mutation_boundaries.sort(), [
         'WebAdmin/api_settings.php:psql-import',
         'WebAdmin/settings.php:psql-import',
+    ]);
+});
+
+test('reviewed source-literal writer sites stay bound to file, command, and table', () => {
+    const sites = extractWriteSites(ROOT);
+    assert.deepEqual(sites, inventory.source_literal_sites);
+    const aggregates = new Set(inventory.direct_writes.map(
+        (write) => `${write.writer}:${write.command}:${write.table}`,
+    ));
+    for (const site of sites) {
+        const key = `${site.writer}:${site.command}:${site.table}`;
+        assert.ok(aggregates.has(key), `${site.site} has no matching aggregate writer entry`);
+    }
+});
+
+test('writer-site extraction ignores comments and dynamic-table text and records every real literal', () => {
+    const fixture = resolve(ROOT, 'tests/fixtures/write-site-probe');
+    assert.deepEqual(extractWriteSites(fixture), [
+        { site: 'WebAdmin/probe.php:4', writer: 'webadmin', command: 'DELETE', table: 'public.device_tokens' },
+        { site: 'WebAdmin/probe.php:4', writer: 'webadmin', command: 'UPDATE', table: 'public.users' },
     ]);
 });
 
