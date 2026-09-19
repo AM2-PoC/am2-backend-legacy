@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+while IFS= read -r -d '' file; do
+    node --check "$file"
+done < <(git ls-files -z -- 'server/*.js' 'server/**/*.js')
+
+while IFS= read -r -d '' file; do
+    php -l "$file" >/dev/null
+done < <(git ls-files -z -- 'WebAdmin/*.php' 'WebAdmin/**/*.php')

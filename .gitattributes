@@ -12,3 +12,4 @@
 *.gif binary
 *.webp binary
 *.apk binary
+.githooks/* text eol=lf

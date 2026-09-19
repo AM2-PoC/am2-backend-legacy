@@ -21,6 +21,14 @@ Do not push directly to `main`. Deployment, restart, publication, signing, and e
 
 ## Local checks
 
+Enable the repository-managed hooks once per clone:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+The hooks run fast static checks only; GitHub Actions remains authoritative. Standard `--no-verify` bypasses a local hook when necessary and must not be treated as CI approval.
+
 Run the narrowest relevant checks first:
 
 ```bash
