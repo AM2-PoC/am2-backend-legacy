@@ -13,11 +13,11 @@ $kernel = $app->make(Kernel::class);
 $kernel->handle(Request::create('/next/health', 'GET'));
 
 $panels = Filament\Facades\Filament::getPanels();
-$panel = $panels['admin'] ?? null;
-if ($panel === null) {
+if (! array_key_exists('admin', $panels)) {
     fwrite(STDERR, "Filament panel admin is not registered\n");
     exit(1);
 }
+$panel = $panels['admin'];
 
 if ($panel->getPath() !== 'next') {
     fwrite(STDERR, "expected panel path next, got {$panel->getPath()}\n");
