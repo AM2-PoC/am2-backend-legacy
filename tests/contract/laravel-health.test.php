@@ -6,16 +6,16 @@ declare(strict_types=1);
 use Illuminate\Http\Request;
 use Illuminate\Contracts\Http\Kernel;
 
-require __DIR__ . '/../../laravel/vendor/autoload.php';
-
-$app = require __DIR__ . '/../../laravel/bootstrap/app.php';
-$kernel = $app->make(Kernel::class);
-$request = static fn (string $path, string $method): Request => Request::create(
-    $path,
-    $method,
-    server: ['HTTP_ACCEPT' => 'application/json'],
-);
-$response = $kernel->handle($request('/next/health', 'GET'));
+try {
+    require __DIR__ . '/../../laravel/vendor/autoload.php';
+    $app = require __DIR__ . '/../../laravel/bootstrap/app.php';
+    $kernel = $app->make(Kernel::class);
+    $request = static fn (string $path, string $method): Request => Request::create(
+        $path,
+        $method,
+        server: ['HTTP_ACCEPT' => 'application/json'],
+    );
+    $response = $kernel->handle($request('/next/health', 'GET'));
 
 if ($response->getStatusCode() !== 200) {
     fwrite(STDERR, "expected GET /next/health status 200, got {$response->getStatusCode()}\n");
@@ -61,3 +61,7 @@ if ($missing->getStatusCode() !== 404) {
 }
 
 fwrite(STDOUT, "Laravel health contract passed\n");
+} catch (Throwable $error) {
+    fwrite(STDERR, $error . "\n");
+    exit(1);
+}

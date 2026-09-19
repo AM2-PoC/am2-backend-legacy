@@ -186,8 +186,12 @@ jobs:
           composer audit --locked --abandoned=fail
           npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify Laravel health and panel contracts
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: |
           set -euo pipefail
+          mkdir -p laravel/bootstrap/cache
           php tests/contract/laravel-health.test.php
           php tests/contract/filament-panel.test.php
       - name: Verify dependency lock requirements

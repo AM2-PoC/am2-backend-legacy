@@ -5,11 +5,11 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Http\Kernel;
 
-require __DIR__ . '/../../laravel/vendor/autoload.php';
-
-$app = require __DIR__ . '/../../laravel/bootstrap/app.php';
-$kernel = $app->make(Kernel::class);
-$kernel->bootstrap();
+try {
+    require __DIR__ . '/../../laravel/vendor/autoload.php';
+    $app = require __DIR__ . '/../../laravel/bootstrap/app.php';
+    $kernel = $app->make(Kernel::class);
+    $kernel->bootstrap();
 
 $panels = Filament\Facades\Filament::getPanels();
 if (! array_key_exists('admin', $panels)) {
@@ -32,3 +32,7 @@ if ($route === null || $route->methods() !== ['GET', 'HEAD']) {
 }
 
 fwrite(STDOUT, "Filament panel contract passed\n");
+} catch (Throwable $error) {
+    fwrite(STDERR, $error . "\n");
+    exit(1);
+}
