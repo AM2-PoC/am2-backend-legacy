@@ -3,9 +3,14 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Http\Request;
+
 require __DIR__ . '/../../laravel/vendor/autoload.php';
 
 $app = require __DIR__ . '/../../laravel/bootstrap/app.php';
+$kernel = $app->make(Kernel::class);
+$kernel->handle(Request::create('/next/health', 'GET'));
 $panel = Filament\Facades\Filament::getPanel('admin');
 
 if ($panel->getPath() !== 'next') {
