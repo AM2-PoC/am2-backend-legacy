@@ -42,6 +42,7 @@ RESTART_SAFETY_TESTS=(
 # so the network markers below match calls, not strings.
 for f in "$DIR"/*.test.php; do
     [ -e "$f" ] || continue
+    grep -qE '^[[:space:]]*//[[:space:]]*offline-tests:[[:space:]]*exclude' "$f" && continue
     grep -qE "file_get_contents\([[:space:]]*['\"]https?:|curl_[a-z_]+\(|fsockopen\(|fopen\([[:space:]]*['\"]https?:|getenv\(" "$f" && continue
     basename "$f"
 done
