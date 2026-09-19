@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "source": {
+    "backend_sha": "2037116c5748ba22d02185f1865606da964a5586",
+    "webadmin_php_files": 46,
+    "webadmin_tree_sha256": "62a7509acef637ac70f8f8847ca89021231a9cecb5a83c0536ef4a442da9dd11",
+    "relay_js_files": 15,
+    "relay_tree_sha256": "7b5fd27553d1eca52f2507f20f45a386ad80e9df0c14cc225c17b81d2b50e525"
+  },
+  "direct_writes": [
+    {"writer":"webadmin","command":"INSERT","table":"public.admin","columns":["username","password_hash","role","user_quota","channel_quota","expired_at","can_manage_maps","can_manage_p2p","can_manage_video","status"]},
+    {"writer":"webadmin","command":"UPDATE","table":"public.admin","columns":["username","password_hash","role","user_quota","channel_quota","expired_at","can_manage_maps","can_manage_p2p","can_manage_video","status"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.admin","columns":["*"]},
+    {"writer":"webadmin","command":"INSERT","table":"public.admin_managed_channels","columns":["admin_id","channel_id"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.admin_managed_channels","columns":["*"]},
+    {"writer":"webadmin","command":"INSERT","table":"public.channels","columns":["name","display_name","category","created_by"]},
+    {"writer":"webadmin","command":"UPDATE","table":"public.channels","columns":["display_name","category"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.channels","columns":["*"]},
+    {"writer":"webadmin","command":"INSERT","table":"public.users","columns":["id","name","password","role","status","admin_id","created_by","entity_type","created_at","updated_at"]},
+    {"writer":"webadmin","command":"UPDATE","table":"public.users","columns":["name","password","created_by","entity_type","updated_at","last_channel_id"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.users","columns":["*"]},
+    {"writer":"webadmin","command":"UPSERT","table":"public.user_app_permissions","columns":["user_id","enable_maps","enable_p2p","enable_ptt_video","duplex_mode","updated_at"]},
+    {"writer":"webadmin","command":"INSERT","table":"public.user_channels","columns":["user_id","channel_id","is_default","permission"]},
+    {"writer":"webadmin","command":"UPDATE","table":"public.user_channels","columns":["is_default","permission"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.user_channels","columns":["*"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.device_tokens","columns":["*"]},
+    {"writer":"webadmin","command":"INSERT","table":"public.admin_activity_logs","columns":["admin_id","aksi","tabel_target","data_id","event_code","event_params","waktu"]},
+    {"writer":"webadmin","command":"DELETE","table":"public.ptt_logs","columns":["*"]},
+    {"writer":"relay","command":"INSERT","table":"public.device_tokens","columns":["token_hash","user_id","device_id","last_used_at"]},
+    {"writer":"relay","command":"UPDATE","table":"public.device_tokens","columns":["last_used_at"]},
+    {"writer":"relay","command":"DELETE","table":"public.device_tokens","columns":["*"]},
+    {"writer":"relay","command":"INSERT","table":"public.ptt_logs","columns":["user_id","channel_id","event_type","event_time"]},
+    {"writer":"relay","command":"DELETE","table":"public.ptt_logs","columns":["*"]},
+    {"writer":"relay","command":"DELETE","table":"public.admin_activity_logs","columns":["*"]},
+    {"writer":"relay","command":"UPSERT","table":"public.user_app_permissions","columns":["user_id","enable_maps","enable_p2p","enable_ptt_video","duplex_mode","updated_at"]},
+    {"writer":"relay","command":"UPDATE","table":"public.users","columns":["current_channel","force_logout","status","current_device_id","is_speaking","updated_at","latitude","longitude","accuracy","address","location_updated_at"]}
+  ],
+  "dynamic_columns": {
+    "WebAdmin/user_features.php": ["enable_maps","enable_p2p","enable_ptt_video","duplex_mode"]
+  },
+  "opaque_mutation_boundaries": [
+    "WebAdmin/settings.php:psql-import",
+    "WebAdmin/api_settings.php:psql-import"
+  ],
+  "excluded_secondary_writers": ["database-triggers","foreign-key-actions","stored-procedures","other-processes"]
+}

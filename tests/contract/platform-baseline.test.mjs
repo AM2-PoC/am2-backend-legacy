@@ -6,20 +6,24 @@ import { resolve } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '../..');
 const contractPath = resolve(ROOT, 'infra/contracts/platform-baseline.json');
 
-test('target platform is explicit and blocks premature Node activation', () => {
+test('WebAdmin build toolchain is exact and its dependency locks exist', () => {
   assert.ok(existsSync(contractPath), 'missing target platform contract');
   const contract = JSON.parse(readFileSync(contractPath, 'utf8'));
 
-  assert.equal(contract.schema_version, 1);
+  assert.equal(contract.schema_version, 2);
   assert.deepEqual(contract.os, { id: 'ubuntu', version: '26.04', codename: 'resolute' });
-  assert.deepEqual(contract.php, { major_minor: '8.5', sapi: 'fpm' });
+  assert.deepEqual(contract.php, {
+    version: '8.5.10', sapi: 'cli', source: 'shivammathur/setup-php',
+    extensions: ['ctype', 'curl', 'dom', 'fileinfo', 'filter', 'hash', 'mbstring', 'openssl', 'pcre', 'pdo', 'pdo_pgsql', 'pgsql', 'session', 'tokenizer', 'xml', 'zip'],
+  });
   assert.deepEqual(contract.postgresql, { major: 18 });
   assert.deepEqual(contract.frameworks, {
-    laravel_major: 13,
-    inertia_major: 3,
-    vue_major: 3,
-    vite_major: 8,
-    fastify_major: 5,
+    laravel_major: 13, filament_major: 5, vite_major: 8, fastify_major: 5,
+  });
+  assert.deepEqual(contract.toolchain, {
+    container: 'ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78',
+    composer: { version: '2.10.3', sha256: '7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6' },
+    theme_node: { version: '24.21.0', channel: 'lts', source: 'actions/setup-node', use: 'build-only' },
   });
   assert.deepEqual(contract.node, {
     major: 26,
@@ -33,5 +37,17 @@ test('target platform is explicit and blocks premature Node activation', () => {
   assert.equal(contract.production_upgrade_mode, 'replace-and-restore');
   assert.equal(contract.production_host_build, false);
 
+  for (const path of ['laravel/composer.json', 'laravel/composer.lock', 'laravel/package.json', 'laravel/package-lock.json']) {
+    assert.ok(existsSync(resolve(ROOT, path)), `missing required dependency lock: ${path}`);
+  }
+
+  const composer = JSON.parse(readFileSync(resolve(ROOT, 'laravel/composer.json'), 'utf8'));
+  assert.match(composer.require?.php ?? '', /8\.5/);
+  assert.match(composer.require?.['laravel/framework'] ?? '', /13/);
+  assert.match(composer.require?.['filament/filament'] ?? '', /5/);
+  const npm = JSON.parse(readFileSync(resolve(ROOT, 'laravel/package.json'), 'utf8'));
+  assert.equal(npm.private, true);
+  assert.equal(typeof npm.scripts?.build, 'string');
+  assert.doesNotMatch(JSON.stringify(npm), /(?:inertia|vue|preline|flux)/i);
   assert.doesNotMatch(JSON.stringify(contract), /"latest"/i);
 });
