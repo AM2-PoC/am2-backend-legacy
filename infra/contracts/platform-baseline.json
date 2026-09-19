@@ -1,26 +1,19 @@
 {
-  "schema_version": 1,
-  "os": {
-    "id": "ubuntu",
-    "version": "26.04",
-    "codename": "resolute"
-  },
-  "architectures": [
-    "amd64"
-  ],
+  "schema_version": 2,
+  "os": {"id": "ubuntu", "version": "26.04", "codename": "resolute"},
+  "architectures": ["amd64"],
   "php": {
-    "major_minor": "8.5",
-    "sapi": "fpm"
+    "version": "8.5.10",
+    "sapi": "cli",
+    "source": "shivammathur/setup-php",
+    "extensions": ["ctype", "curl", "dom", "fileinfo", "filter", "hash", "mbstring", "openssl", "pcre", "pdo", "pdo_pgsql", "pgsql", "session", "tokenizer", "xml", "zip"]
   },
-  "postgresql": {
-    "major": 18
-  },
-  "frameworks": {
-    "laravel_major": 13,
-    "inertia_major": 3,
-    "vue_major": 3,
-    "vite_major": 8,
-    "fastify_major": 5
+  "postgresql": {"major": 18},
+  "frameworks": {"laravel_major": 13, "filament_major": 5, "vite_major": 8, "fastify_major": 5},
+  "toolchain": {
+    "container": "ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78",
+    "composer": {"version": "2.10.3", "sha256": "7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6"},
+    "theme_node": {"version": "24.21.0", "channel": "lts", "source": "actions/setup-node", "use": "build-only"}
   },
   "node": {
     "major": 26,

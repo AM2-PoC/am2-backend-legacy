@@ -2,8 +2,18 @@
   "schema_version": 2,
   "android_admin_source": {
     "repository": "AM2-PoC/am2-android-admin",
-    "source_sha": "f18dbcdd7b5873f77ccf23dbd2956a47e8fc17ea",
-    "path": "app/src/main/java/com/am2/admin/data/api/ApiService.kt"
+    "source_sha": "6a8f2a010fd855afc57100f5f6beb7e75279104a",
+    "path": "app/src/main/java/com/am2/admin/data/api/ApiService.kt",
+    "sha256": "6901f947e5ee32a255c0ee02445b6a5436eb038a3ae34557665aa03c7356d9c5"
+  },
+  "shared_semantics": {
+    "identity_authority": "server-session",
+    "client_identity_fields": "compatibility-input-only",
+    "anonymous": {"status": 401, "body_keys": ["success", "message"]},
+    "csrf": {"status": 403, "body_keys": ["success", "msg"]},
+    "forbidden": {"status": 403, "body_keys": ["success", "message"]},
+    "method_not_allowed": {"status": 405},
+    "handler_failures_may_use_http_200": true
   },
   "operations": [
     {
@@ -50,7 +60,9 @@
         "role"
       ],
       "response_keys": [
-        "total_users"
+        "total_user",
+        "user_online",
+        "total_channel"
       ],
       "legacy_status": "implemented"
     },
@@ -67,7 +79,9 @@
       ],
       "response_keys": [
         "labels",
-        "datasets"
+        "values",
+        "status",
+        "timestamp"
       ],
       "legacy_status": "implemented"
     },
@@ -374,8 +388,15 @@
         "category"
       ],
       "response_keys": [
-        "timestamp",
-        "message"
+        "id",
+        "jam",
+        "tanggal",
+        "pelaksana",
+        "pelaksana_id",
+        "target",
+        "aksi",
+        "kategori",
+        "raw_time"
       ],
       "legacy_status": "implemented"
     },

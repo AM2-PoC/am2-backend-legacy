@@ -88,6 +88,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out audited Admin source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AM2-PoC/am2-android-admin
+          ref: 6a8f2a010fd855afc57100f5f6beb7e75279104a
+          path: .ci/admin-source
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
@@ -99,6 +105,7 @@ jobs:
           coverage: none
       - name: Run the tests that need no credentials and no network
         env:
+          AM2_ADMIN_CHECKOUT: ${{ github.workspace }}/.ci/admin-source
           NPM_CONFIG_PREFER_OFFLINE: 'true'
           NPM_CONFIG_AUDIT: 'false'
           NPM_CONFIG_FUND: 'false'
@@ -137,6 +144,50 @@ jobs:
               php "$f"
           done
 
+  webadmin-toolchain-contract:
+    name: WebAdmin toolchain contract
+    runs-on: ubuntu-24.04
+    container: ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5.10'
+          tools: composer:2.10.3
+          extensions: ctype, curl, dom, fileinfo, filter, hash, mbstring, openssl, pcre, pdo, pdo_pgsql, pgsql, session, tokenizer, xml, zip
+          coverage: none
+      - name: Verify clean-room prerequisites
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          grep -qx 'VERSION_ID="26.04"' /etc/os-release
+          test "$(node --version)" = v24.21.0
+          test "$(php -r 'echo PHP_VERSION;')" = 8.5.10
+          test "$(composer --version --no-ansi | awk '{print $3}')" = 2.10.3
+          composer_path=$(command -v composer)
+          test "$(sha256sum "$composer_path" | awk '{print $1}')" = 7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6
+          for extension in ctype curl dom fileinfo filter hash mbstring openssl pcre PDO pdo_pgsql pgsql session tokenizer xml zip; do
+              php -m | grep -Fxi "$extension"
+          done
+      - name: Install locked dependency graphs cleanly
+        working-directory: laravel
+        run: |
+          set -euo pipefail
+          composer validate --strict
+          composer install --no-interaction --no-progress --prefer-dist
+          composer check-platform-reqs --lock
+          composer audit --locked --abandoned=fail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=high
+      - name: Verify dependency lock requirements
+        run: node --test tests/contract/platform-baseline.test.mjs
   restart-safety:
     name: restart-safe release artifact
     runs-on: ubuntu-latest
