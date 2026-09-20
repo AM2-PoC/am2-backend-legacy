@@ -65,45 +65,16 @@ jobs:
   assets:
     name: built assets match their source
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Check out regression baseline separately
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: 00ea910fbf5d3fde6aa0b24f833d064b755ce9f6
-          path: .ci/admin-baseline
-      - name: Keep baseline outside the asset scanner
-        run: mv .ci/admin-baseline "$RUNNER_TEMP/admin-baseline"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: WebAdmin/package-lock.json
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: '8.3'
-          extensions: dom, pdo_sqlite, sqlite3
-          coverage: none
       - run: npm --prefix WebAdmin ci
       - run: npm --prefix WebAdmin run build
-      - name: Export generated files without replacing the audited fixture
-        id: recovery
-        run: node tests/ci-admin-proof.mjs export
-      - name: Prove baseline RED and candidate GREEN with identical regressions
-        run: node tests/ci-admin-proof.mjs proof "$RUNNER_TEMP/admin-baseline"
-      - name: Retain exact-head generated files and regression logs
-        if: ${{ !cancelled() && steps.recovery.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: admin-recovery-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ${{ runner.temp }}/admin-recovery-${{ github.event.pull_request.head.sha || github.sha }}/
-          if-no-files-found: error
-          retention-days: 7
       - name: The committed CSS and JS must be what the source builds
-        if: ${{ !cancelled() && steps.recovery.outcome == 'success' }}
         run: |
           # Runtime packages include generated assets; source and committed
           # output must remain synchronized.

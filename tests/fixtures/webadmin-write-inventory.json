@@ -3,7 +3,7 @@
   "source": {
     "backend_sha": "3511ca8857333a098e2204eee2bcf7b7df264e9f",
     "webadmin_php_files": 46,
-    "webadmin_tree_sha256": "62a7509acef637ac70f8f8847ca89021231a9cecb5a83c0536ef4a442da9dd11",
+    "webadmin_tree_sha256": "9f915bc8ed1039a7a54ba04a1e9d8c4f4eef798993f17fdb0bf2a5cbcfdd934c",
     "relay_js_files": 15,
     "relay_tree_sha256": "7b5fd27553d1eca52f2507f20f45a386ad80e9df0c14cc225c17b81d2b50e525"
   },
@@ -448,49 +448,43 @@
       "table": "public.admin_activity_logs"
     },
     {
-      "site": "WebAdmin/admin_panel.php:108",
+      "site": "WebAdmin/admin_panel.php:111",
       "writer": "webadmin",
       "command": "DELETE",
       "table": "public.admin_managed_channels"
     },
     {
-      "site": "WebAdmin/admin_panel.php:111",
+      "site": "WebAdmin/admin_panel.php:114",
       "writer": "webadmin",
       "command": "INSERT",
       "table": "public.admin_managed_channels"
     },
     {
-      "site": "WebAdmin/admin_panel.php:33",
-      "writer": "webadmin",
-      "command": "DELETE",
-      "table": "public.admin"
-    },
-    {
-      "site": "WebAdmin/admin_panel.php:71",
+      "site": "WebAdmin/admin_panel.php:74",
       "writer": "webadmin",
       "command": "UPDATE",
       "table": "public.admin"
     },
     {
-      "site": "WebAdmin/admin_panel.php:89",
+      "site": "WebAdmin/admin_panel.php:92",
       "writer": "webadmin",
       "command": "INSERT",
       "table": "public.admin"
     },
     {
-      "site": "WebAdmin/api_admin_panel.php:104",
+      "site": "WebAdmin/admin_rules.php:29",
       "writer": "webadmin",
       "command": "DELETE",
       "table": "public.admin"
     },
     {
-      "site": "WebAdmin/api_admin_panel.php:135",
+      "site": "WebAdmin/api_admin_panel.php:115",
       "writer": "webadmin",
       "command": "DELETE",
       "table": "public.admin_managed_channels"
     },
     {
-      "site": "WebAdmin/api_admin_panel.php:137",
+      "site": "WebAdmin/api_admin_panel.php:117",
       "writer": "webadmin",
       "command": "INSERT",
       "table": "public.admin_managed_channels"
