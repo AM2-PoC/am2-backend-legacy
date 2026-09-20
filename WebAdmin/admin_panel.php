@@ -30,9 +30,12 @@ if (isset($_POST['delete_admin_id'])) {
                   && $why !== '') {
             $error_msg = t($why, $why_params);
         } else {
-            $stmt = $pdo->prepare("DELETE FROM public.admin WHERE id = ? AND id != ?");
-            $stmt->execute([$id_to_delete, $my_id]);
-            $success_msg = t('msg.admin_deleted');
+            [$why, $why_params] = am2_admin_delete($pdo, $target, $my_id);
+            if ($why !== '') {
+                $error_msg = t($why, $why_params);
+            } else {
+                $success_msg = t('msg.admin_deleted');
+            }
         }
     } catch (PDOException $e) {
         $error_msg = t('msg.delete_failed', ['detail' => am2_safe_error($e, 'admin_panel')]);
@@ -182,7 +185,12 @@ foreach ($admins as &$adm) {
 }
 unset($adm);
 
-$stmt_all = $pdo->prepare("SELECT a.id {$fromWhere} ORDER BY a.id");
+// Matching selection uses the same protection policy as the row controls,
+// including off-page owners. Keep $total and pagination as listing counts.
+$stmt_all = $pdo->prepare("SELECT a.id {$fromWhere}
+    AND a.id <> 1 AND COALESCE(a.role, '') <> 'superadmin'
+    AND NOT EXISTS (SELECT 1 FROM public.users u WHERE u.admin_id = a.id)
+    ORDER BY a.id");
 $stmt_all->execute($params);
 $allIds = $stmt_all->fetchAll(PDO::FETCH_COLUMN);
 
@@ -275,7 +283,7 @@ include 'partials/notice.php';
                     $aid     = (string) $a['id'];
                     $isSuper = (string) $a['role'] === 'superadmin';
                     $expired = ($a['current_status'] ?? '') === 'expired';
-                    $locked  = am2_adm_undeletable($a, $_SESSION['admin_id']);
+                    [$locked, $lockParams] = am2_admin_undeletable($pdo, $a, $_SESSION['admin_id']);
                     $expiry  = $a['expired_at'] ? strtotime((string) $a['expired_at']) : null;
                 ?>
                     <tr data-row-id="<?= htmlspecialchars($aid, ENT_QUOTES, 'UTF-8') ?>"
@@ -283,7 +291,7 @@ include 'partials/notice.php';
 
                         <td data-cell="select" data-label="<?= e('tbl.select') ?>" class="w-10 px-4 align-middle lg:ps-5">
                             <input type="checkbox" data-select
-                                   <?= $locked ? 'disabled title="' . e($locked) . '"' : '' ?>
+                                   <?= $locked ? 'disabled title="' . e($locked, $lockParams) . '"' : '' ?>
                                    aria-label="<?= e('adm.select_account', ['name' => (string) $a['username']]) ?>"
                                    class="h-4 w-4 cursor-pointer rounded border-edge-strong text-brand
                                           focus:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-30">
@@ -412,7 +420,7 @@ include 'partials/notice.php';
                                 <?php endif; ?>
 
                                 <?php if ($locked): ?>
-                                    <span title="<?= e($locked) ?>"
+                                    <span title="<?= e($locked, $lockParams) ?>"
                                           class="grid h-8 w-8 place-items-center rounded-control border border-edge
                                                  text-ink-subtle opacity-40">
                                         <?= am2_icon('lock', 'h-3.5 w-3.5') ?>
@@ -688,6 +696,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         'one'       => t('adm.scope_one'),
         'many'      => t('adm.scope_many'),
         'done'      => t('adm.bulk_done'),
+        'unconfirmed' => t('adm.delete_unconfirmed'),
         'del'       => t('adm.bulk_delete_title'),
         'prompt'    => t('adm.bulk_delete_prompt'),
     ], JSON_UNESCAPED_UNICODE) ?>;
@@ -809,7 +818,9 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
         const csrf = document.querySelector('input[name="_csrf"]').value;
         let ok = 0;
         const failed = [];
+        const reasons = new Set();
         for (const id of scope.ids) {
+            let reason = T.unconfirmed;
             const cell = table?.querySelector(`tr[data-row-id="${CSS.escape(id)}"] [data-row-result]`);
             if (cell) { cell.textContent = '·'; cell.className = 'w-3 font-mono text-xs text-ink-subtle'; }
             try {
@@ -818,11 +829,15 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
                 body.append('delete_admin_id', id);
                 body.append('ajax', '1');
                 const r = await (await fetch(location.pathname, { method: 'POST', body })).json();
-                if (!r || r.success === false) throw new Error(r?.msg || '');
+                if (r?.success !== true) {
+                    reason = typeof r?.msg === 'string' && r.msg.trim() ? r.msg : T.unconfirmed;
+                    throw new Error();
+                }
                 ok += 1;
                 if (cell) { cell.textContent = '✓'; cell.className = 'w-3 font-mono text-xs text-ok'; }
             } catch {
                 failed.push(id);
+                reasons.add(reason);
                 if (cell) { cell.textContent = '✕'; cell.className = 'w-3 font-mono text-xs text-bad'; }
             }
         }
@@ -836,7 +851,7 @@ $btnBrand = 'h-11 rounded-control bg-brand px-4 font-mono text-[11px] font-semib
          * no trace of it. The reload can stay as quick as it likes now.
          */
         window.AM2?.handoff(
-            T.done.replace(':ok', String(ok)).replace(':failed', String(failed.length)),
+            [T.done.replace(':ok', String(ok)).replace(':failed', String(failed.length)), ...reasons].join(' '),
             failed.length === 0);
         window.location.reload();
     });
