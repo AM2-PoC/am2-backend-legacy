@@ -340,12 +340,12 @@ test('an endpoint that only ever answers JSON never redirects', () => {
     }
 });
 
-test('the admin delete backstop never reports success when no row was deleted', () => {
-    const api = read('WebAdmin/api_admin_panel.php');
-    assert.match(api, /\$stmtDelete->rowCount\(\)\s*!==\s*1/,
-        'conditional admin delete can report success after deleting zero rows');
-    assert.match(api, /rowCount\(\)[\s\S]*success'\s*=>\s*false/,
-        'zero-row delete does not return a safe refusal');
+test('both admin endpoints use the shared conditional delete backstop', () => {
+    // Zero-row and role-race behavior is exercised by admin-delete-guards.test.php.
+    for (const path of ['WebAdmin/admin_panel.php', 'WebAdmin/api_admin_panel.php']) {
+        assert.match(read(path), /am2_admin_delete\(/,
+            `${path} bypasses the shared delete backstop`);
+    }
 });
 
 test('the public entry check cannot be spoofed by a path suffix', () => {

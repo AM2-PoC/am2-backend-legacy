@@ -66,16 +66,26 @@ function setupTable(table) {
     const state = { ids: new Set(), all: false, anchor: null };
 
     const rows = () => [...table.querySelectorAll('tr[data-row-id]')];
+    const selectable = (tr) => {
+        const box = tr.querySelector('[data-select]');
+        return !!box && !box.disabled;
+    };
+    const selectableRows = () => rows().filter(selectable);
+    const matchingIds = () => {
+        const blocked = new Set(rows().filter((tr) => !selectable(tr)).map((tr) => tr.dataset.rowId));
+        return (table.dataset.allIds || '').split(' ').filter((id) => id && !blocked.has(id));
+    };
 
     const bar = document.querySelector('[data-bulk-bar]');
     const offer = document.querySelector('[data-select-all-matching]');
-    const total = () => Number(table.dataset.total || 0);
 
-    const selected = () => (state.all ? total() : state.ids.size);
+    const selected = () => (state.all ? matchingIds().length : state.ids.size);
 
     function paint() {
+        const eligible = selectableRows();
         for (const tr of rows()) {
-            const on = state.all || state.ids.has(tr.dataset.rowId);
+            if (!selectable(tr)) state.ids.delete(tr.dataset.rowId);
+            const on = selectable(tr) && (state.all || state.ids.has(tr.dataset.rowId));
             tr.classList.toggle('am2-row-selected', on);
             const box = tr.querySelector('[data-select]');
             if (box) box.checked = on;
@@ -97,20 +107,21 @@ function setupTable(table) {
 
         const pageBox = table.querySelector('[data-select-page]');
         if (pageBox) {
-            const onPage = rows().filter((tr) => state.ids.has(tr.dataset.rowId)).length;
-            pageBox.checked = state.all || (rows().length > 0 && onPage === rows().length);
-            pageBox.indeterminate = !state.all && onPage > 0 && onPage < rows().length;
+            const onPage = eligible.filter((tr) => state.ids.has(tr.dataset.rowId)).length;
+            pageBox.checked = eligible.length > 0 && (state.all || onPage === eligible.length);
+            pageBox.indeterminate = !state.all && onPage > 0 && onPage < eligible.length;
         }
 
         if (offer) {
             offer.hidden = state.all
-                || rows().length === 0
-                || state.ids.size !== rows().length
-                || total() <= rows().length;
+                || eligible.length === 0
+                || state.ids.size !== eligible.length
+                || matchingIds().length <= eligible.length;
         }
     }
 
     function toggleRow(id, on) {
+        if (!selectableRows().some((tr) => tr.dataset.rowId === id)) return;
         state.all = false;
         if (on) state.ids.add(id); else state.ids.delete(id);
         paint();
@@ -126,13 +137,16 @@ function setupTable(table) {
         const box = e.target.closest('[data-select]');
         if (box) {
             const tr = box.closest('tr[data-row-id]');
+            if (!tr || !selectable(tr)) { paint(); return; }
             const list = rows();
             const index = list.indexOf(tr);
 
             if (e.shiftKey && state.anchor !== null) {
                 const [from, to] = [state.anchor, index].sort((a, b) => a - b);
                 state.all = false;
-                for (let i = from; i <= to; i += 1) state.ids.add(list[i].dataset.rowId);
+                for (let i = from; i <= to; i += 1) {
+                    if (selectable(list[i])) state.ids.add(list[i].dataset.rowId);
+                }
                 paint();
             } else {
                 toggleRow(tr.dataset.rowId, box.checked);
@@ -144,7 +158,7 @@ function setupTable(table) {
         const pageBox = e.target.closest('[data-select-page]');
         if (pageBox) {
             state.all = false;
-            if (pageBox.checked) rows().forEach((tr) => state.ids.add(tr.dataset.rowId));
+            if (pageBox.checked) selectableRows().forEach((tr) => state.ids.add(tr.dataset.rowId));
             else state.ids.clear();
             paint();
             return;
@@ -159,9 +173,9 @@ function setupTable(table) {
      * nothing about the three that failed.
      */
     async function runBulk(btn) {
-
+        paint();
         const ids = state.all
-            ? (table.dataset.allIds || '').split(' ').filter(Boolean)
+            ? matchingIds()
             : [...state.ids];
         if (!ids.length) return;
 

@@ -263,6 +263,9 @@ return [
 
     'msg.relay_unconfirmed' => 'Saved, but the relay did not confirm. The unit may still be connected — check Livetrack.',
     'adm.locked_owns_units' => 'This admin still owns :count unit(s). Move or remove them first.',
+    'adm.locked_references' => 'This admin is still referenced by other records. Review and reassign those records before deleting.',
+    'adm.delete_changed' => 'This admin no longer exists or is now protected. Refresh the list and review the account before deleting.',
+    'adm.delete_unconfirmed' => 'Deletion could not be confirmed. Refresh the list before trying again.',
     'adm.username' => 'Username',
     'adm.password' => 'Password',
     'adm.password_required' => 'Required for a new account.',

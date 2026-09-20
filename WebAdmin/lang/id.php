@@ -262,6 +262,9 @@ return [
 
     'msg.relay_unconfirmed' => 'Tersimpan, tetapi relay tidak mengonfirmasi. Unit mungkin masih tersambung — periksa Livetrack.',
     'adm.locked_owns_units' => 'Admin ini masih memiliki :count unit. Pindahkan atau hapus unitnya lebih dulu.',
+    'adm.locked_references' => 'Admin ini masih dirujuk oleh data lain. Periksa dan alihkan data tersebut sebelum menghapus.',
+    'adm.delete_changed' => 'Admin ini sudah tidak ada atau kini dilindungi. Muat ulang daftar dan periksa akunnya sebelum menghapus.',
+    'adm.delete_unconfirmed' => 'Penghapusan belum dapat dikonfirmasi. Muat ulang daftar sebelum mencoba lagi.',
     'adm.username' => 'Username',
     'adm.password' => 'Password',
     'adm.password_required' => 'Wajib diisi untuk akun baru.',

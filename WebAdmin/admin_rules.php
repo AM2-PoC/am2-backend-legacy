@@ -20,4 +20,21 @@ if (!function_exists('am2_admin_undeletable')) {
 
         return ['', []];
     }
+
+    // Called only after the policy check; SQL rechecks mutable role and identity.
+    function am2_admin_delete(PDO $pdo, array $target, int $my_id): array
+    {
+        try {
+            $stmt = $pdo->prepare(
+                "DELETE FROM public.admin
+                 WHERE id = ? AND id <> ? AND id <> 1 AND COALESCE(role, '') <> 'superadmin'"
+            );
+            $stmt->execute([(int) $target['id'], $my_id]);
+            return $stmt->rowCount() === 1 ? ['', []] : ['adm.delete_changed', []];
+        } catch (PDOException $e) {
+            if ((string) $e->getCode() !== '23503') throw $e;
+            [$why, $params] = am2_admin_undeletable($pdo, $target, $my_id);
+            return $why !== '' ? [$why, $params] : ['adm.locked_references', []];
+        }
+    }
 }

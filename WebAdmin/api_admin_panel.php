@@ -96,30 +96,10 @@ elseif ($method == 'POST') {
                 if ($why !== '') {
                     echo json_encode(['success' => false, 'message' => t($why, $why_params)]);
                 } else {
-                    // Reassert immutable targets and self-protection in SQL so
-                    // a policy/query race cannot turn a refusal into deletion.
-                    $me = (int) ($_SESSION['admin_id'] ?? 0);
-                    try {
-                        $stmtDelete = $pdo->prepare(
-                            "DELETE FROM public.admin
-                             WHERE id = ? AND id <> ? AND id <> 1 AND role <> 'superadmin'"
-                        );
-                        $stmtDelete->execute([$id, $me]);
-                        if ($stmtDelete->rowCount() !== 1) {
-                            echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
-                        } else {
-                            echo json_encode(['success' => true, 'message' => 'Admin deleted']);
-                        }
-                    } catch (PDOException $e) {
-
-                        if (($e->getCode() ?? '') === '23503') {
-                            [$why2, $why2p] = am2_admin_undeletable($pdo, $target, $me);
-                            echo json_encode(['success' => false,
-                                'message' => t($why2 !== '' ? $why2 : 'adm.locked_owns_units', $why2p)]);
-                        } else {
-                            throw $e;
-                        }
-                    }
+                    [$why, $why_params] = am2_admin_delete($pdo, $target, (int) ($_SESSION['admin_id'] ?? 0));
+                    echo json_encode($why !== ''
+                        ? ['success' => false, 'message' => t($why, $why_params)]
+                        : ['success' => true, 'message' => t('msg.admin_deleted')]);
                 }
             }
         } catch (PDOException $e) {
