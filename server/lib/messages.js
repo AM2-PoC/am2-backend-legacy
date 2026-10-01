@@ -2,6 +2,8 @@
 module.exports = Object.freeze({
     /* The credential changed while login was in flight. */
     AUTH_STATE_CHANGED: 'Status login berubah. Silakan masuk lagi.',
+    LOGIN_RETRY_LATER: 'Layanan login sedang sibuk. Silakan coba lagi.',
+    LOGIN_INVALID: 'Format permintaan login tidak valid.',
 
     NOT_A_CHANNEL_MEMBER: 'Bukan anggota channel ini',
 

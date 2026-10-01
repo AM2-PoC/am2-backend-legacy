@@ -28,7 +28,10 @@ const defer = () => {
 };
 const flush = async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); };
 
-function harness({ accept = false, queryGate = null, bcryptGate = null, commitGate = null } = {}) {
+function harness({
+    accept = false, queryGate = null, bcryptGate = null, commitGate = null,
+    poolFactory = null, realCommit = false,
+} = {}) {
     let now = 0;
     let sequence = 0;
     const timers = new Map();
@@ -103,7 +106,8 @@ function harness({ accept = false, queryGate = null, bcryptGate = null, commitGa
         admin_status: 'active', last_channel_id: 1, last_channel_name: 'Test room',
         last_channel_slug: 'test-room', current_device_id: null, force_logout: false,
     };
-    const pool = {
+    const defaultPool = {
+        async connect() { return { query: (...args) => this.query(...args), release() {} }; },
         async query(sql, params) {
             calls.query.push({ sql, params });
             if (/FROM public\.users u/.test(sql)) {
@@ -119,6 +123,7 @@ function harness({ accept = false, queryGate = null, bcryptGate = null, commitGa
             throw new Error(`Unexpected test SQL: ${sql}`);
         },
     };
+    const pool = poolFactory ? poolFactory(defaultPool, user) : defaultPool;
     const db = {
         pool,
         redisClient: {
@@ -147,13 +152,15 @@ function harness({ accept = false, queryGate = null, bcryptGate = null, commitGa
             async stopChannelVideo() { return false; }, async updateUserLocation() {},
         },
     });
+    const session = load('../../server/lib/login-session.js');
     const wss = attachProtocol({}, {
         async commitLoginSession(...args) {
             calls.commit.push(args);
+            if (realCommit) return session.commitLoginSession(...args);
             if (commitGate) await commitGate.promise;
             return rotatedToken;
         },
-        LoginSessionError: require('../../server/lib/login-session.js').LoginSessionError,
+        LoginSessionError: session.LoginSessionError,
     });
     return {
         calls, rejected, state, user,
@@ -186,6 +193,76 @@ function harness({ accept = false, queryGate = null, bcryptGate = null, commitGa
             now = until;
             await flush();
         },
+    };
+}
+
+// A transaction owns a private snapshot. Only COMMIT publishes it; destroying
+// its checked-out client discards it and rejects the actual pending query.
+function transactionalPool(defaultPool, user, { writeGate = null, afterWrite = () => {} } = {}) {
+    const original = {
+        deviceId: user.current_device_id, forceLogout: user.force_logout,
+        status: 'offline', isSpeaking: true,
+        tokens: [{ tokenHash: 'synthetic-token-hash', userId: user.id, deviceId: 'test-device' }],
+    };
+    let durable = structuredClone(original);
+    let staged = null;
+    let pending = null;
+    let destroyed = false;
+    let released = 0;
+    const sqlCalls = [];
+    const client = {
+        async query(input, params = []) {
+            const sql = typeof input === 'string' ? input : input.text;
+            params = typeof input === 'string' ? params : input.values || [];
+            assert.equal(destroyed, false, 'query continued on a destroyed transaction client');
+            const q = sql.replace(/\s+/g, ' ').trim();
+            sqlCalls.push(q);
+            if (q === 'BEGIN') { staged = structuredClone(durable); return { rows: [] }; }
+            if (q === 'COMMIT') { durable = structuredClone(staged); staged = null; return { rows: [] }; }
+            if (q === 'ROLLBACK') { staged = null; return { rows: [] }; }
+            if (/FROM public\.users.*FOR UPDATE/.test(q)) {
+                return { rows: [{ current_device_id: staged.deviceId, force_logout: staged.forceLogout, password: user.password }] };
+            }
+            if (/SELECT user_id, device_id FROM public\.device_tokens/.test(q)) {
+                const found = staged.tokens.find((item) => item.tokenHash === params[0]);
+                return { rows: found ? [{ user_id: found.userId, device_id: found.deviceId }] : [] };
+            }
+            if (/DELETE FROM public\.device_tokens/.test(q)) {
+                staged.tokens = staged.tokens.filter((item) => /token_hash = \$1/.test(q)
+                    ? item.tokenHash !== params[0] : item.userId !== params[0] || item.deviceId !== params[1]);
+                return { rows: [] };
+            }
+            if (/INSERT INTO public\.device_tokens/.test(q)) {
+                staged.tokens.push({ tokenHash: params[0], userId: params[1], deviceId: params[2] });
+                return { rows: [] };
+            }
+            if (/UPDATE public\.users SET force_logout = FALSE/.test(q)) {
+                Object.assign(staged, { deviceId: params[0], forceLogout: false, status: 'online', isSpeaking: false });
+                afterWrite();
+                if (writeGate) {
+                    await new Promise((resolve, reject) => {
+                        pending = reject;
+                        writeGate.promise.then(resolve);
+                    }).finally(() => { pending = null; });
+                }
+                return { rows: [] };
+            }
+            if (defaultPool) return defaultPool.query(sql, params);
+            throw new Error(`Unexpected transactional SQL: ${q}`);
+        },
+        release(destroy = false) {
+            released += 1;
+            if (destroy) {
+                destroyed = true;
+                staged = null;
+                pending?.(new Error('synthetic connection destroyed'));
+            }
+        },
+    };
+    return {
+        pool: { query: (...args) => client.query(...args), async connect() { return client; } },
+        original, snapshot: () => structuredClone(durable), staged: () => structuredClone(staged),
+        sqlCalls, released: () => released,
     };
 }
 
@@ -336,6 +413,27 @@ test('identity retry budget survives new sockets and resets after its bounded wi
     assert.equal(next.inbox.at(-1).data.code, 'credential_rejected');
 });
 
+for (const firstAlias of ['TEST_UNIT', 'Test unit']) {
+    test(`ID/name aliases share the failed-password budget before bcrypt (${firstAlias} first)`, async () => {
+        const h = harness();
+        const otherAlias = firstAlias === h.user.id ? h.user.name : h.user.id;
+        for (let i = 0; i < IDENTITY_ATTEMPTS; i += 1) {
+            const ws = h.socket();
+            await h.frame(ws, login({ username: firstAlias }));
+            await h.idle();
+            assert.equal(ws.inbox.at(-1)?.data.code, 'credential_rejected');
+        }
+        assert.equal(h.calls.bcrypt.length, IDENTITY_ATTEMPTS);
+        const ws = h.socket();
+        await h.frame(ws, login({ username: otherAlias }));
+        await h.idle();
+        assert.equal(h.calls.bcrypt.length, IDENTITY_ATTEMPTS,
+            'account ID/name alias bypassed the failed-password budget and reached bcrypt');
+        assert.equal(ws.inbox.at(-1)?.data.code, 'server_unavailable');
+        assert.equal(h.calls.commit.length, 0);
+    });
+}
+
 test('identity limiter capacity refuses unseen identities instead of evicting live retry budgets', async () => {
     const h = harness();
     for (let i = 0; i < IDENTITY_BUCKETS; i += 1) {
@@ -381,6 +479,158 @@ for (const stage of ['query', 'commit']) {
             assert.equal(h.calls.bcrypt.length, 0, 'expired login continued expensive authentication');
             assert.equal(h.calls.commit.length, 0, 'expired lookup minted a device token');
         }
+    });
+}
+
+test('beforeCommit cancellation after token writes rolls back the real login helper', async () => {
+    const cancellation = new Error('synthetic login cancelled');
+    let viable = true;
+    let checks = 0;
+    const db = transactionalPool(null, { id: 'TEST_UNIT', current_device_id: null, force_logout: false, password: 'synthetic-hash' }, {
+        afterWrite: () => { viable = false; },
+    });
+    await assert.rejects(require('../../server/lib/login-session.js').commitLoginSession(db.pool, {
+        userId: 'TEST_UNIT', deviceId: 'new-device',
+        sourceTokenHash: 'synthetic-token-hash', sourceDeviceId: 'test-device',
+        beforeIssue: () => { assert.equal(viable, true); },
+        beforeCommit: () => {
+            checks += 1;
+            assert.equal(db.staged().tokens.length, 1, 'guard ran before token writes');
+            assert.equal(db.staged().tokens[0].deviceId, 'new-device');
+            if (!viable) throw cancellation;
+        },
+    }), (error) => error === cancellation,
+    'cancelled login committed instead of checking viability immediately before COMMIT');
+    assert.equal(checks, 1);
+    assert.equal(db.sqlCalls.includes('COMMIT'), false, 'COMMIT was sent after cancellation');
+    assert.ok(db.sqlCalls.includes('ROLLBACK'));
+    assert.deepEqual(db.snapshot(), db.original, 'rollback lost the old token or changed durable user state');
+    assert.equal(db.released(), 1);
+});
+
+for (const reason of ['close', 'deadline']) {
+    test(`${reason} during token/session writes preserves the old resumable token and durable state`, async () => {
+        const writeGate = defer();
+        let reachedWrite = false;
+        let db;
+        const h = harness({
+            accept: true, realCommit: true,
+            poolFactory: (defaultPool, user) => {
+                db = transactionalPool(defaultPool, user, { writeGate, afterWrite: () => { reachedWrite = true; } });
+                return db.pool;
+            },
+        });
+        const ws = h.socket();
+        try {
+            await h.frame(ws, login({ token, current_device_id: 'new-device' }));
+            for (let i = 0; i < 5 && !reachedWrite; i += 1) await flush();
+            assert.equal(reachedWrite, true, 'test never reached the pre-COMMIT write gate');
+            assert.equal(db.staged()?.tokens[0]?.deviceId, 'new-device', 'test never reached token writes');
+            assert.deepEqual(db.snapshot(), db.original, 'uncommitted writes leaked into durable state');
+            if (reason === 'close') ws.close();
+            else await h.advance(LOGIN_DEADLINE_MS + 1);
+            writeGate.resolve();
+            await h.idle();
+            assert.equal(db.sqlCalls.includes('COMMIT'), false, 'cancelled transaction sent COMMIT after its token writes');
+            assert.deepEqual(db.snapshot(), db.original, 'cancelled login consumed the old token or published online state');
+            assert.equal(db.released(), 1, 'transaction connection was released more than once');
+            assert.equal(ws.sessionUser, null);
+            assert.equal(h.state.activeConnections.has('TEST_UNIT'), false);
+            assert.equal(ws.inbox.some((message) => message.type === 'login_success'), false);
+            assert.equal(h.calls.bcrypt.length, 0, 'native token resume reached bcrypt');
+            assert.equal(h.rejected.length, 0);
+        } finally { writeGate.resolve(); await h.idle(); }
+    });
+}
+
+// Pending work belongs to the checked-out connection, not to a Promise.race.
+// Only release(true) cancels it; normal release does not finish a stuck query.
+function hangingLookupPool(defaultPool) {
+    const clients = [];
+    const blocked = new Set();
+    let destroyed = 0;
+    let peak = 0;
+    let started = 0;
+    const pool = {
+        async connect() {
+            const client = {
+                dead: false, releases: 0,
+                async query(input, params = []) {
+                    assert.equal(this.dead, false, 'query ran on a destroyed login connection');
+                    assert.equal(blocked.has(this), false, 'a second query overlapped the hanging DB operation');
+                    const sql = typeof input === 'string' ? input : input.text;
+                    params = typeof input === 'string' ? params : input.values || [];
+                    if (/FROM public\.users u/.test(sql) && started++ < RELAY_CONCURRENCY) {
+                        return new Promise((resolve, reject) => {
+                            this.cancel = () => { blocked.delete(this); reject(new Error('synthetic connection destroyed')); };
+                            blocked.add(this);
+                            peak = Math.max(peak, blocked.size);
+                        });
+                    }
+                    return defaultPool.query(sql, params);
+                },
+                release(destroy = false) {
+                    this.releases += 1;
+                    if (destroy && !this.dead) {
+                        this.dead = true;
+                        destroyed += 1;
+                        this.cancel?.();
+                    }
+                },
+            };
+            clients.push(client);
+            return client;
+        },
+        // Model pg pool.query checking out a connection and returning it only
+        // after the real query settles; no cancellation magic in the fixture.
+        async query(...args) {
+            const client = await this.connect();
+            try { return await client.query(...args); }
+            finally { client.release(); }
+        },
+    };
+    return {
+        pool, clients, active: () => blocked.size, peak: () => peak, destroyed: () => destroyed,
+        cleanup() { for (const client of blocked) client.release(true); },
+    };
+}
+
+for (const reason of ['close', 'deadline']) {
+    test(`${reason} cancels hanging DB resources before freeing relay admission and a subsequent login recovers`, async () => {
+        let db;
+        const h = harness({ accept: true, poolFactory: (defaultPool) => {
+            db = hangingLookupPool(defaultPool);
+            return db.pool;
+        } });
+        const sockets = [];
+        try {
+            for (let i = 0; i < RELAY_CONCURRENCY; i += 1) {
+                const ws = h.socket();
+                sockets.push(ws);
+                await h.frame(ws, login({ username: `STUCK_UNIT_${i}` }));
+            }
+            assert.equal(db.active(), RELAY_CONCURRENCY, 'test did not occupy the actual DB resources');
+            const refused = h.socket();
+            await h.frame(refused, login({ username: 'WHILE_BUSY' }));
+            assert.equal(refused.inbox.at(-1)?.data.code, 'server_unavailable');
+            assert.equal(db.active(), RELAY_CONCURRENCY);
+            if (reason === 'close') { for (const ws of sockets) ws.close(); await flush(); }
+            else await h.advance(LOGIN_DEADLINE_MS + 1);
+            assert.equal(db.active(), 0, 'expired login only freed a counter; its database query is still running');
+            assert.equal(db.destroyed(), RELAY_CONCURRENCY, 'hung pg clients were not destroyed');
+            assert.ok(db.clients.slice(0, RELAY_CONCURRENCY).every((client) => client.releases === 1),
+                'cancelled client was released more than once');
+            await h.idle();
+            const recovered = h.socket();
+            await h.frame(recovered, login());
+            await h.idle();
+            assert.ok(recovered.inbox.some((message) => message.type === 'login_success'),
+                'cancelled work stranded the relay-wide admission budget');
+            assert.equal(db.peak(), RELAY_CONCURRENCY, 'new work overlapped uncancelled DB queries');
+            assert.equal(h.calls.bcrypt.length, 1, 'cancelled lookups reached bcrypt');
+            assert.ok(sockets.every((ws) => !ws.inbox.some((message) => message.type === 'login_success')));
+            assert.equal(h.rejected.length, 0);
+        } finally { db.cleanup(); await h.idle(); }
     });
 }
 

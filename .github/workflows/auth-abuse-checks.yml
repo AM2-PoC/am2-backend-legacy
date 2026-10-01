@@ -25,25 +25,7 @@ jobs:
           node-version: '22'
       - name: Credential-free relay behavior and unit regressions
         run: node --test tests/unit/*.test.mjs
-  origin-read-only:
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Single unauthenticated origin GET from external runner
-        shell: bash
-        run: |
-          set -euo pipefail
-          origin=$(getent ahostsv4 apiapi.am2-poc.com | cut -d ' ' -f 1 | sort -u)
-          test "$(printf '%s\n' "$origin" | wc -l)" -eq 1
-          curl --silent --show-error --max-time 15 --resolve "webadmin.am2-poc.com:443:$origin" \
-            --dump-header "$RUNNER_TEMP/origin-headers" --output /dev/null \
-            --write-out 'direct-origin status=%{http_code}\n' https://webadmin.am2-poc.com/login.php
-          python3 - "$RUNNER_TEMP/origin-headers" <<'PY'
-          import pathlib, sys
-          for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
-              if line.lower().startswith(('http/', 'server:', 'cf-ray:', 'cf-mitigated:')):
-                  print(line)
-          PY
+  # Origin reachability is an operator probe, never a recurring PR test.
   edge:
     runs-on: ubuntu-latest
     timeout-minutes: 5
