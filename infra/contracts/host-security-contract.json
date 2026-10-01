@@ -10,6 +10,7 @@
     {"id":"nginx-api","source":"infra/nginx/am2-api.conf","target":"/etc/nginx/sites-available/am2-api.conf","mode":"0644","consumer":"nginx"},
     {"id":"nginx-api-staging","source":"infra/nginx/am2-api-staging.conf","target":"/etc/nginx/sites-available/am2-api-staging.conf","mode":"0644","consumer":"nginx"},
     {"id":"nginx-cloudflare-realip","source":"infra/nginx/am2-cloudflare-realip.conf","target":"/etc/nginx/snippets/am2-cloudflare-realip.conf","mode":"0644","consumer":"nginx"},
+    {"id":"nginx-maps-and-limits","source":"infra/nginx/am2-maps-and-limits.conf","target":"/etc/nginx/conf.d/am2-maps-and-limits.conf","mode":"0644","consumer":"nginx"},
     {"id":"nginx-proxy-common","source":"infra/nginx/am2-proxy-common.conf","target":"/etc/nginx/snippets/am2-proxy-common.conf","mode":"0644","consumer":"nginx"},
     {"id":"nginx-webadmin-assets","source":"infra/nginx/am2-webadmin-assets.conf","target":"/etc/nginx/snippets/am2-webadmin-assets.conf","mode":"0644","consumer":"nginx"},
     {"id":"nginx-webadmin-dev-deny","source":"infra/nginx/am2-webadmin-dev-deny.conf","target":"/etc/nginx/snippets/am2-webadmin-dev-deny.conf","mode":"0644","consumer":"nginx"},

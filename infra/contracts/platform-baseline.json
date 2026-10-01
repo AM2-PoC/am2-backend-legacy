@@ -3,7 +3,7 @@
   "os": {"id": "ubuntu", "version": "26.04", "codename": "resolute"},
   "architectures": ["amd64"],
   "php": {
-    "version": "8.5.10",
+    "version": "8.5.11",
     "sapi": "cli",
     "source": "shivammathur/setup-php",
     "extensions": ["ctype", "curl", "dom", "fileinfo", "filter", "hash", "mbstring", "openssl", "pcre", "pdo", "pdo_pgsql", "pgsql", "session", "tokenizer", "xml", "zip"]

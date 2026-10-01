@@ -55,6 +55,13 @@ function shouldSamplePttFrame(frameSequence) {
 
 const DOWNLINK_VIDEO_BUDGET_BYTES = 24_000;
 
+const LOGIN_WINDOW_MS = 60_000;
+const LOGIN_SOCKET_ATTEMPTS = 5;
+const LOGIN_IDENTITY_ATTEMPTS = 10;
+const LOGIN_CONCURRENCY = 8;
+const LOGIN_IDENTITY_BUCKETS = 1024;
+const LOGIN_DEADLINE_MS = 30_000;
+
 const linkStatsEnabled = process.env.AM2_LINK_STATS === '1';
 const FRAME_INTERVAL_MS = 20;
 const LINK_REPORT_INTERVAL_MS = 15000;
@@ -161,6 +168,11 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         throw new TypeError('attachProtocol requires login-session dependencies');
     }
     const wss = new WebSocket.Server({ server });
+    const loginIdentities = new Map();
+    const loginAccounts = new Map();
+    const committingUsers = new Set();
+    let activeLogins = 0;
+    let loginGeneration = 0;
 
     const interval = setInterval(() => {
         wss.clients.forEach((ws) => {
@@ -209,6 +221,30 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         ws.clientVersionCode = null;
         ws.clientVersionName = null;
 
+        let loginClient = null;
+        const loginClientError = () => releaseLoginClient(true);
+        const releaseLoginClient = (destroy = false) => {
+            if (!loginClient) return;
+            const client = loginClient;
+            loginClient = null;
+            client.removeListener('error', loginClientError);
+            client.release(destroy);
+        };
+        let loginBusy = false;
+        let loginClosed = false;
+        let loginAttempts = 0;
+        let loginWindowStarted = Date.now();
+        const loginExpiresAt = Date.now() + LOGIN_DEADLINE_MS;
+        const loginViable = () => !loginClosed && ws.readyState === WebSocket.OPEN
+            && !ws.sessionUser && Date.now() < loginExpiresAt;
+        const loginDeadline = setTimeout(() => {
+            if (ws.sessionUser) return;
+            loginClosed = true;
+            releaseLoginClient(true);
+            ws.terminate();
+        }, LOGIN_DEADLINE_MS);
+        if (loginDeadline.unref) loginDeadline.unref();
+
         ws.on('pong', () => {
             ws.isAlive = true;
 
@@ -219,6 +255,8 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         });
 
         ws.on('message', async (message, isBinary) => {
+            try {
+            if (ws.readyState !== WebSocket.OPEN || loginClosed) return;
             if (isBinary) {
                 if (!ws.sessionUser) return;
                 const binaryType = message[0];
@@ -313,31 +351,82 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
             let payload;
             try { payload = JSON.parse(message); } catch (e) { return; }
-            const { type, data } = payload;
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+                || typeof payload.type !== 'string') return;
+            const { type } = payload;
+            if (type === 'app_login' && ws.sessionUser) return;
+            // Older control frames omit data; explicit null/arrays are not objects.
+            const data = payload.data === undefined && type !== 'app_login' ? {} : payload.data;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return;
 
             switch (type) {
-                case 'app_login':
-                    const cleanIdentity = data.username ? data.username.trim() : "";
-                    const providedDeviceId = data.current_device_id ? data.current_device_id.trim() : null;
-                    /*
-                     * Which build is on the other end.
-                     *
-                     * The relay recorded a username and nothing about the
-                     * software, so "is that unit running the fix" had no answer
-                     * here -- and was answered instead from an APK signer
-                     * digest, which names a keystore rather than a commit, and
-                     * gave the wrong answer for an entire round of work.
-                     *
-                     * Every handset already in the field predates this field, so
-                     * absence is normal and is recorded as unknown.
-                     */
-                    ws.clientVersionCode = Number.isSafeInteger(data.client_version_code)
-                        && data.client_version_code > 0
-                        ? data.client_version_code
-                        : null;
-                    ws.clientVersionName = versionLabel(data.client_version_name);
+                case 'app_login': {
+                    if (!loginViable()) return;
+                    if (typeof data.username !== 'string' || Buffer.byteLength(data.username) > 512
+                        || !data.username.trim()
+                        || (data.password != null && (typeof data.password !== 'string' || Buffer.byteLength(data.password) > 1024))
+                        || (data.token != null && (typeof data.token !== 'string' || Buffer.byteLength(data.token) > 64
+                            || (data.token !== '' && !/^[0-9a-f]{64}$/.test(data.token))))
+                        || (data.current_device_id != null && (typeof data.current_device_id !== 'string'
+                            || Buffer.byteLength(data.current_device_id) > 256))
+                        || (!data.token && !(typeof data.password === 'string' && data.password.trim()))) {
+                        ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_INVALID, code: 'server_unavailable' } }));
+                        return;
+                    }
+                    const cleanIdentity = data.username.trim();
+                    const providedDeviceId = data.current_device_id?.trim() || null;
+                    const presentedToken = data.token || '';
+                    const nowMs = Date.now();
+                    if (nowMs - loginWindowStarted >= LOGIN_WINDOW_MS) {
+                        loginAttempts = 0;
+                        loginWindowStarted = nowMs;
+                    }
+                    const identity = cleanIdentity.toLowerCase();
+                    let bucket = loginIdentities.get(identity);
+                    if (bucket && nowMs - bucket.started >= LOGIN_WINDOW_MS) {
+                        loginIdentities.delete(identity);
+                        bucket = null;
+                    }
+                    if (!bucket && loginIdentities.size >= LOGIN_IDENTITY_BUCKETS) {
+                        for (const [key, value] of loginIdentities) {
+                            if (nowMs - value.started >= LOGIN_WINDOW_MS) loginIdentities.delete(key);
+                        }
+                    }
+                    if (loginBusy || activeLogins >= LOGIN_CONCURRENCY
+                        || loginAttempts >= LOGIN_SOCKET_ATTEMPTS
+                        || (bucket && bucket.attempts >= LOGIN_IDENTITY_ATTEMPTS)
+                        || (!bucket && loginIdentities.size >= LOGIN_IDENTITY_BUCKETS)) {
+                        ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                        return;
+                    }
+                    if (!bucket) {
+                        bucket = { started: nowMs, attempts: 0 };
+                        loginIdentities.set(identity, bucket);
+                    }
+                    bucket.attempts += 1;
+                    loginAttempts += 1;
+                    loginBusy = true;
+                    activeLogins += 1;
+                    let committingUser = null;
+                    const attemptGeneration = loginGeneration;
+                    // Cancellation owns the checked-out client, not only a counter.
+                    const workDeadline = setTimeout(() => releaseLoginClient(true),
+                        Math.max(0, loginExpiresAt - Date.now()));
+                    if (workDeadline.unref) workDeadline.unref();
+                    let client;
+                    const authPool = {
+                        query: (...args) => {
+                            if (!client || loginClient !== client) throw new Error('login connection closed');
+                            return client.query(...args);
+                        },
+                        connect: async () => ({ query: (...args) => authPool.query(...args), release() {} }),
+                    };
                     try {
-                        const res = await pool.query(`
+                        client = await pool.connect();
+                        loginClient = client;
+                        client.on('error', loginClientError);
+                        if (!loginViable()) return;
+                        const res = await authPool.query(`
                             SELECT u.*, a.status as admin_status, a.expired_at as admin_expired_at,
                                    a.can_manage_maps, a.can_manage_p2p, a.can_manage_video,
                                    p.enable_maps, p.enable_p2p, p.enable_ptt_video, p.duplex_mode,
@@ -349,23 +438,52 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             WHERE LOWER(u.id) = LOWER($1) OR UPPER(u.name) = UPPER($1)
                             LIMIT 1
                         `, [cleanIdentity]);
+                        if (!loginViable()) return;
 
                         if (res.rows.length > 0) {
                             const user = res.rows[0];
                             const uid = String(user.id);
+                            const accountKey = uid;
+                            let account = loginAccounts.get(accountKey);
+                            if (account && nowMs - account.started >= LOGIN_WINDOW_MS) {
+                                loginAccounts.delete(accountKey);
+                                account = null;
+                            }
+                            if (!account && loginAccounts.size >= LOGIN_IDENTITY_BUCKETS) {
+                                for (const [key, value] of loginAccounts) {
+                                    if (nowMs - value.started >= LOGIN_WINDOW_MS) loginAccounts.delete(key);
+                                }
+                            }
+                            if ((account && account.attempts >= LOGIN_IDENTITY_ATTEMPTS)
+                                || (!account && loginAccounts.size >= LOGIN_IDENTITY_BUCKETS)) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                            }
+                            if (!account) {
+                                account = { started: nowMs, attempts: 0 };
+                                loginAccounts.set(accountKey, account);
+                            }
+                            account.attempts += 1;
+                            const priorConnection = activeConnections.get(uid);
+                            if (priorConnection && priorConnection.loginGeneration > attemptGeneration) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                            }
 
-                            const presentedToken = typeof data.token === 'string' ? data.token.trim() : '';
                             let authenticatedToken = null;
                             if (presentedToken) {
-                                authenticatedToken = await userForDeviceToken(presentedToken);
+                                authenticatedToken = await userForDeviceToken(presentedToken, authPool);
+                                if (!loginViable()) return;
                                 if (authenticatedToken === null || authenticatedToken.userId !== uid) {
                                     return ws.send(JSON.stringify({
                                         type: 'login_error',
                                         data: { message: "Sesi perangkat ini sudah dicabut. Masuk lagi dengan kata sandi.", code: 'token_revoked' },
                                     }));
                                 }
-                            } else if (!(await bcrypt.compare(data.password?.trim() || "", user.password))) {
-                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password", code: 'credential_rejected' } }));
+                            } else {
+                                const passwordAccepted = await bcrypt.compare(data.password.trim(), user.password);
+                                if (!loginViable()) return;
+                                if (!passwordAccepted) {
+                                    return ws.send(JSON.stringify({ type: 'login_error', data: { message: "Incorrect password", code: 'credential_rejected' } }));
+                                }
                             }
 
                             const now = new Date();
@@ -383,10 +501,11 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }));
                             }
 
-                            const channelCheck = await pool.query(
+                            const channelCheck = await authPool.query(
                                 "SELECT 1 FROM public.user_channels WHERE user_id = $1 AND channel_id = $2",
                                 [uid, user.last_channel_id]
                             );
+                            if (!loginViable()) return;
 
                             if (channelCheck.rows.length === 0) {
                                 return ws.send(JSON.stringify({
@@ -395,8 +514,10 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }));
                             }
 
-                            if (activeConnections.has(uid)) {
-
+                            if (activeConnections.get(uid) !== priorConnection) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                            }
+                            if (priorConnection) {
                                 const isGracePeriod = pendingDisconnects.has(uid);
 
                                 if (!isGracePeriod && user.current_device_id && user.current_device_id !== providedDeviceId) {
@@ -405,31 +526,22 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                         data: { message: "This account is signed in on another device. Please sign out there first.", code: 'not_permitted' }
                                     }));
                                 }
-
-                                const existingWs = activeConnections.get(uid);
-                                if (existingWs !== ws) {
-
-                                    clearPtpSession(existingWs);
-                                    // Mencegah cleanup event 'close' menghapus session baru
-                                    markCloseCause(existingWs, 'session_replaced');
-                                    existingWs.sessionUser = null;
-                                    existingWs.terminate();
-                                }
                             }
 
-                            if (pendingDisconnects.has(uid)) {
-                                clearTimeout(pendingDisconnects.get(uid));
-                                pendingDisconnects.delete(uid);
-                                console.log(`[Re-entry] User ${uid} reconnected before the grace period ended.`);
+                            const channels = await authPool.query(`
+                                SELECT c.name as slug, c.display_name, uc.permission
+                                FROM public.channels c
+                                JOIN public.user_channels uc ON c.id = uc.channel_id
+                                WHERE uc.user_id = $1`, [uid]);
+                            if (!loginViable()) return;
+                            if (activeConnections.get(uid) !== priorConnection || committingUsers.has(uid)) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
                             }
-
-                            ws.currentChannelId = user.last_channel_id;
-                            ws.enable_maps = (user.enable_maps !== false) && (user.can_manage_maps !== false);
-                            ws.enable_p2p = (user.enable_p2p !== false) && (user.can_manage_p2p !== false);
-                            ws.enable_ptt_video = (user.enable_ptt_video === true) && (user.can_manage_video === true);
-                            ws.duplex_mode = user.duplex_mode || 'HALF DUPLEX';
-
-                            const deviceToken = await commitLoginSession(pool, {
+                            // Username/name aliases can resolve to the same account.
+                            // Do not let overlapping commits invalidate the winner's token.
+                            committingUsers.add(uid);
+                            committingUser = uid;
+                            const deviceToken = await commitLoginSession(authPool, {
                                 userId: uid,
                                 deviceId: providedDeviceId,
                                 expectedForceLogout: user.force_logout === true,
@@ -437,11 +549,53 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 expectedPasswordHash: presentedToken ? null : user.password,
                                 sourceTokenHash: authenticatedToken?.tokenHash ?? null,
                                 sourceDeviceId: authenticatedToken?.deviceId ?? null,
+                                beforeIssue: () => {
+                                    if (!loginViable() || activeConnections.get(uid) !== priorConnection) {
+                                        throw new Error('login no longer current');
+                                    }
+                                },
+                                beforeCommit: () => {
+                                    if (!loginViable() || activeConnections.get(uid) !== priorConnection) {
+                                        throw new Error('login no longer current');
+                                    }
+                                },
                             });
+                            if (!loginViable()) return;
+                            // No await from this guard through publication: stale work
+                            // must not mutate flags or evict a newer active connection.
+                            if (activeConnections.get(uid) !== priorConnection) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                            }
+                            if (priorConnection && priorConnection !== ws) {
+                                clearPtpSession(priorConnection);
+                                markCloseCause(priorConnection, 'session_replaced');
+                                priorConnection.sessionUser = null;
+                                priorConnection.terminate();
+                            }
+                            if (pendingDisconnects.has(uid)) {
+                                clearTimeout(pendingDisconnects.get(uid));
+                                pendingDisconnects.delete(uid);
+                                console.log(`[Re-entry] User ${uid} reconnected before the grace period ended.`);
+                            }
+                            ws.currentChannelId = user.last_channel_id;
+                            ws.enable_maps = (user.enable_maps !== false) && (user.can_manage_maps !== false);
+                            ws.enable_p2p = (user.enable_p2p !== false) && (user.can_manage_p2p !== false);
+                            ws.enable_ptt_video = (user.enable_ptt_video === true) && (user.can_manage_video === true);
+                            ws.duplex_mode = user.duplex_mode || 'HALF DUPLEX';
+                            // Native builds without version metadata remain compatible.
+                            ws.clientVersionCode = Number.isSafeInteger(data.client_version_code)
+                                && data.client_version_code > 0
+                                ? data.client_version_code
+                                : null;
+                            ws.clientVersionName = versionLabel(data.client_version_name);
                             ws.sessionUser = user;
                             ws.disconnectUserId = user.id;
+                            ws.loginGeneration = ++loginGeneration;
                             activeConnections.set(uid, ws);
-                            await createLog(uid, user.last_channel_id, 'LOGIN');
+                            clearTimeout(loginDeadline);
+                            // Successful authentication is recovery, not a failed retry.
+                            loginIdentities.delete(identity);
+                            loginAccounts.delete(accountKey);
                             console.log(
                                 `event=client_login user=${uid}`
                                 + ` client_version=${ws.clientVersionName || 'unknown'}`
@@ -465,14 +619,6 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                     : ''),
                             );
 
-                            if (data.latitude && data.longitude) await updateUserLocation(uid, data.latitude, data.longitude, data.accuracy, data.address);
-
-                            const channels = await pool.query(`
-                                SELECT c.name as slug, c.display_name, uc.permission
-                                FROM public.channels c
-                                JOIN public.user_channels uc ON c.id = uc.channel_id
-                                WHERE uc.user_id = $1`, [uid]);
-
                             /*
                              * commitLoginSession issued and stored this while it
                              * held the same users-row lock as force logout.
@@ -493,11 +639,13 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                     channels: channels.rows
                                 }
                             }));
+                            await createLog(uid, user.last_channel_id, 'LOGIN', authPool);
                         } else {
                             ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered", code: 'credential_rejected' } }));
                         }
                     } catch (err) {
-                        if (err.code === LoginSessionError.AUTH_STATE_CHANGED) {
+                        if (err?.code === LoginSessionError.AUTH_STATE_CHANGED) {
+                            if (!loginViable()) return;
                             return ws.send(JSON.stringify({
                                 type: 'login_error',
                                 data: {
@@ -514,10 +662,26 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                          * that erases its token over a timeout has to be
                          * reached physically to log in again.
                          */
-                        console.error("Login Error:", err.message);
+                        console.error("Login Error:", err?.message);
+                        if (!loginViable()) return;
                         ws.send(JSON.stringify({ type: 'login_error', data: { message: "Database Timeout / Connection Error", code: 'server_unavailable' } }));
+                    } finally {
+                        // Hold admission for the entire promise, even after close.
+                        if (committingUser !== null) committingUsers.delete(committingUser);
+                        clearTimeout(workDeadline);
+                        releaseLoginClient(!loginViable() && !ws.sessionUser);
+                        loginBusy = false;
+                        activeLogins -= 1;
+                    }
+                    // Optional location I/O must not retain an authentication slot.
+                    const loggedIn = ws.sessionUser;
+                    if (ws.readyState === WebSocket.OPEN && loggedIn
+                        && activeConnections.get(String(loggedIn.id)) === ws
+                        && data.latitude && data.longitude) {
+                        await updateUserLocation(loggedIn.id, data.latitude, data.longitude, data.accuracy, data.address);
                     }
                     break;
+                }
 
                 /*
                  * What VOX actually heard, from the handset that heard it.
@@ -1006,9 +1170,17 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     clearPtpSession(ws);
                     break;
             }
+            } catch (err) {
+                // EventEmitter does not observe rejected async listeners.
+                console.error('Protocol Message Error:', err?.message);
+            }
         });
 
         ws.on('close', async (code) => {
+            loginClosed = true;
+            clearTimeout(loginDeadline);
+            releaseLoginClient(true);
+            try {
             const user = ws.sessionUser;
             const room = ws.currentRoom;
 
@@ -1027,22 +1199,25 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                 await stopChannelVideo(ws, room);
 
                 const timeoutIdx = setTimeout(async () => {
+                    try {
                     if (activeConnections.get(uid) === ws) {
                         activeConnections.delete(uid);
                         pendingDisconnects.delete(uid);
                         clearPtpSession(ws);
-                        try {
                             await pool.query("UPDATE public.users SET status = 'offline', current_channel = NULL, current_device_id = NULL, is_speaking = false WHERE id = $1", [uid]);
                             await createLog(uid, ws.currentChannelId, 'LOGOUT');
                             if (room) {
                                 channelRooms.get(room)?.delete(ws);
                                 broadcastUsersInChannel(room);
                             }
-                        } catch (err) { console.error("Cleanup Error:", err.message); }
                     }
+                    } catch (err) { console.error("Cleanup Error:", err?.message); }
                 }, DISCONNECT_GRACE_PERIOD);
 
                 pendingDisconnects.set(uid, timeoutIdx);
+            }
+            } catch (err) {
+                console.error('Protocol Close Error:', err?.message);
             }
         });
 

@@ -5,7 +5,7 @@
     "webadmin_php_files": 46,
     "webadmin_tree_sha256": "9f915bc8ed1039a7a54ba04a1e9d8c4f4eef798993f17fdb0bf2a5cbcfdd934c",
     "relay_js_files": 15,
-    "relay_tree_sha256": "7b5fd27553d1eca52f2507f20f45a386ad80e9df0c14cc225c17b81d2b50e525"
+    "relay_tree_sha256": "790bf8b57f69f23b5a485a6571412a972b8efcc1673960bde5e6b57c476bd25c"
   },
   "direct_writes": [
     {
@@ -376,61 +376,61 @@
       "table": "public.users"
     },
     {
-      "site": "server/lib/login-session.js:62",
+      "site": "server/lib/login-session.js:63",
       "writer": "relay",
       "command": "DELETE",
       "table": "public.device_tokens"
     },
     {
-      "site": "server/lib/login-session.js:67",
+      "site": "server/lib/login-session.js:68",
       "writer": "relay",
       "command": "DELETE",
       "table": "public.device_tokens"
     },
     {
-      "site": "server/lib/login-session.js:71",
+      "site": "server/lib/login-session.js:72",
       "writer": "relay",
       "command": "INSERT",
       "table": "public.device_tokens"
     },
     {
-      "site": "server/lib/login-session.js:76",
+      "site": "server/lib/login-session.js:77",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:1035",
+      "site": "server/lib/protocol.js:1011",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:654",
+      "site": "server/lib/protocol.js:1028",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:765",
+      "site": "server/lib/protocol.js:1207",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:792",
+      "site": "server/lib/protocol.js:818",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:847",
+      "site": "server/lib/protocol.js:929",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:864",
+      "site": "server/lib/protocol.js:956",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"

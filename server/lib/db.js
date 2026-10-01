@@ -100,17 +100,17 @@ const { hashToken } = require('./device-tokens');
 
 const TOKEN_MAX_IDLE_DAYS = 90;
 
-const userForDeviceToken = async (token) => {
+const userForDeviceToken = async (token, queryPool = pool) => {
     if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) return null;
     const hash = hashToken(token);
-    const res = await pool.query(
+    const res = await queryPool.query(
         `SELECT user_id, device_id FROM public.device_tokens
           WHERE token_hash = $1
             AND last_used_at > CURRENT_TIMESTAMP - ($2 || ' days')::interval`,
         [hash, String(TOKEN_MAX_IDLE_DAYS)],
     );
     if (res.rows.length === 0) return null;
-    await pool.query(
+    await queryPool.query(
         'UPDATE public.device_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1',
         [hash],
     );
@@ -126,7 +126,7 @@ const startCleanup = () => {
     return setInterval(runCleanup, 86400000);
 };
 
-const createLog = async (userId, channelId, eventType) => {
+const createLog = async (userId, channelId, eventType, queryPool = pool) => {
     try {
         if (!userId) return;
 
@@ -134,7 +134,7 @@ const createLog = async (userId, channelId, eventType) => {
         const cid = parseInt(channelId);
         const validChannelId = isNaN(cid) ? null : cid;
 
-        await pool.query(`
+        await queryPool.query(`
             INSERT INTO public.ptt_logs (user_id, channel_id, event_type, event_time)
             VALUES ($1::text, $2::integer, $3::text, CURRENT_TIMESTAMP)
         `, [uid, validChannelId, String(eventType)]);

@@ -12,6 +12,7 @@ const expectedFileIds = [
   'nginx-api',
   'nginx-api-staging',
   'nginx-cloudflare-realip',
+  'nginx-maps-and-limits',
   'nginx-proxy-common',
   'nginx-webadmin-assets',
   'nginx-webadmin-dev-deny',
@@ -72,7 +73,11 @@ test('host-security contract closes every tracked WebAdmin and real-IP input out
     assert.match(contract.files.find((file) => file.id === id).target, /^\/etc\/apache2\/sites-available\//);
   }
   for (const file of contract.files.filter((file) => file.consumer === 'nginx')) {
-    assert.match(file.target, /^\/etc\/nginx\/(snippets|sites-available)\//);
+    if (file.id === 'nginx-maps-and-limits') {
+      assert.equal(file.target, '/etc/nginx/conf.d/am2-maps-and-limits.conf');
+    } else {
+      assert.match(file.target, /^\/etc\/nginx\/(snippets|sites-available)\//);
+    }
   }
 
   assert.deepEqual(contract.activation, {
