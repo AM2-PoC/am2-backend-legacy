@@ -1,0 +1,36 @@
+name: auth abuse checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'infra/nginx/**'
+      - 'infra/contracts/host-security-contract.json'
+      - 'tests/runtime-webadmin-login-limiter.py'
+      - 'tests/unit/relay-auth-abuse.test.mjs'
+      - '.github/workflows/auth-abuse-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Credential-free relay behavior and unit regressions
+        run: node --test tests/unit/*.test.mjs
+  edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install nginx only on disposable runner
+        run: sudo apt-get update && sudo apt-get install -y nginx
+      - name: Real isolated nginx login budget regression
+        run: python3 tests/runtime-webadmin-login-limiter.py
