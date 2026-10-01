@@ -166,7 +166,7 @@ jobs:
           coverage: none
       - name: Verify clean-room prerequisites
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           test "$(uname -m)" = x86_64
           grep -qx 'VERSION_ID="26.04"' /etc/os-release
           test "$(node --version)" = v24.21.0

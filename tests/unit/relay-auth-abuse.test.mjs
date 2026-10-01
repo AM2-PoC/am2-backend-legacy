@@ -719,6 +719,20 @@ for (const [kind, data] of [
     });
 }
 
+for (const [kind, credential] of [['password', {}], ['token', { token, password: 'ignored' }]]) {
+    test(`successful ${kind} reconnects do not consume the failed-credential budget`, async () => {
+        const h = harness({ accept: true });
+        for (let i = 0; i < IDENTITY_ATTEMPTS * 2; i += 1) {
+            const ws = h.socket();
+            await h.frame(ws, login({ ...credential, username: i % 2 ? h.user.name : h.user.id }));
+            await h.idle();
+            assert.ok(ws.inbox.some((message) => message.type === 'login_success'),
+                `legitimate reconnect ${i + 1} was refused as a failed credential`);
+            assert.equal(h.rejected.length, 0);
+        }
+    });
+}
+
 test('duplicate login on an authenticated socket is ignored without login_error or credential work', async () => {
     const h = harness({ accept: true });
     const ws = h.socket();
