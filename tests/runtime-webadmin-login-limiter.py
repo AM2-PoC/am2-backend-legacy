@@ -56,7 +56,7 @@ class LoginLimiter(unittest.TestCase):
         source, count = re.subn(r'(?m)^\s*listen 443 ssl http2;', f'    listen 127.0.0.1:{frontend};', source)
         self.assertEqual(count, 1)
         source = '\n'.join(line for line in source.splitlines()
-                           if not re.match(r'^\s*(?:ssl_\w+\s|include /etc/letsencrypt/|(?:access|error)_log /var/log/nginx/)', line))
+                           if not re.match(r'^\s*(?:ssl_\w+\s|include /etc/letsencrypt/|(?:access|error)_log\s+/var/log/nginx/)', line))
         zones = [entry for entry in CONTRACT['files']
                  if entry['consumer'] == 'nginx' and entry.get('target', '').startswith('/etc/nginx/conf.d/')]
         zone_config = '\n'.join((ROOT / entry['source']).read_text() for entry in zones)
