@@ -26,6 +26,7 @@ async function commitLoginSession(pool, {
     sourceTokenHash = null,
     sourceDeviceId = null,
     beforeIssue = null,
+    beforeCommit = null,
 } = {}) {
     const uid = String(userId);
     const token = newToken();
@@ -76,6 +77,8 @@ async function commitLoginSession(pool, {
             "UPDATE public.users SET force_logout = FALSE, status = 'online', updated_at = CURRENT_TIMESTAMP, current_device_id = $1, is_speaking = false WHERE id = $2",
             [deviceId || null, uid],
         );
+        // Check after all token/session writes, before COMMIT is sent.
+        if (beforeCommit) beforeCommit();
         await client.query('COMMIT');
         return token;
     } catch (error) {

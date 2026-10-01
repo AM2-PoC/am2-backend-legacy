@@ -107,7 +107,9 @@ function harness({
         last_channel_slug: 'test-room', current_device_id: null, force_logout: false,
     };
     const defaultPool = {
-        async connect() { return { query: (...args) => this.query(...args), release() {} }; },
+        async connect() {
+            return Object.assign(new EventEmitter(), { query: (...args) => this.query(...args), release() {} });
+        },
         async query(sql, params) {
             calls.query.push({ sql, params });
             if (/FROM public\.users u/.test(sql)) {
@@ -210,7 +212,7 @@ function transactionalPool(defaultPool, user, { writeGate = null, afterWrite = (
     let destroyed = false;
     let released = 0;
     const sqlCalls = [];
-    const client = {
+    const client = Object.assign(new EventEmitter(), {
         async query(input, params = []) {
             const sql = typeof input === 'string' ? input : input.text;
             params = typeof input === 'string' ? params : input.values || [];
@@ -258,7 +260,7 @@ function transactionalPool(defaultPool, user, { writeGate = null, afterWrite = (
                 pending?.(new Error('synthetic connection destroyed'));
             }
         },
-    };
+    });
     return {
         pool: { query: (...args) => client.query(...args), async connect() { return client; } },
         original, snapshot: () => structuredClone(durable), staged: () => structuredClone(staged),
@@ -553,7 +555,7 @@ function hangingLookupPool(defaultPool) {
     let started = 0;
     const pool = {
         async connect() {
-            const client = {
+            const client = Object.assign(new EventEmitter(), {
                 dead: false, releases: 0,
                 async query(input, params = []) {
                     assert.equal(this.dead, false, 'query ran on a destroyed login connection');
@@ -577,7 +579,7 @@ function hangingLookupPool(defaultPool) {
                         this.cancel?.();
                     }
                 },
-            };
+            });
             clients.push(client);
             return client;
         },
@@ -631,6 +633,49 @@ for (const reason of ['close', 'deadline']) {
             assert.ok(sockets.every((ws) => !ws.inbox.some((message) => message.type === 'login_success')));
             assert.equal(h.rejected.length, 0);
         } finally { db.cleanup(); await h.idle(); }
+    });
+}
+
+for (const stage of ['query', 'bcrypt']) {
+    test(`checked-out pg error during ${stage} is contained and admission recovers`, async () => {
+        const bcryptGate = stage === 'bcrypt' ? defer() : null;
+        const clients = [];
+        let cancel;
+        const h = harness({ accept: true, bcryptGate, poolFactory: (defaultPool) => ({
+            async connect() {
+                const client = Object.assign(new EventEmitter(), {
+                    dead: false, releases: 0,
+                    async query(sql, params) {
+                        assert.equal(this.dead, false);
+                        if (stage === 'query' && clients.length === 1 && /FROM public\.users u/.test(sql)) {
+                            return new Promise((resolve, reject) => { cancel = () => reject(new Error('synthetic pg disconnect')); });
+                        }
+                        return defaultPool.query(sql, params);
+                    },
+                    release(destroy = false) { this.releases += 1; this.dead = destroy; if (destroy) cancel?.(); },
+                });
+                clients.push(client);
+                return client;
+            },
+        }) });
+        const ws = h.socket();
+        try {
+            await h.frame(ws, login());
+            const client = clients.at(-1);
+            assert.equal(client.listenerCount('error'), 1, 'checked-out pg client has no owner for error events');
+            assert.doesNotThrow(() => client.emit('error', new Error('synthetic pg disconnect')));
+            assert.equal(client.dead, true, 'pg error did not destroy the failed client');
+            assert.equal(client.releases, 1);
+            assert.equal(client.listenerCount('error'), 0, 'attempt listener leaked into the pool');
+            bcryptGate?.resolve();
+            await h.idle();
+            assert.equal(ws.sessionUser, null, 'failed pg work published authentication');
+            const next = h.socket();
+            await h.frame(next, login());
+            await h.idle();
+            assert.ok(next.inbox.some((message) => message.type === 'login_success'), 'pg error stranded admission');
+        } finally { bcryptGate?.resolve(); cancel?.(); await h.idle(); }
+        assert.equal(h.rejected.length, 0);
     });
 }
 

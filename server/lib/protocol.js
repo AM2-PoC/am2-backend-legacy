@@ -169,6 +169,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
     }
     const wss = new WebSocket.Server({ server });
     const loginIdentities = new Map();
+    const loginAccounts = new Map();
     const committingUsers = new Set();
     let activeLogins = 0;
     let loginGeneration = 0;
@@ -220,6 +221,15 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         ws.clientVersionCode = null;
         ws.clientVersionName = null;
 
+        let loginClient = null;
+        const loginClientError = () => releaseLoginClient(true);
+        const releaseLoginClient = (destroy = false) => {
+            if (!loginClient) return;
+            const client = loginClient;
+            loginClient = null;
+            client.removeListener('error', loginClientError);
+            client.release(destroy);
+        };
         let loginBusy = false;
         let loginClosed = false;
         let loginAttempts = 0;
@@ -230,6 +240,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         const loginDeadline = setTimeout(() => {
             if (ws.sessionUser) return;
             loginClosed = true;
+            releaseLoginClient(true);
             ws.terminate();
         }, LOGIN_DEADLINE_MS);
         if (loginDeadline.unref) loginDeadline.unref();
@@ -398,8 +409,24 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     activeLogins += 1;
                     let committingUser = null;
                     const attemptGeneration = loginGeneration;
+                    // Cancellation owns the checked-out client, not only a counter.
+                    const workDeadline = setTimeout(() => releaseLoginClient(true),
+                        Math.max(0, loginExpiresAt - Date.now()));
+                    if (workDeadline.unref) workDeadline.unref();
+                    let client;
+                    const authPool = {
+                        query: (...args) => {
+                            if (!client || loginClient !== client) throw new Error('login connection closed');
+                            return client.query(...args);
+                        },
+                        connect: async () => ({ query: (...args) => authPool.query(...args), release() {} }),
+                    };
                     try {
-                        const res = await pool.query(`
+                        client = await pool.connect();
+                        loginClient = client;
+                        client.on('error', loginClientError);
+                        if (!loginViable()) return;
+                        const res = await authPool.query(`
                             SELECT u.*, a.status as admin_status, a.expired_at as admin_expired_at,
                                    a.can_manage_maps, a.can_manage_p2p, a.can_manage_video,
                                    p.enable_maps, p.enable_p2p, p.enable_ptt_video, p.duplex_mode,
@@ -416,6 +443,26 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         if (res.rows.length > 0) {
                             const user = res.rows[0];
                             const uid = String(user.id);
+                            const accountKey = uid.toLowerCase();
+                            let account = loginAccounts.get(accountKey);
+                            if (account && nowMs - account.started >= LOGIN_WINDOW_MS) {
+                                loginAccounts.delete(accountKey);
+                                account = null;
+                            }
+                            if (!account && loginAccounts.size >= LOGIN_IDENTITY_BUCKETS) {
+                                for (const [key, value] of loginAccounts) {
+                                    if (nowMs - value.started >= LOGIN_WINDOW_MS) loginAccounts.delete(key);
+                                }
+                            }
+                            if ((account && account.attempts >= LOGIN_IDENTITY_ATTEMPTS)
+                                || (!account && loginAccounts.size >= LOGIN_IDENTITY_BUCKETS)) {
+                                return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
+                            }
+                            if (!account) {
+                                account = { started: nowMs, attempts: 0 };
+                                loginAccounts.set(accountKey, account);
+                            }
+                            account.attempts += 1;
                             const priorConnection = activeConnections.get(uid);
                             if (priorConnection && priorConnection.loginGeneration > attemptGeneration) {
                                 return ws.send(JSON.stringify({ type: 'login_error', data: { message: MSG.LOGIN_RETRY_LATER, code: 'server_unavailable' } }));
@@ -423,7 +470,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
 
                             let authenticatedToken = null;
                             if (presentedToken) {
-                                authenticatedToken = await userForDeviceToken(presentedToken);
+                                authenticatedToken = await userForDeviceToken(presentedToken, authPool);
                                 if (!loginViable()) return;
                                 if (authenticatedToken === null || authenticatedToken.userId !== uid) {
                                     return ws.send(JSON.stringify({
@@ -454,7 +501,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }));
                             }
 
-                            const channelCheck = await pool.query(
+                            const channelCheck = await authPool.query(
                                 "SELECT 1 FROM public.user_channels WHERE user_id = $1 AND channel_id = $2",
                                 [uid, user.last_channel_id]
                             );
@@ -481,7 +528,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 }
                             }
 
-                            const channels = await pool.query(`
+                            const channels = await authPool.query(`
                                 SELECT c.name as slug, c.display_name, uc.permission
                                 FROM public.channels c
                                 JOIN public.user_channels uc ON c.id = uc.channel_id
@@ -494,7 +541,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             // Do not let overlapping commits invalidate the winner's token.
                             committingUsers.add(uid);
                             committingUser = uid;
-                            const deviceToken = await commitLoginSession(pool, {
+                            const deviceToken = await commitLoginSession(authPool, {
                                 userId: uid,
                                 deviceId: providedDeviceId,
                                 expectedForceLogout: user.force_logout === true,
@@ -503,6 +550,11 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                 sourceTokenHash: authenticatedToken?.tokenHash ?? null,
                                 sourceDeviceId: authenticatedToken?.deviceId ?? null,
                                 beforeIssue: () => {
+                                    if (!loginViable() || activeConnections.get(uid) !== priorConnection) {
+                                        throw new Error('login no longer current');
+                                    }
+                                },
+                                beforeCommit: () => {
                                     if (!loginViable() || activeConnections.get(uid) !== priorConnection) {
                                         throw new Error('login no longer current');
                                     }
@@ -584,11 +636,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                                     channels: channels.rows
                                 }
                             }));
-                            await createLog(uid, user.last_channel_id, 'LOGIN');
-                            if (ws.readyState === WebSocket.OPEN && activeConnections.get(uid) === ws
-                                && ws.sessionUser === user && data.latitude && data.longitude) {
-                                await updateUserLocation(uid, data.latitude, data.longitude, data.accuracy, data.address);
-                            }
+                            await createLog(uid, user.last_channel_id, 'LOGIN', authPool);
                         } else {
                             ws.send(JSON.stringify({ type: 'login_error', data: { message: "Unit not registered", code: 'credential_rejected' } }));
                         }
@@ -617,8 +665,17 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                     } finally {
                         // Hold admission for the entire promise, even after close.
                         if (committingUser !== null) committingUsers.delete(committingUser);
+                        clearTimeout(workDeadline);
+                        releaseLoginClient(!loginViable() && !ws.sessionUser);
                         loginBusy = false;
                         activeLogins -= 1;
+                    }
+                    // Optional location I/O must not retain an authentication slot.
+                    const loggedIn = ws.sessionUser;
+                    if (ws.readyState === WebSocket.OPEN && loggedIn
+                        && activeConnections.get(String(loggedIn.id)) === ws
+                        && data.latitude && data.longitude) {
+                        await updateUserLocation(loggedIn.id, data.latitude, data.longitude, data.accuracy, data.address);
                     }
                     break;
                 }
@@ -1119,6 +1176,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
         ws.on('close', async (code) => {
             loginClosed = true;
             clearTimeout(loginDeadline);
+            releaseLoginClient(true);
             try {
             const user = ws.sessionUser;
             const room = ws.currentRoom;
