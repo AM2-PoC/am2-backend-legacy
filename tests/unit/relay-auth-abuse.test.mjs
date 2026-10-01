@@ -719,7 +719,24 @@ for (const [kind, data] of [
     });
 }
 
-for (const [kind, credential] of [['password', {}], ['token', { token, password: 'ignored' }]]) {
+test('case-distinct database account IDs do not share a retry budget', async () => {
+    const h = harness();
+    h.user.id = 'UNIT';
+    for (let i = 0; i < IDENTITY_ATTEMPTS; i += 1) {
+        await h.frame(h.socket(), login({ username: 'Upper unit name' }));
+        await h.idle();
+    }
+    assert.equal(h.calls.bcrypt.length, IDENTITY_ATTEMPTS);
+    h.user.id = 'unit';
+    const ws = h.socket();
+    await h.frame(ws, login({ username: 'Lower unit name' }));
+    await h.idle();
+    assert.equal(h.calls.bcrypt.length, IDENTITY_ATTEMPTS + 1,
+        'case-distinct account inherited another database ID retry budget');
+    assert.equal(ws.inbox.at(-1)?.data.code, 'credential_rejected');
+});
+
+for (const [kind, credential] of [['password', {}], ['token', { token, password: 'ignored']]]) {
     test(`successful ${kind} reconnects do not consume the failed-credential budget`, async () => {
         const h = harness({ accept: true });
         for (let i = 0; i < IDENTITY_ATTEMPTS * 2; i += 1) {

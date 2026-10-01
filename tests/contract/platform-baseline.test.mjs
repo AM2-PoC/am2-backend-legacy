@@ -13,7 +13,7 @@ test('WebAdmin build toolchain is exact and its dependency locks exist', () => {
   assert.equal(contract.schema_version, 2);
   assert.deepEqual(contract.os, { id: 'ubuntu', version: '26.04', codename: 'resolute' });
   assert.deepEqual(contract.php, {
-    version: '8.5.10', sapi: 'cli', source: 'shivammathur/setup-php',
+    version: '8.5.11', sapi: 'cli', source: 'shivammathur/setup-php',
     extensions: ['ctype', 'curl', 'dom', 'fileinfo', 'filter', 'hash', 'mbstring', 'openssl', 'pcre', 'pdo', 'pdo_pgsql', 'pgsql', 'session', 'tokenizer', 'xml', 'zip'],
   });
   assert.deepEqual(contract.postgresql, { major: 18 });
@@ -43,6 +43,7 @@ test('WebAdmin build toolchain is exact and its dependency locks exist', () => {
 
   const composer = JSON.parse(readFileSync(resolve(ROOT, 'laravel/composer.json'), 'utf8'));
   assert.equal(composer.require?.php, '^8.5');
+  // Dependency resolution keeps its minimum platform; CI qualifies the newer patch.
   assert.equal(composer.config?.platform?.php, '8.5.10');
   assert.equal(composer.require?.['laravel/framework'], '^13.0');
   assert.equal(composer.require?.['filament/filament'], '^5.0');

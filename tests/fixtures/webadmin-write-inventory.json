@@ -5,7 +5,7 @@
     "webadmin_php_files": 46,
     "webadmin_tree_sha256": "9f915bc8ed1039a7a54ba04a1e9d8c4f4eef798993f17fdb0bf2a5cbcfdd934c",
     "relay_js_files": 15,
-    "relay_tree_sha256": "5a439a07585fe7d7afca66037c1b62c6eed533c0ddffb143c46e8a58af0c5795"
+    "relay_tree_sha256": "790bf8b57f69f23b5a485a6571412a972b8efcc1673960bde5e6b57c476bd25c"
   },
   "direct_writes": [
     {
@@ -400,37 +400,37 @@
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:1204",
+      "site": "server/lib/protocol.js:1011",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:815",
+      "site": "server/lib/protocol.js:1028",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:926",
+      "site": "server/lib/protocol.js:1207",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:953",
+      "site": "server/lib/protocol.js:818",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:1008",
+      "site": "server/lib/protocol.js:929",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"
     },
     {
-      "site": "server/lib/protocol.js:1025",
+      "site": "server/lib/protocol.js:956",
       "writer": "relay",
       "command": "UPDATE",
       "table": "public.users"

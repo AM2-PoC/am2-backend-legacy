@@ -443,7 +443,7 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                         if (res.rows.length > 0) {
                             const user = res.rows[0];
                             const uid = String(user.id);
-                            const accountKey = uid.toLowerCase();
+                            const accountKey = uid;
                             let account = loginAccounts.get(accountKey);
                             if (account && nowMs - account.started >= LOGIN_WINDOW_MS) {
                                 loginAccounts.delete(accountKey);
@@ -593,6 +593,9 @@ function attachProtocol(server, { commitLoginSession, LoginSessionError } = {}) 
                             ws.loginGeneration = ++loginGeneration;
                             activeConnections.set(uid, ws);
                             clearTimeout(loginDeadline);
+                            // Successful authentication is recovery, not a failed retry.
+                            loginIdentities.delete(identity);
+                            loginAccounts.delete(accountKey);
                             console.log(
                                 `event=client_login user=${uid}`
                                 + ` client_version=${ws.clientVersionName || 'unknown'}`

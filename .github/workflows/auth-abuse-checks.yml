@@ -49,6 +49,31 @@ jobs:
           assert '# fail 2' in text
           assert 'checked-out pg client has no owner for error events' in text
           PY
+      - name: Prove case-distinct account regression rejects a shared key
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/auth-account-red"
+          mkdir -p "$fixture"
+          cp -R server tests "$fixture/"
+          python3 - "$fixture/server/lib/protocol.js" <<'PY'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          assert source.count('const accountKey = uid;') == 1
+          path.write_text(source.replace('const accountKey = uid;', 'const accountKey = uid.toLowerCase();'))
+          PY
+          set +e
+          node --test --test-name-pattern='case-distinct database account IDs' "$fixture/tests/unit/relay-auth-abuse.test.mjs" > "$RUNNER_TEMP/auth-account-red.log" 2>&1
+          result=$?
+          set -e
+          python3 - "$RUNNER_TEMP/auth-account-red.log" "$result" <<'PY'
+          import pathlib, sys
+          text = pathlib.Path(sys.argv[1]).read_text()
+          print(text)
+          assert int(sys.argv[2]) != 0
+          assert '# fail 1' in text
+          assert 'case-distinct account inherited another database ID retry budget' in text
+          PY
       - name: Credential-free relay behavior and unit regressions
         run: node --test tests/unit/*.test.mjs
   # Origin reachability is an operator probe, never a recurring PR test.
