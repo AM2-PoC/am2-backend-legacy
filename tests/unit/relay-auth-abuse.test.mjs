@@ -736,7 +736,7 @@ test('case-distinct database account IDs do not share a retry budget', async () 
     assert.equal(ws.inbox.at(-1)?.data.code, 'credential_rejected');
 });
 
-for (const [kind, credential] of [['password', {}], ['token', { token, password: 'ignored']]]) {
+for (const [kind, credential] of [['password', {}], ['token', { token, password: 'ignored' }]]) {
     test(`successful ${kind} reconnects do not consume the failed-credential budget`, async () => {
         const h = harness({ accept: true });
         for (let i = 0; i < IDENTITY_ATTEMPTS * 2; i += 1) {
